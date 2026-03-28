@@ -25,6 +25,8 @@ Recommended reading order:
 3. [Frontend Architecture](./docs/frontend-architecture.md)
 4. [Backend Blueprint](./docs/backend-blueprint.md)
 5. [MVP Schema Design](./docs/mvp-schema-design.md)
+6. [Entity Relationship Diagram](./docs/entity-relationship-diagram.md)
+7. [Platform Deployment Guide](./docs/platform-deployment.md)
 
 ## Local development
 
