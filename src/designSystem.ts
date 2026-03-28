@@ -61,6 +61,13 @@ export type Listing = {
   urgent?: boolean
   stats: string[]
   amenities: string[]
+  hostName: string
+  hostRole: string
+  responseTime: string
+  deposit: string
+  availability: string
+  matchScore: string
+  description: string
 }
 
 export type TravelOption = {
@@ -70,6 +77,17 @@ export type TravelOption = {
   itemType: string
   eta: string
   rate: string
+  carrierName: string
+  carrierRating: string
+  capacity: string
+  trustNote: string
+}
+
+export type Testimonial = {
+  quote: string
+  name: string
+  role: string
+  company: string
 }
 
 export const homeFeatures: Feature[] = [
@@ -77,7 +95,7 @@ export const homeFeatures: Feature[] = [
     icon: ShieldCheck,
     title: 'Trust-first discovery',
     description:
-      'Every card surfaces verified badges, move-in readiness, and a direct path to contact.',
+      'Every card surfaces verified badges, response time, deposit clarity, and a direct path to contact.',
     badge: 'Verified listings',
   },
   {
@@ -97,10 +115,19 @@ export const homeFeatures: Feature[] = [
 ]
 
 export const trustStats = [
-  { value: '1.2k+', label: 'verified tenants and senders onboarded' },
-  { value: '<10s', label: 'average time to reach the primary CTA' },
-  { value: '92%', label: 'users choosing direct contact from cards' },
-  { value: '24/7', label: 'support-ready status messaging' },
+  { value: '1,284', label: 'verified renters and senders active this week' },
+  { value: '7.8 sec', label: 'median time from landing page to first action' },
+  { value: '312', label: 'live routes currently open across 16 cities' },
+  { value: '96.4%', label: 'requests receiving a first reply within 30 minutes' },
+]
+
+export const sampleCompanies = [
+  'UrbanNest',
+  'CargoLoop',
+  'MetroStay',
+  'ShiftMint',
+  'HomeLane Pro',
+  'ParcelBridge',
 ]
 
 export const liveListings: Listing[] = [
@@ -116,6 +143,14 @@ export const liveListings: Listing[] = [
     urgent: true,
     stats: ['1 bath', 'Furnished', 'Near metro'],
     amenities: ['Verified owner', 'Wi-Fi ready', 'Lift access'],
+    hostName: 'Aarav Mehta',
+    hostRole: 'Property manager, Blue Brick Living',
+    responseTime: 'Replies in 9 min',
+    deposit: '₹45,000 deposit',
+    availability: 'Available for 11-month lease',
+    matchScore: '94% match',
+    description:
+      'Bright studio five minutes from DN Nagar metro with flexible move-in and a fully documented rental agreement.',
   },
   {
     id: 'l2',
@@ -128,6 +163,14 @@ export const liveListings: Listing[] = [
     verified: true,
     stats: ['2 bath', 'Co-working nearby', 'Pet friendly'],
     amenities: ['Background checked', 'Parking', 'Power backup'],
+    hostName: 'Ritika Shah',
+    hostRole: 'Community lead, LaunchHouse Residences',
+    responseTime: 'Replies in 14 min',
+    deposit: '₹30,000 deposit',
+    availability: 'Flexible 6-12 month stay',
+    matchScore: '91% match',
+    description:
+      'Built for startup operators who want a furnished shared flat close to cafes, offices, and co-working spaces.',
   },
   {
     id: 'l3',
@@ -140,6 +183,14 @@ export const liveListings: Listing[] = [
     verified: true,
     stats: ['Attached bath', 'Meal plan', 'Security desk'],
     amenities: ['Company badge', 'Daily cleaning', 'Gym access'],
+    hostName: 'Neha Suri',
+    hostRole: 'Operations head, Corporate Habitat',
+    responseTime: 'Replies in 6 min',
+    deposit: '₹56,000 deposit',
+    availability: 'Corporate lease supported',
+    matchScore: '97% match',
+    description:
+      'Premium managed room in a secure business district with housekeeping, meals, and concierge-backed onboarding.',
   },
 ]
 
@@ -160,6 +211,10 @@ export const travelOptions: TravelOption[] = [
     itemType: 'Documents / small parcel',
     eta: '2h 40m',
     rate: '₹249',
+    carrierName: 'Rohan Kulkarni',
+    carrierRating: '4.9 / 5',
+    capacity: '2.5 kg free capacity',
+    trustNote: 'Verified frequent carrier · 38 completed deliveries',
   },
   {
     id: 't2',
@@ -168,6 +223,10 @@ export const travelOptions: TravelOption[] = [
     itemType: 'Laptop / fragile item',
     eta: '6h',
     rate: '₹599',
+    carrierName: 'Divya Menon',
+    carrierRating: '4.8 / 5',
+    capacity: 'Cabin-safe fragile slot',
+    trustNote: 'Background checked carrier · Insurance eligible',
   },
   {
     id: 't3',
@@ -176,6 +235,10 @@ export const travelOptions: TravelOption[] = [
     itemType: 'Food / care package',
     eta: '4h 30m',
     rate: '₹399',
+    carrierName: 'Karan Bedi',
+    carrierRating: '4.7 / 5',
+    capacity: 'Temperature-safe bag space',
+    trustNote: 'Trusted weekend runner · 21 repeat senders',
   },
 ]
 
@@ -231,4 +294,35 @@ export const supportHighlights = [
     description:
       'Travel routes, item types, ETA, and trust tiers make the send-item flow feel fast and safe.',
   },
+]
+
+export const testimonials: Testimonial[] = [
+  {
+    quote:
+      'We started using Trusted Network to manage verified tenant demand in Bengaluru and it cut our back-and-forth screening time in half.',
+    name: 'Maya Rao',
+    role: 'Growth manager',
+    company: 'UrbanNest Living',
+  },
+  {
+    quote:
+      'The delivery side feels equally polished. Our ops team can post urgent city-to-city requests and immediately see trustworthy travellers.',
+    name: 'Keshav Arora',
+    role: 'Operations lead',
+    company: 'ParcelBridge',
+  },
+  {
+    quote:
+      'Even without a backend demo, the seeded data already reads like a real category product. It helps stakeholders understand the opportunity instantly.',
+    name: 'Ananya Sethi',
+    role: 'Product consultant',
+    company: 'ShiftMint Advisory',
+  },
+]
+
+export const marketplaceSnapshot = [
+  '842 verified housing leads this week',
+  '312 active route offers across major corridors',
+  'Average first response time under 10 minutes',
+  '68% of high-intent users come from mobile web',
 ]

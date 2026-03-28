@@ -55,11 +55,11 @@ export function SendItemPage() {
               >
                 <div className="field">
                   <label htmlFor="pickup">Pickup location</label>
-                  <input id="pickup" placeholder="Andheri East, Mumbai" />
+                  <input defaultValue="WeWork, Andheri East, Mumbai" id="pickup" placeholder="Andheri East, Mumbai" />
                 </div>
                 <div className="field">
                   <label htmlFor="dropoff">Drop-off location</label>
-                  <input id="dropoff" placeholder="Koregaon Park, Pune" />
+                  <input defaultValue="Koregaon Park, Pune" id="dropoff" placeholder="Koregaon Park, Pune" />
                 </div>
                 <div className="field">
                   <label htmlFor="item-type">Item type</label>
@@ -72,11 +72,16 @@ export function SendItemPage() {
                 </div>
                 <div className="field">
                   <label htmlFor="window">Delivery window</label>
-                  <input id="window" placeholder="Today, before 8 PM" />
+                  <input defaultValue="Today, before 8 PM" id="window" placeholder="Today, before 8 PM" />
+                </div>
+                <div className="field">
+                  <label htmlFor="budget">Offer or budget</label>
+                  <input defaultValue="₹250" id="budget" placeholder="₹250" />
                 </div>
                 <div className="field">
                   <label htmlFor="notes">Notes</label>
                   <textarea
+                    defaultValue="Legal papers in a sealed folder. Pickup contact is at the reception desk. Drop-off is time-sensitive before tomorrow morning."
                     id="notes"
                     placeholder="Security gate instructions, item size, or preferred contact method."
                   />
@@ -117,10 +122,15 @@ export function SendItemPage() {
                     </div>
                     <span className="price">{option.rate}</span>
                   </div>
+                  <p className="muted">
+                    {option.carrierName} · {option.carrierRating}
+                  </p>
                   <div className="metric-row">
                     <Badge tone="purple">{option.itemType}</Badge>
                     <Badge tone="gray">{option.eta}</Badge>
+                    <Badge tone="green">{option.capacity}</Badge>
                   </div>
+                  <p className="muted">{option.trustNote}</p>
                   <Button fullWidth variant="secondary">
                     Contact traveller
                   </Button>

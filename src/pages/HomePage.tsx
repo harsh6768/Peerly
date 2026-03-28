@@ -4,40 +4,61 @@ import {
   Building2,
   CalendarDays,
   Clock3,
+  LayoutGrid,
   MapPin,
   MessageSquareMore,
+  Search,
   Sparkles,
+  Star,
+  TrendingUp,
 } from 'lucide-react'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
-import { homeFeatures, liveListings, processHighlights, supportHighlights, trustStats } from '../designSystem'
+import {
+  homeFeatures,
+  liveListings,
+  marketplaceSnapshot,
+  processHighlights,
+  sampleCompanies,
+  supportHighlights,
+  testimonials,
+  trustStats,
+} from '../designSystem'
 
 export function HomePage() {
   return (
     <div className="page">
       <section className="section">
-        <div className="page-inner hero-grid">
-          <div className="hero-copy reveal">
-            <div className="eyebrow">
-              <span className="eyebrow-dot" />
-              Live trust layer for housing and deliveries
+        <div className="page-inner landing-hero">
+          <div className="hero-orb" />
+
+          <div className="hero-copy hero-copy-centered reveal">
+            <div className="hero-announcement">
+              <Badge tone="purple">New</Badge>
+              <span>Trusted match alerts and instant contact are now live</span>
+              <ArrowRight size={14} />
             </div>
-            <h1>Move faster with a marketplace that feels safe on every screen.</h1>
+
+            <h1>
+              Find trusted tenants,
+              <span className="headline-accent"> send items faster.</span>
+            </h1>
             <p>
-              Trusted Network brings verified housing, item delivery, and direct contact
-              into one mobile-first system. The UI stays minimal, the CTA is always close,
-              and the experience scales cleanly from phones to desktop dashboards.
+              A cleaner marketplace for verified housing and route-based delivery. Designed
+              mobile-first, refined for desktop, and built to keep the next action obvious.
             </p>
-            <div className="hero-actions">
+
+            <div className="hero-actions hero-actions-centered">
               <Button icon={<ArrowRight size={18} />} to="/find-tenant">
-                Explore the product
+                Get Started
               </Button>
               <Button to="/send-item" variant="secondary">
-                Preview components
+                Preview Platform
               </Button>
             </div>
-            <div className="hero-signals">
+
+            <div className="hero-signals hero-signals-centered">
               <span className="pill">
                 <BadgeCheck size={16} />
                 Verified by default
@@ -53,59 +74,146 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="surface hero-preview reveal reveal-delay">
-            <div className="preview-stack">
-              <div className="preview-panel">
-                <div className="preview-topbar">
-                  <div className="mini-row">
-                    <div className="avatar">TN</div>
-                    <div>
-                      <strong>Hey Jane</strong>
-                      <p className="muted">Welcome back to your trusted network.</p>
+          <div className="surface dashboard-hero reveal reveal-delay">
+            <div className="dashboard-shell">
+              <aside className="dashboard-sidebar">
+                <div className="mini-row">
+                  <div className="avatar">TN</div>
+                  <div>
+                    <strong>Harsh Patel</strong>
+                    <p className="muted">Marketplace admin</p>
+                  </div>
+                </div>
+
+                <div className="dashboard-menu">
+                  <span className="dashboard-menu-item active">
+                    <LayoutGrid size={16} />
+                    Dashboard
+                  </span>
+                  <span className="dashboard-menu-item">
+                    <Search size={16} />
+                    Listings
+                  </span>
+                  <span className="dashboard-menu-item">
+                    <MessageSquareMore size={16} />
+                    Messages
+                  </span>
+                  <span className="dashboard-menu-item">
+                    <TrendingUp size={16} />
+                    Analytics
+                  </span>
+                </div>
+              </aside>
+
+              <div className="dashboard-main">
+                <div className="dashboard-topbar">
+                  <div>
+                    <strong>Hi Harsh</strong>
+                    <p className="muted">You have 12 active requests and 4 priority matches.</p>
+                  </div>
+
+                  <div className="progress-inline">
+                    <span className="muted">Trust score</span>
+                    <div className="progress-track">
+                      <span style={{ width: '78%' }} />
                     </div>
                   </div>
-                  <Badge tone="green">Verified</Badge>
                 </div>
 
-                <div className="mini-grid" style={{ marginTop: 18 }}>
-                  <div className="mini-card">
-                    <Badge tone="purple">Find Tenant</Badge>
-                    <strong>Ready-to-move spaces</strong>
-                    <p>Search verified rooms, furnished flats, and company-backed homes.</p>
+                <div className="dashboard-grid">
+                  <div className="dashboard-feature-card feature-coral">
+                    <div className="mini-row">
+                      <Badge tone="gray">Housing</Badge>
+                      <Star size={16} />
+                    </div>
+                    <strong>3 new tenant leads</strong>
+                    <p>Verified renters looking for move-in this week near metro routes.</p>
+                    <div className="dashboard-avatars">
+                      <span>AP</span>
+                      <span>RJ</span>
+                      <span>SK</span>
+                    </div>
                   </div>
-                  <div className="mini-card">
-                    <Badge tone="gray">Send Item</Badge>
-                    <strong>Route matching</strong>
-                    <p>Pair travel routes with urgent parcel requests in just a few taps.</p>
+
+                  <div className="dashboard-feature-card feature-violet">
+                    <div className="mini-row">
+                      <Badge tone="purple">Delivery</Badge>
+                      <ArrowRight size={16} />
+                    </div>
+                    <strong>Mumbai to Pune route</strong>
+                    <p>2 urgent parcel requests match your preferred travel lane tonight.</p>
+                    <div className="dashboard-route">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+
+                  <div className="dashboard-schedule">
+                    <div className="mini-row">
+                      <strong>Today&apos;s schedule</strong>
+                      <Badge tone="green">Live</Badge>
+                    </div>
+                    <div className="schedule-card">
+                      <p>Priority discovery call</p>
+                      <strong>28:35</strong>
+                    </div>
+                    <div className="dashboard-stats">
+                      <div>
+                        <span className="muted">Completed</span>
+                        <strong>114</strong>
+                      </div>
+                      <div>
+                        <span className="muted">In progress</span>
+                        <strong>24</strong>
+                      </div>
+                      <div>
+                        <span className="muted">Members</span>
+                        <strong>08</strong>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="preview-panel">
-                <div className="summary-grid">
-                  <div className="mini-card">
-                    <MapPin size={18} />
-                    <strong>Mumbai → Pune</strong>
-                    <p>Tonight, 6:40 PM</p>
-                  </div>
-                  <div className="mini-card">
-                    <Building2 size={18} />
-                    <strong>HSR Layout</strong>
-                    <p>2 new tenant leads</p>
-                  </div>
-                  <div className="mini-card">
-                    <Sparkles size={18} />
-                    <strong>Priority match</strong>
-                    <p>Urgent verified request</p>
-                  </div>
-                  <div className="mini-card">
-                    <CalendarDays size={18} />
-                    <strong>Move in this week</strong>
-                    <p>12 curated options</p>
+                <div className="dashboard-footer">
+                  <div className="summary-grid">
+                    <div className="mini-card">
+                      <MapPin size={18} />
+                      <strong>Mumbai → Pune</strong>
+                      <p>Tonight, 6:40 PM</p>
+                    </div>
+                    <div className="mini-card">
+                      <Building2 size={18} />
+                      <strong>HSR Layout</strong>
+                      <p>2 new tenant leads</p>
+                    </div>
+                    <div className="mini-card">
+                      <Sparkles size={18} />
+                      <strong>Priority match</strong>
+                      <p>Urgent verified request</p>
+                    </div>
+                    <div className="mini-card">
+                      <CalendarDays size={18} />
+                      <strong>Move in this week</strong>
+                      <p>12 curated options</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="page-inner trusted-strip">
+          <span className="trusted-label">Used by teams piloting trusted housing and delivery flows</span>
+          <div className="trusted-logos">
+            {sampleCompanies.map((company) => (
+              <span className="trusted-logo" key={company}>
+                {company}
+              </span>
+            ))}
           </div>
         </div>
       </section>
@@ -179,8 +287,10 @@ export function HomePage() {
                   ))}
                 </div>
                 <div className="detail-actions" style={{ marginTop: 18 }}>
-                  <Button fullWidth>View listing</Button>
-                  <Button fullWidth variant="secondary">
+                  <Button fullWidth to="/find-tenant">
+                    View listing
+                  </Button>
+                  <Button fullWidth to="/send-item" variant="secondary">
                     WhatsApp
                   </Button>
                 </div>
@@ -209,6 +319,39 @@ export function HomePage() {
                 </div>
               ))}
             </div>
+            <div className="snapshot-list">
+              {marketplaceSnapshot.map((item) => (
+                <span className="snapshot-chip" key={item}>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="page-inner">
+          <div className="section-head">
+            <div className="eyebrow">Customer stories</div>
+            <h2>Sample product stories that make the concept feel real in demos.</h2>
+            <p>
+              These seeded testimonials and usage notes are static for now, but they help the
+              homepage read like a serious product before the backend is connected.
+            </p>
+          </div>
+          <div className="testimonial-grid">
+            {testimonials.map((testimonial) => (
+              <Card className="testimonial-card" key={testimonial.name}>
+                <p className="testimonial-quote">“{testimonial.quote}”</p>
+                <div className="testimonial-author">
+                  <strong>{testimonial.name}</strong>
+                  <span className="muted">
+                    {testimonial.role} · {testimonial.company}
+                  </span>
+                </div>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
@@ -231,8 +374,8 @@ export function HomePage() {
             <h2>Ready to continue?</h2>
             <p className="page-subtitle">
               The product shell is ready for deeper feature work, real data, authentication,
-              and backend integrations. For now, this gives you a production-style responsive
-              starting point for the full experience.
+              and backend integrations. For now, this gives you a stronger landing page
+              direction with a SaaS-style hero that is much closer to your reference.
             </p>
             <div className="cta-actions" style={{ marginTop: 18 }}>
               <Button to="/find-tenant">Open tenant flow</Button>

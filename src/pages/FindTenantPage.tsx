@@ -67,7 +67,11 @@ export function FindTenantPage() {
                   <div className="metric-row" style={{ marginTop: 12 }}>
                     <Badge tone="purple">{listing.rent}</Badge>
                     <Badge tone="gray">{listing.moveIn}</Badge>
+                    <Badge tone="green">{listing.matchScore}</Badge>
                   </div>
+                  <p className="muted" style={{ marginTop: 12 }}>
+                    {listing.description}
+                  </p>
                   <div className="meta-list">
                     {listing.stats.map((stat) => (
                       <span className="meta-item" key={stat}>
@@ -122,6 +126,17 @@ export function FindTenantPage() {
                   <span className="price">{selectedListing.rent}</span>
                 </div>
 
+                <div className="host-card">
+                  <div className="avatar">{selectedListing.hostName.slice(0, 2).toUpperCase()}</div>
+                  <div>
+                    <strong>{selectedListing.hostName}</strong>
+                    <p className="muted">{selectedListing.hostRole}</p>
+                  </div>
+                  <Badge tone="green">{selectedListing.responseTime}</Badge>
+                </div>
+
+                <p className="detail-description">{selectedListing.description}</p>
+
                 <div className="detail-specs">
                   <div className="spec-card">
                     <div className="spec-item">
@@ -147,6 +162,18 @@ export function FindTenantPage() {
                       {selectedListing.occupancy}
                     </div>
                   </div>
+                  <div className="spec-card">
+                    <div className="spec-item">
+                      <ShieldCheck size={18} />
+                      {selectedListing.deposit}
+                    </div>
+                  </div>
+                  <div className="spec-card">
+                    <div className="spec-item">
+                      <CalendarRange size={18} />
+                      {selectedListing.availability}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="amenities">
@@ -160,13 +187,13 @@ export function FindTenantPage() {
 
                 <div className="chat-preview">
                   <div className="message outgoing">
-                    Hi, is this room still available? Looking to move in this week.
+                    Hi {selectedListing.hostName.split(' ')[0]}, is this room still available? I’m looking to move in this week.
                   </div>
                   <div className="message incoming">
-                    Yes, it is. I can arrange a visit tomorrow and share the agreement details.
+                    Yes, it is. I can arrange a visit tomorrow and share the agreement details plus photos of the common areas.
                   </div>
                   <div className="message outgoing">
-                    Perfect. Please send the location pin and preferred timing.
+                    Perfect. Please send the location pin and your preferred viewing time.
                   </div>
                 </div>
 

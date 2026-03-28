@@ -4,8 +4,8 @@ import { Button } from './Button'
 
 const desktopLinks = [
   { to: '/', label: 'Home' },
-  { to: '/find-tenant', label: 'Find Tenant' },
-  { to: '/send-item', label: 'Send Item' },
+  { to: '/find-tenant', label: 'Features' },
+  { to: '/send-item', label: 'Pricing' },
 ]
 
 const mobileLinks = [
@@ -46,7 +46,7 @@ export function AppShell() {
 
           <div className="desktop-actions">
             <Button variant="ghost">Login</Button>
-            <Button to="/send-item">Post need</Button>
+            <Button to="/send-item">Sign Up</Button>
           </div>
         </div>
       </header>
