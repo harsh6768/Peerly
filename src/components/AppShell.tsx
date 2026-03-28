@@ -1,5 +1,6 @@
 import { House, MessageSquareText, PlusSquare, ShieldCheck, UserRound } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 
 const desktopLinks = [
@@ -55,12 +56,7 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <footer className="footer">
-        <div className="footer-inner">
-          <span>Built mobile-first from your Trusted Network design tokens.</span>
-          <span>Responsive shell, reusable cards, sticky CTAs, and fast navigation.</span>
-        </div>
-      </footer>
+      <AppFooter />
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         {mobileLinks.map(({ to, label, icon: Icon }) => (
