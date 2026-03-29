@@ -1,8 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ListingStatus } from '@prisma/client';
-import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
+import { AppSessionGuard } from '../auth/app-session.guard';
+import { CurrentSession } from '../auth/current-session.decorator';
+import type { AuthenticatedSession } from '../auth/auth.types';
 import { CreateListingDto } from './dto/create-listing.dto';
+import { DeleteListingImageUploadsDto } from './dto/delete-listing-image-uploads.dto';
 import { ListingsService } from './listings.service';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
@@ -34,6 +38,26 @@ export class ListingsController {
   @Post()
   create(@Body() dto: CreateListingDto) {
     return this.listingsService.create(dto);
+  }
+
+  @ApiOperation({ summary: 'Create a signed Cloudinary upload signature for listing images' })
+  @ApiBearerAuth()
+  @UseGuards(AppSessionGuard)
+  @Post('upload-signature')
+  createUploadSignature(@CurrentSession() session: AuthenticatedSession) {
+    return this.listingsService.createSignedUploadSignature(session.user.id);
+  }
+
+  @ApiOperation({ summary: 'Delete uploaded listing images that are no longer needed' })
+  @ApiBearerAuth()
+  @ApiBody({ type: DeleteListingImageUploadsDto })
+  @UseGuards(AppSessionGuard)
+  @Post('cleanup-uploads')
+  cleanupUploadedImages(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: DeleteListingImageUploadsDto,
+  ) {
+    return this.listingsService.cleanupUploadedImages(session.user.id, dto.assetIds);
   }
 
   @ApiOperation({ summary: 'Update a replacement tenant listing' })

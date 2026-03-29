@@ -59,6 +59,14 @@ export class VerificationController {
     return this.verificationService.submitLinkedinVerification(session, dto);
   }
 
+  @ApiOperation({ summary: 'Cancel the current LinkedIn verification flow' })
+  @ApiBearerAuth()
+  @UseGuards(AppSessionGuard)
+  @Post('linkedin/cancel')
+  cancelLinkedinVerification(@CurrentSession() session: AuthenticatedSession) {
+    return this.verificationService.cancelLinkedinVerification(session);
+  }
+
   @ApiOperation({ summary: 'Approve or reject a LinkedIn verification request' })
   @ApiBody({ type: ReviewLinkedinVerificationDto })
   @Post('linkedin/review')
@@ -72,4 +80,3 @@ export class VerificationController {
     return this.verificationService.getVerificationMetrics();
   }
 }
-
