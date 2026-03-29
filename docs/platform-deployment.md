@@ -229,10 +229,12 @@ If using Supabase Auth instead of Clerk, replace the Clerk keys with Supabase co
 
 ## Frontend on Cloudflare Pages
 
+If you deploy from this workspace repository, set the frontend root directory to `frontend`.
+
 Build command:
 
 ```bash
-npm run build
+npm install && npm run build
 ```
 
 Output directory:
@@ -242,6 +244,8 @@ dist
 ```
 
 ## Backend on Render
+
+If you deploy from this workspace repository, set the backend root directory to `backend`.
 
 Build command:
 
@@ -265,7 +269,7 @@ node dist/main.js
 
 ### Phase 1: MVP local
 
-- local React app
+- local frontend app from `frontend/`
 - local NestJS app
 - hosted Neon database
 
