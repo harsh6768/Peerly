@@ -7,6 +7,10 @@ export const listInclude = {
       fullName: true,
       email: true,
       homeCity: true,
+      isVerified: true,
+      verificationType: true,
+      verificationStatus: true,
+      companyName: true,
     },
   },
   organization: {
@@ -26,6 +30,10 @@ export const listingInclude = {
       fullName: true,
       email: true,
       homeCity: true,
+      isVerified: true,
+      verificationType: true,
+      verificationStatus: true,
+      companyName: true,
     },
   },
   organization: {

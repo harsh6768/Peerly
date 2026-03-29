@@ -27,6 +27,8 @@ async function bootstrap() {
     )
     .setVersion('1.0.0')
     .addTag('health')
+    .addTag('auth')
+    .addTag('verification')
     .addTag('listings')
     .addTag('housing-needs')
     .addTag('traveler-routes')

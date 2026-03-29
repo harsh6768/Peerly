@@ -19,6 +19,15 @@ http://localhost:4000/swagger
 ## Current modules
 
 - `GET /health`
+- `POST /auth/supabase/google-login`
+- `GET /auth/me`
+- `POST /auth/logout`
+- `GET /verification/me`
+- `POST /verification/work-email/request-otp`
+- `POST /verification/work-email/confirm`
+- `POST /verification/linkedin/submit`
+- `POST /verification/linkedin/review`
+- `GET /verification/metrics`
 - `GET /listings`
 - `GET /listings/:id`
 - `POST /listings`
@@ -38,10 +47,58 @@ http://localhost:4000/swagger
 
 ## What each module represents
 
+- `auth`: exchanges a Supabase Google session for an app session and stores the app user profile
+- `verification`: optional trust layer for work email OTP verification, LinkedIn review, and trust metrics
 - `listings`: replacement-tenant posts for rooms, flats, and 2BHK listings
 - `housing-needs`: users searching for a flat, 2BHK, or room in an existing flat
 - `traveler-routes`: users posting travel plans between cities
 - `shipment-requests`: users asking for help sending or bringing items between cities
+
+## Authentication and verification flow
+
+### 1. Exchange Supabase Google login for an app session
+
+```bash
+curl -X POST "http://localhost:4000/api/auth/supabase/google-login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accessToken": "SUPABASE_GOOGLE_ACCESS_TOKEN"
+  }'
+```
+
+### 2. Request a work-email OTP
+
+```bash
+curl -X POST "http://localhost:4000/api/verification/work-email/request-otp" \
+  -H "Authorization: Bearer APP_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workEmail": "name@company.com"
+  }'
+```
+
+### 3. Confirm the OTP
+
+```bash
+curl -X POST "http://localhost:4000/api/verification/work-email/confirm" \
+  -H "Authorization: Bearer APP_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workEmail": "name@company.com",
+    "otp": "123456"
+  }'
+```
+
+### 4. Submit LinkedIn verification for review
+
+```bash
+curl -X POST "http://localhost:4000/api/verification/linkedin/submit" \
+  -H "Authorization: Bearer APP_SESSION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "linkedinUrl": "https://www.linkedin.com/in/example-profile"
+  }'
+```
 
 ## Query filters
 
@@ -112,6 +169,7 @@ curl "http://localhost:4000/api/shipment-requests?sourceCity=Delhi&destinationCi
   "urgencyLevel": "IMMEDIATE",
   "contactMode": "WHATSAPP",
   "status": "PUBLISHED",
+  "isBoosted": true,
   "brokerAllowed": false
 }
 ```
@@ -197,6 +255,23 @@ npm install
 npm run prisma:generate
 npm run prisma:push
 npm run start:dev
+```
+
+Required backend env vars:
+
+```text
+DATABASE_URL=
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+PORT=4000
+```
+
+Frontend env vars:
+
+```text
+VITE_API_BASE_URL=http://localhost:4000/api
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
 ## Next backend API steps

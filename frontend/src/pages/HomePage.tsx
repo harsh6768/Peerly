@@ -2,29 +2,53 @@ import {
   ArrowRight,
   BadgeCheck,
   Building2,
-  CalendarDays,
-  Clock3,
+  CheckCircle2,
+  HousePlus,
   LayoutGrid,
-  MapPin,
+  MapPinned,
   MessageSquareMore,
+  Package,
+  PlaneTakeoff,
   Search,
-  Sparkles,
-  Star,
-  TrendingUp,
+  ShieldCheck,
+  UserRoundSearch,
+  Users,
 } from 'lucide-react'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
-import {
-  homeFeatures,
-  liveListings,
-  marketplaceSnapshot,
-  processHighlights,
-  sampleCompanies,
-  supportHighlights,
-  testimonials,
-  trustStats,
-} from '../designSystem'
+import { trustStats } from '../designSystem'
+
+const workflowCards = [
+  {
+    title: 'Replace Tenant',
+    description: 'Find a new room-mate or replacement.',
+    cta: 'Post housing need',
+    icon: HousePlus,
+    to: '/find-tenant',
+  },
+  {
+    title: 'Find Room',
+    description: 'Post your ideal budget and location.',
+    cta: 'Post housing need',
+    icon: UserRoundSearch,
+    to: '/find-tenant',
+  },
+  {
+    title: 'Send Item',
+    description: 'Urgent delivery request to a city.',
+    cta: 'Create delivery request',
+    icon: Package,
+    to: '/send-item',
+  },
+  {
+    title: 'Traveling',
+    description: 'Offer capacity and earn or help.',
+    cta: 'Offer capacity',
+    icon: Users,
+    to: '/send-item',
+  },
+] as const
 
 export function HomePage() {
   return (
@@ -35,72 +59,81 @@ export function HomePage() {
 
           <div className="hero-copy hero-copy-centered reveal">
             <div className="hero-announcement">
-              <Badge tone="purple">New</Badge>
-              <span>Trusted match alerts and instant contact are now live</span>
+              <Badge tone="purple">Trusted Network</Badge>
+              <span>Housing + travel-based delivery for professionals</span>
               <ArrowRight size={14} />
             </div>
 
             <h1>
-              Find trusted tenants,
-              <span className="headline-accent"> send items faster.</span>
+              Solve urgent problems with
+              <span className="headline-accent"> a trusted hyperlocal network.</span>
             </h1>
             <p>
-              A cleaner marketplace for verified housing and route-based delivery. Designed
-              mobile-first, refined for desktop, and built to keep the next action obvious.
+              Post a need, reach relevant people quickly, and move the conversation to direct
+              contact without relying on scattered WhatsApp groups.
             </p>
 
             <div className="hero-actions hero-actions-centered">
               <Button icon={<ArrowRight size={18} />} to="/find-tenant">
-                Get Started
+                Get started
               </Button>
               <Button to="/send-item" variant="secondary">
-                Preview Platform
+                Open delivery hub
               </Button>
             </div>
 
-            <div className="hero-signals hero-signals-centered">
-              <span className="pill">
-                <BadgeCheck size={16} />
-                Verified by default
-              </span>
-              <span className="pill">
-                <Clock3 size={16} />
-                Fast interactions
-              </span>
-              <span className="pill">
-                <MessageSquareMore size={16} />
-                Direct contact flows
-              </span>
+            <div className="hero-kpi-row">
+              {trustStats.slice(0, 4).map((stat) => (
+                <div className="hero-kpi-card" key={stat.label}>
+                  <strong>{stat.value}</strong>
+                  <span>{stat.label}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="surface dashboard-hero reveal reveal-delay">
+          <div className="workflow-entry-grid reveal reveal-delay">
+            {workflowCards.map(({ cta, description, icon: Icon, title, to }) => (
+              <Card className="workflow-entry-card" key={title}>
+                <div className="workflow-entry-icon">
+                  <Icon size={26} />
+                </div>
+                <strong>{title}</strong>
+                <p>{description}</p>
+                <Button to={to} variant="secondary">
+                  {cta}
+                </Button>
+              </Card>
+            ))}
+          </div>
+
+          <div className="surface dashboard-hero reveal reveal-delay-2">
             <div className="dashboard-shell">
               <aside className="dashboard-sidebar">
                 <div className="mini-row">
                   <div className="avatar">TN</div>
                   <div>
-                    <strong>Harsh Patel</strong>
-                    <p className="muted">Marketplace admin</p>
+                    <strong>Trusted Network</strong>
+                    <p className="muted">Housing + delivery OS</p>
                   </div>
                 </div>
 
                 <div className="dashboard-menu">
                   <span className="dashboard-menu-item active">
                     <LayoutGrid size={16} />
-                    Dashboard
+                    Overview
                   </span>
                   <span className="dashboard-menu-item">
                     <Search size={16} />
-                    Listings
+                    Housing feed
                   </span>
                   <span className="dashboard-menu-item">
                     <MessageSquareMore size={16} />
-                    Messages
+                    Trust center
                   </span>
                   <span className="dashboard-menu-item">
-                    <TrendingUp size={16} />
-                    Analytics
+                    <Package size={16} />
+                    Delivery posts
                   </span>
                 </div>
               </aside>
@@ -108,12 +141,15 @@ export function HomePage() {
               <div className="dashboard-main">
                 <div className="dashboard-topbar">
                   <div>
-                    <strong>Hi Harsh</strong>
-                    <p className="muted">You have 12 active requests and 4 priority matches.</p>
+                    <strong>One platform, four urgent workflows</strong>
+                    <p className="muted">
+                      Replace tenant, find room, send item, or offer travel capacity without
+                      jumping between brokers and referral threads.
+                    </p>
                   </div>
 
                   <div className="progress-inline">
-                    <span className="muted">Trust score</span>
+                    <span className="muted">Verified network coverage</span>
                     <div className="progress-track">
                       <span style={{ width: '78%' }} />
                     </div>
@@ -124,52 +160,42 @@ export function HomePage() {
                   <div className="dashboard-feature-card feature-coral">
                     <div className="mini-row">
                       <Badge tone="gray">Housing</Badge>
-                      <Star size={16} />
+                      <HousePlus size={16} />
                     </div>
-                    <strong>3 new tenant leads</strong>
-                    <p>Verified renters looking for move-in this week near metro routes.</p>
-                    <div className="dashboard-avatars">
-                      <span>AP</span>
-                      <span>RJ</span>
-                      <span>SK</span>
-                    </div>
+                    <strong>Replace tenant faster</strong>
+                    <p>Structured listings reduce broker dependency and surface verified users first.</p>
                   </div>
 
                   <div className="dashboard-feature-card feature-violet">
                     <div className="mini-row">
                       <Badge tone="purple">Delivery</Badge>
-                      <ArrowRight size={16} />
+                      <Package size={16} />
                     </div>
-                    <strong>Mumbai to Pune route</strong>
-                    <p>2 urgent parcel requests match your preferred travel lane tonight.</p>
-                    <div className="dashboard-route">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
+                    <strong>Travel-based delivery</strong>
+                    <p>Senders match with real travelers and coordinate directly through WhatsApp.</p>
                   </div>
 
                   <div className="dashboard-schedule">
                     <div className="mini-row">
-                      <strong>Today&apos;s schedule</strong>
+                      <strong>Today&apos;s activity</strong>
                       <Badge tone="green">Live</Badge>
                     </div>
                     <div className="schedule-card">
-                      <p>Priority discovery call</p>
-                      <strong>28:35</strong>
+                      <p>Urgent requests posted this hour</p>
+                      <strong>35 active</strong>
                     </div>
                     <div className="dashboard-stats">
                       <div>
-                        <span className="muted">Completed</span>
-                        <strong>114</strong>
+                        <span className="muted">Housing</span>
+                        <strong>114 live</strong>
                       </div>
                       <div>
-                        <span className="muted">In progress</span>
-                        <strong>24</strong>
+                        <span className="muted">Travel</span>
+                        <strong>24 routes</strong>
                       </div>
                       <div>
-                        <span className="muted">Members</span>
-                        <strong>08</strong>
+                        <span className="muted">Replies</span>
+                        <strong>08 mins</strong>
                       </div>
                     </div>
                   </div>
@@ -178,24 +204,24 @@ export function HomePage() {
                 <div className="dashboard-footer">
                   <div className="summary-grid">
                     <div className="mini-card">
-                      <MapPin size={18} />
-                      <strong>Mumbai → Pune</strong>
-                      <p>Tonight, 6:40 PM</p>
+                      <HousePlus size={18} />
+                      <strong>Replace Tenant</strong>
+                      <p>Post rent, location, move-out date, deposit, and images.</p>
                     </div>
                     <div className="mini-card">
                       <Building2 size={18} />
-                      <strong>HSR Layout</strong>
-                      <p>2 new tenant leads</p>
+                      <strong>Find Room</strong>
+                      <p>Post budget, preferred location, and move-in timeline.</p>
                     </div>
                     <div className="mini-card">
-                      <Sparkles size={18} />
-                      <strong>Priority match</strong>
-                      <p>Urgent verified request</p>
+                      <Package size={18} />
+                      <strong>Send Item</strong>
+                      <p>Post city-to-city requests with urgency and item details.</p>
                     </div>
                     <div className="mini-card">
-                      <CalendarDays size={18} />
-                      <strong>Move in this week</strong>
-                      <p>12 curated options</p>
+                      <PlaneTakeoff size={18} />
+                      <strong>Traveling</strong>
+                      <p>Offer route capacity and connect directly with requesters.</p>
                     </div>
                   </div>
                 </div>
@@ -206,188 +232,129 @@ export function HomePage() {
       </section>
 
       <section className="section">
-        <div className="page-inner trusted-strip">
-          <span className="trusted-label">Used by teams piloting trusted housing and delivery flows</span>
-          <div className="trusted-logos">
-            {sampleCompanies.map((company) => (
-              <span className="trusted-logo" key={company}>
-                {company}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="page-inner">
-          <div className="section-head reveal">
-            <div className="eyebrow">Core components</div>
-            <h2>Reusable building blocks mapped from your JSON design system.</h2>
-            <p>
-              Buttons, chips, cards, sticky navigation, and trust badges are all reusable
-              across the landing experience and the product flows.
-            </p>
-          </div>
-
-          <div className="feature-grid">
-            {homeFeatures.map(({ badge, description, icon: Icon, title }, index) => (
-              <Card
-                className={`feature-card reveal${index === 1 ? ' reveal-delay' : index === 2 ? ' reveal-delay-2' : ''}`}
-                key={title}
-              >
-                <div className="feature-card-icon">
-                  <Icon size={22} />
-                </div>
-                <Badge tone="purple">{badge}</Badge>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
         <div className="page-inner">
           <div className="section-head">
-            <div className="eyebrow">Live listings</div>
-            <h2>Card-first discovery that works beautifully on touch devices.</h2>
+            <div className="eyebrow">Product structure</div>
+            <h2>Each workflow is now a real surface, not a decorative preview.</h2>
             <p>
-              The listing rail stays horizontally scrollable on phones and naturally fans out
-              into a wider browsing layout on larger screens.
+              Housing and delivery both let users browse live posts, create a post for the exact
+              use case, and move the conversation to WhatsApp.
             </p>
           </div>
 
-          <div className="horizontal-scroll">
-            {liveListings.map((listing) => (
-              <Card className="listing-card" key={listing.id}>
-                <div className="listing-media">
-                  <div className="media-actions">
-                    {listing.urgent ? <Badge tone="red">Urgent</Badge> : <Badge tone="gray">New</Badge>}
-                    {listing.verified && <Badge tone="green">Verified</Badge>}
-                  </div>
+          <div className="product-surface-grid">
+            <Card className="product-surface-card">
+              <div className="product-surface-head">
+                <div className="workflow-entry-icon">
+                  <HousePlus size={24} />
                 </div>
-                <div className="listing-meta">
-                  <div className="listing-copy">
-                    <h3>{listing.title}</h3>
-                    <p>{listing.location}</p>
-                  </div>
-                  <span className="price">{listing.rent}</span>
+                <div>
+                  <strong>Replace Tenant</strong>
+                  <p>Outgoing tenants post a vacancy with rent, locality, and move-out timing.</p>
                 </div>
-                <div className="metric-row" style={{ marginTop: 14 }}>
-                  <Badge tone="purple">{listing.type}</Badge>
-                  <Badge tone="gray">{listing.moveIn}</Badge>
-                </div>
-                <div className="meta-list">
-                  {listing.stats.map((stat) => (
-                    <span className="meta-item" key={stat}>
-                      <span className="eyebrow-dot" />
-                      {stat}
-                    </span>
-                  ))}
-                </div>
-                <div className="detail-actions" style={{ marginTop: 18 }}>
-                  <Button fullWidth to="/find-tenant">
-                    View listing
-                  </Button>
-                  <Button fullWidth to="/send-item" variant="secondary">
-                    WhatsApp
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+              </div>
+              <ul className="summary-list">
+                <li>Live listing feed on the housing page</li>
+                <li>Direct WhatsApp action for interested users</li>
+                <li>Verified badge and company tag visible up front</li>
+              </ul>
+            </Card>
 
-      <section className="section">
-        <div className="page-inner">
-          <div className="surface trust-banner">
-            <div className="section-head" style={{ marginBottom: 0 }}>
-              <div className="eyebrow">Trust signals</div>
-              <h2>High-trust UI language without visual noise.</h2>
-              <p>
-                The system leans on calm surfaces, clear labels, and status colors to make
-                urgency and verification obvious at a glance.
-              </p>
-            </div>
-            <div className="stats-grid">
-              {trustStats.map((stat) => (
-                <div className="stat-card" key={stat.label}>
-                  <strong>{stat.value}</strong>
-                  <p className="muted">{stat.label}</p>
+            <Card className="product-surface-card">
+              <div className="product-surface-head">
+                <div className="workflow-entry-icon">
+                  <UserRoundSearch size={24} />
                 </div>
-              ))}
-            </div>
-            <div className="snapshot-list">
-              {marketplaceSnapshot.map((item) => (
-                <span className="snapshot-chip" key={item}>
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+                <div>
+                  <strong>Find Room</strong>
+                  <p>Room seekers post budget, preferred locality, and move-in timing in the same hub.</p>
+                </div>
+              </div>
+              <ul className="summary-list">
+                <li>Visible alongside replacement tenant listings</li>
+                <li>Designed for fast comparison and direct outreach</li>
+                <li>Built on the existing `housing-needs` model</li>
+              </ul>
+            </Card>
 
-      <section className="section">
-        <div className="page-inner">
-          <div className="section-head">
-            <div className="eyebrow">Customer stories</div>
-            <h2>Sample product stories that make the concept feel real in demos.</h2>
-            <p>
-              These seeded testimonials and usage notes are static for now, but they help the
-              homepage read like a serious product before the backend is connected.
-            </p>
-          </div>
-          <div className="testimonial-grid">
-            {testimonials.map((testimonial) => (
-              <Card className="testimonial-card" key={testimonial.name}>
-                <p className="testimonial-quote">“{testimonial.quote}”</p>
-                <div className="testimonial-author">
-                  <strong>{testimonial.name}</strong>
-                  <span className="muted">
-                    {testimonial.role} · {testimonial.company}
-                  </span>
+            <Card className="product-surface-card">
+              <div className="product-surface-head">
+                <div className="workflow-entry-icon">
+                  <Package size={24} />
                 </div>
-              </Card>
-            ))}
+                <div>
+                  <strong>Send Item</strong>
+                  <p>Users create delivery requests with route, urgency, and item details.</p>
+                </div>
+              </div>
+              <ul className="summary-list">
+                <li>Open request feed shows active delivery demand</li>
+                <li>Budget and deadline are visible before contact</li>
+                <li>Built on `shipment-requests` from the backend</li>
+              </ul>
+            </Card>
+
+            <Card className="product-surface-card">
+              <div className="product-surface-head">
+                <div className="workflow-entry-icon">
+                  <PlaneTakeoff size={24} />
+                </div>
+                <div>
+                  <strong>Traveling</strong>
+                  <p>Travelers offer capacity for routes they are already taking.</p>
+                </div>
+              </div>
+              <ul className="summary-list">
+                <li>Visible next to live send-item requests</li>
+                <li>One tap to start WhatsApp coordination</li>
+                <li>Built on the `traveler-routes` workflow</li>
+              </ul>
+            </Card>
           </div>
         </div>
       </section>
 
       <section className="section">
         <div className="page-inner support-grid">
-          <div className="summary-grid">
-            {processHighlights.map(({ description, icon: Icon, title }) => (
-              <Card className="info-card" key={title}>
-                <div className="info-icon">
-                  <Icon size={22} />
-                </div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </Card>
-            ))}
-          </div>
-
           <div className="surface cta-band">
-            <h2>Ready to continue?</h2>
-            <p className="page-subtitle">
-              The product shell is ready for deeper feature work, real data, authentication,
-              and backend integrations. For now, this gives you a stronger landing page
-              direction with a SaaS-style hero that is much closer to your reference.
-            </p>
+            <div className="section-head" style={{ marginBottom: 20 }}>
+              <div className="eyebrow">Trust layer</div>
+              <h2>Google login gets users in. Verification improves ranking and response quality.</h2>
+              <p>
+                The homepage points users into the four real workflows, while Trust Center handles
+                Google auth, work-email OTP, and LinkedIn review for badges and company tags.
+              </p>
+            </div>
+
+            <div className="summary-grid">
+              <div className="mini-card">
+                <ShieldCheck size={18} />
+                <strong>Google login</strong>
+                <p>Users sign in with Google and get an app session in the backend.</p>
+              </div>
+              <div className="mini-card">
+                <BadgeCheck size={18} />
+                <strong>Verified profile</strong>
+                <p>Verified members appear safer to contact and can rank above others.</p>
+              </div>
+              <div className="mini-card">
+                <MapPinned size={18} />
+                <strong>WhatsApp first</strong>
+                <p>Current flows move conversations into WhatsApp while in-app chat comes later.</p>
+              </div>
+              <div className="mini-card">
+                <CheckCircle2 size={18} />
+                <strong>MVP ready</strong>
+                <p>The core scope now covers create post, browse feed, and contact user.</p>
+              </div>
+            </div>
+
             <div className="cta-actions" style={{ marginTop: 18 }}>
-              <Button to="/find-tenant">Open tenant flow</Button>
+              <Button to="/find-tenant">Open housing hub</Button>
               <Button to="/send-item" variant="secondary">
-                Open send flow
+                Open delivery hub
               </Button>
             </div>
-            <ul className="summary-list" style={{ marginTop: 18 }}>
-              {supportHighlights.map((item) => (
-                <li key={item.title}>{item.description}</li>
-              ))}
-            </ul>
           </div>
         </div>
       </section>

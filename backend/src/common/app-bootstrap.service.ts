@@ -12,6 +12,8 @@ import {
   TravelerRouteStatus,
   UrgencyLevel,
   VerificationBadge,
+  VerificationStatus,
+  VerificationType,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -43,6 +45,12 @@ export class AppBootstrapService implements OnModuleInit {
         data: {
           fullName: 'Harsh Patel',
           email: 'harsh@trustednetwork.app',
+          isVerified: true,
+          verificationType: VerificationType.WORK_EMAIL,
+          verificationStatus: VerificationStatus.APPROVED,
+          workEmail: 'harsh@trustednetwork.app',
+          companyName: 'Trustednetwork',
+          linkedinUrl: 'https://www.linkedin.com/in/harsh-patel-trusted-network',
           homeCity: 'Bengaluru',
           bio: 'Building a trusted network for urgent everyday problems.',
         },
@@ -51,6 +59,11 @@ export class AppBootstrapService implements OnModuleInit {
         data: {
           fullName: 'Ayaan Mehra',
           email: 'ayaan@trustednetwork.app',
+          isVerified: true,
+          verificationType: VerificationType.WORK_EMAIL,
+          verificationStatus: VerificationStatus.APPROVED,
+          workEmail: 'ayaan@trustednetwork.app',
+          companyName: 'Trustednetwork',
           homeCity: 'Bengaluru',
           bio: 'Looking for reliable flat and room options near tech parks.',
         },
@@ -59,6 +72,9 @@ export class AppBootstrapService implements OnModuleInit {
         data: {
           fullName: 'Riya Sharma',
           email: 'riya@trustednetwork.app',
+          verificationType: VerificationType.LINKEDIN,
+          verificationStatus: VerificationStatus.PENDING,
+          linkedinUrl: 'https://www.linkedin.com/in/riya-sharma-trusted-network',
           homeCity: 'Delhi',
           bio: 'Frequent traveler between Delhi and Bengaluru who can help with small deliveries.',
         },
@@ -118,6 +134,7 @@ export class AppBootstrapService implements OnModuleInit {
         urgencyLevel: UrgencyLevel.IMMEDIATE,
         contactMode: ContactMode.WHATSAPP,
         status: ListingStatus.PUBLISHED,
+        isBoosted: true,
         brokerAllowed: false,
       },
     });

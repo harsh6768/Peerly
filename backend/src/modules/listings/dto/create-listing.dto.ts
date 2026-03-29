@@ -87,5 +87,11 @@ export class CreateListingDto {
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
+  isBoosted?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
   brokerAllowed?: boolean;
 }

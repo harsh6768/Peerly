@@ -36,6 +36,21 @@ enum VerificationBadge {
   MANUALLY_VERIFIED
 }
 
+enum AuthProvider {
+  GOOGLE
+}
+
+enum VerificationType {
+  WORK_EMAIL
+  LINKEDIN
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum UrgencyLevel {
   IMMEDIATE
   THIS_WEEK
@@ -192,13 +207,23 @@ model User {
   id                          String                    @id @default(cuid())
   fullName                    String
   email                       String                    @unique
+  authProvider                AuthProvider              @default(GOOGLE)
+  googleSub                   String?                   @unique
   phone                       String?                   @db.VarChar(20)
   avatarUrl                   String?
   homeCity                    String?
   bio                         String?                   @db.Text
+  isVerified                  Boolean                   @default(false)
+  verificationType            VerificationType?
+  workEmail                   String?
+  companyName                 String?
+  linkedinUrl                 String?
+  verificationStatus          VerificationStatus?
   isActive                    Boolean                   @default(true)
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
+  authSessions                AuthSession[]
+  workEmailOtps               WorkEmailOtp[]
   memberships                 UserOrganizationMembership[]
   verificationProfile         VerificationProfile?
   ownedListings               Listing[]                 @relation("ListingOwner")
@@ -260,6 +285,35 @@ model VerificationProfile {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model AuthSession {
+  id           String       @id @default(cuid())
+  userId       String
+  sessionToken String       @unique
+  provider     AuthProvider @default(GOOGLE)
+  expiresAt    DateTime
+  lastSeenAt   DateTime     @default(now())
+  createdAt    DateTime     @default(now())
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WorkEmailOtp {
+  id           String   @id @default(cuid())
+  userId       String
+  workEmail    String
+  otpHash      String
+  attemptCount Int      @default(0)
+  maxAttempts  Int      @default(3)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([workEmail, createdAt])
+}
+
 model Listing {
   id             String           @id @default(cuid())
   ownerUserId    String
@@ -277,6 +331,7 @@ model Listing {
   urgencyLevel   UrgencyLevel     @default(FLEXIBLE)
   contactMode    ContactMode      @default(WHATSAPP)
   status         ListingStatus    @default(DRAFT)
+  isBoosted      Boolean          @default(false)
   brokerAllowed  Boolean          @default(false)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt

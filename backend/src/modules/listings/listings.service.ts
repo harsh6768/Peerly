@@ -15,13 +15,25 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 export class ListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(city?: string, status?: ListingStatus) {
-    return this.prisma.listing.findMany({
+  async findAll(city?: string, status?: ListingStatus) {
+    const listings = await this.prisma.listing.findMany({
       where: buildWhere({ city, status }),
       include: listingInclude,
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    return listings.sort((left, right) => {
+      if (left.isBoosted !== right.isBoosted) {
+        return Number(right.isBoosted) - Number(left.isBoosted);
+      }
+
+      if (left.owner.isVerified !== right.owner.isVerified) {
+        return Number(right.owner.isVerified) - Number(left.owner.isVerified);
+      }
+
+      return right.createdAt.getTime() - left.createdAt.getTime();
     });
   }
 
@@ -56,6 +68,7 @@ export class ListingsService {
         urgencyLevel: dto.urgencyLevel,
         contactMode: dto.contactMode,
         status: dto.status,
+        isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
       },
     });
@@ -82,6 +95,7 @@ export class ListingsService {
         urgencyLevel: dto.urgencyLevel,
         contactMode: dto.contactMode,
         status: dto.status,
+        isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
       },
       include: listingInclude,

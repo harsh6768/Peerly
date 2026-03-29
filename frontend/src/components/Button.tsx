@@ -9,6 +9,7 @@ type ButtonProps = {
   icon?: ReactNode
   onClick?: () => void
   to?: string
+  disabled?: boolean
 }
 
 export function Button({
@@ -19,6 +20,7 @@ export function Button({
   icon,
   onClick,
   to,
+  disabled = false,
 }: ButtonProps) {
   const className = ['button', `button-${variant}`, fullWidth ? 'button-full' : '']
     .filter(Boolean)
@@ -34,7 +36,7 @@ export function Button({
   }
 
   return (
-    <button className={className} onClick={onClick} type={type}>
+    <button className={className} disabled={disabled} onClick={onClick} type={type}>
       {children}
       {icon}
     </button>

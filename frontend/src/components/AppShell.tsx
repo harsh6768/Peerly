@@ -1,22 +1,26 @@
-import { House, MessageSquareText, PlusSquare, ShieldCheck, UserRound } from 'lucide-react'
+import { House, LogOut, MessageSquareText, PlusSquare, ShieldCheck, UserRound } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
+import { useAppAuth } from '../context/AppAuthContext'
 
 const desktopLinks = [
   { to: '/', label: 'Home' },
-  { to: '/find-tenant', label: 'Features' },
-  { to: '/send-item', label: 'Pricing' },
+  { to: '/auth', label: 'Trust Center' },
+  { to: '/find-tenant', label: 'Housing' },
+  { to: '/send-item', label: 'Delivery' },
 ]
 
 const mobileLinks = [
   { to: '/', label: 'Home', icon: House },
-  { to: '/send-item', label: 'Post', icon: PlusSquare },
-  { to: '/find-tenant', label: 'Messages', icon: MessageSquareText },
-  { to: '/find-tenant', label: 'Profile', icon: UserRound },
+  { to: '/find-tenant', label: 'Housing', icon: UserRound },
+  { to: '/send-item', label: 'Delivery', icon: PlusSquare },
+  { to: '/auth', label: 'Trust', icon: MessageSquareText },
 ]
 
 export function AppShell() {
+  const { configured, isLoading, isSyncing, signInWithGoogle, signOut, user } = useAppAuth()
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -46,8 +50,29 @@ export function AppShell() {
           </nav>
 
           <div className="desktop-actions">
-            <Button variant="ghost">Login</Button>
-            <Button to="/send-item">Sign Up</Button>
+            {user ? (
+              <>
+                <NavLink className="header-user-chip" to="/auth">
+                  <span className={`header-user-status${user.isVerified ? ' verified' : ''}`} />
+                  <span>{user.name}</span>
+                </NavLink>
+                <Button icon={<LogOut size={16} />} onClick={() => void signOut()} variant="ghost">
+                  Sign out
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button to="/auth" variant="ghost">
+                  Login
+                </Button>
+                <Button
+                  disabled={!configured || isLoading || isSyncing}
+                  onClick={() => void signInWithGoogle()}
+                >
+                  Continue with Google
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
