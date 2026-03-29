@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   Building2,
+  CircleX,
   CheckCircle2,
   Globe2,
   Link as LinkIcon,
@@ -68,9 +69,20 @@ type OtpRequestResponse = {
   delivery: {
     destination: string
     expiresInMinutes: number
+    provider?: 'resend' | 'preview'
   }
   companyName: string
   otpPreview?: string
+}
+
+type FeedbackState = {
+  tone: 'success' | 'error' | 'info'
+  message: string
+}
+
+type LinkedinCancelResponse = {
+  success: boolean
+  message: string
 }
 
 const statusToneMap = {
@@ -97,8 +109,10 @@ export function TrustCenterPage() {
   const [workEmail, setWorkEmail] = useState(user?.workEmail ?? '')
   const [otp, setOtp] = useState('')
   const [linkedinUrl, setLinkedinUrl] = useState(user?.linkedinUrl ?? '')
-  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [otpPreview, setOtpPreview] = useState<string | null>(null)
+  const [otpExpiresInMinutes, setOtpExpiresInMinutes] = useState<number | null>(null)
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   useEffect(() => {
@@ -114,6 +128,24 @@ export function TrustCenterPage() {
     setWorkEmail(user?.workEmail ?? '')
     setLinkedinUrl(user?.linkedinUrl ?? '')
   }, [user])
+
+  useEffect(() => {
+    if (!otpExpiresAt) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      if (Date.now() >= otpExpiresAt) {
+        setOtpExpiresAt(null)
+        setOtpExpiresInMinutes(null)
+        return
+      }
+
+      setOtpExpiresInMinutes(Math.max(1, Math.ceil((otpExpiresAt - Date.now()) / 60000)))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [otpExpiresAt])
 
   async function loadProtectedData() {
     if (!sessionToken) {
@@ -133,7 +165,10 @@ export function TrustCenterPage() {
       setMetrics(metricsPayload)
       setListings(listingsPayload.slice(0, 4))
     } catch (loadError) {
-      setFeedback(loadError instanceof Error ? loadError.message : 'Unable to load trust center data.')
+      setFeedback({
+        tone: 'error',
+        message: loadError instanceof Error ? loadError.message : 'Unable to load trust center data.',
+      })
     }
   }
 
@@ -153,11 +188,21 @@ export function TrustCenterPage() {
       })
 
       setOtpPreview(response.otpPreview ?? null)
-      setFeedback(
-        `OTP sent to ${response.delivery.destination}. Expires in ${response.delivery.expiresInMinutes} minutes.`,
-      )
+      const nextOtpExpiry = Date.now() + response.delivery.expiresInMinutes * 60_000
+      setOtpExpiresAt(nextOtpExpiry)
+      setOtpExpiresInMinutes(response.delivery.expiresInMinutes)
+      setFeedback({
+        tone: 'success',
+        message:
+          response.delivery.provider === 'preview'
+            ? `OTP generated for ${response.delivery.destination}. Preview mode is active and the code expires in ${response.delivery.expiresInMinutes} minutes.`
+            : `OTP sent to ${response.delivery.destination}. It expires in ${response.delivery.expiresInMinutes} minutes.`,
+      })
     } catch (requestError) {
-      setFeedback(requestError instanceof Error ? requestError.message : 'Unable to send OTP.')
+      setFeedback({
+        tone: 'error',
+        message: requestError instanceof Error ? requestError.message : 'Unable to send OTP.',
+      })
     } finally {
       setBusyAction(null)
     }
@@ -181,10 +226,50 @@ export function TrustCenterPage() {
       setVerification(response)
       setOtp('')
       setOtpPreview(null)
-      setFeedback('Work email verified. Your trust badge is now live.')
+      setOtpExpiresAt(null)
+      setOtpExpiresInMinutes(null)
+      setFeedback({
+        tone: 'success',
+        message: 'Work email verified. Your trust badge is now live.',
+      })
       await loadProtectedData()
     } catch (confirmError) {
-      setFeedback(confirmError instanceof Error ? confirmError.message : 'Unable to verify OTP.')
+      setFeedback({
+        tone: 'error',
+        message: confirmError instanceof Error ? confirmError.message : 'Unable to verify OTP.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleLinkedinCancel() {
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction('linkedin-cancel')
+      setFeedback(null)
+      const response = await apiRequest<LinkedinCancelResponse>('/verification/linkedin/cancel', {
+        method: 'POST',
+        token: sessionToken,
+      })
+
+      setLinkedinUrl('')
+      setFeedback({
+        tone: 'success',
+        message: response.message,
+      })
+      await loadProtectedData()
+    } catch (cancelError) {
+      setFeedback({
+        tone: 'error',
+        message:
+          cancelError instanceof Error
+            ? cancelError.message
+            : 'Unable to cancel LinkedIn verification.',
+      })
     } finally {
       setBusyAction(null)
     }
@@ -205,14 +290,19 @@ export function TrustCenterPage() {
         body: JSON.stringify({ linkedinUrl }),
       })
 
-      setFeedback('LinkedIn verification submitted. It is now pending review.')
+      setFeedback({
+        tone: 'success',
+        message: 'LinkedIn verification submitted. It is now pending review.',
+      })
       await loadProtectedData()
     } catch (linkedinError) {
-      setFeedback(
-        linkedinError instanceof Error
-          ? linkedinError.message
-          : 'Unable to submit LinkedIn verification.',
-      )
+      setFeedback({
+        tone: 'error',
+        message:
+          linkedinError instanceof Error
+            ? linkedinError.message
+            : 'Unable to submit LinkedIn verification.',
+      })
     } finally {
       setBusyAction(null)
     }
@@ -312,8 +402,8 @@ export function TrustCenterPage() {
             </p>
           </div>
 
-          <div className="trust-grid">
-            <Card className="trust-status-card">
+          <div className="trust-layout">
+            <Card className="trust-status-card trust-profile-panel">
               <div className="trust-status-top">
                 <div>
                   <span className="muted">Signed in as</span>
@@ -323,6 +413,16 @@ export function TrustCenterPage() {
                 <Badge tone={statusToneFor(verification?.user.statusLabel)}>
                   {verification?.user.statusLabel ?? 'Not verified'}
                 </Badge>
+              </div>
+
+              <div className="trust-identity-band">
+                <div className="trust-identity-copy">
+                  <strong>{onboardingPrompt}</strong>
+                  <p>
+                    Work email is the fastest route. LinkedIn remains available as a fallback if
+                    professional email verification is not possible.
+                  </p>
+                </div>
               </div>
 
               <div className="trust-badges">
@@ -358,119 +458,179 @@ export function TrustCenterPage() {
               </Button>
             </Card>
 
-            <Card className="verification-method-card">
-              <div className="mini-row">
-                <Badge tone="green">Recommended</Badge>
-                <MailCheck size={18} />
+            <div className="trust-workspace">
+              <div className="trust-workspace-intro surface">
+                <div>
+                  <div className="eyebrow">Verification workspace</div>
+                  <h3>Choose the fastest trust path for your profile.</h3>
+                  <p>
+                    Use work email for immediate badge approval, or LinkedIn if company mail is not
+                    available yet.
+                  </p>
+                </div>
+                <div className="trust-pillars">
+                  <span className="pill">
+                    <MailCheck size={14} />
+                    OTP by email
+                  </span>
+                  <span className="pill">
+                    <LinkIcon size={14} />
+                    LinkedIn fallback
+                  </span>
+                  <span className="pill">
+                    <ShieldCheck size={14} />
+                    Verified badge
+                  </span>
+                </div>
               </div>
-              <h3>Verify with Work Email</h3>
-              <p>
-                Corporate email verification is the fastest path to a verified badge and
-                company attribution.
-              </p>
 
-              <form className="stack-form" onSubmit={handleWorkEmailRequest}>
-                <label className="field">
-                  <span>Work email</span>
-                  <input
-                    onChange={(event) => setWorkEmail(event.target.value)}
-                    placeholder="name@company.com"
-                    type="email"
-                    value={workEmail}
-                  />
-                </label>
-                <Button
-                  disabled={busyAction === 'work-email-request' || !workEmail}
-                  fullWidth
-                  type="submit"
-                >
-                  Send OTP
-                </Button>
-              </form>
+              {feedback && <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div>}
 
-              <form className="stack-form compact-form" onSubmit={handleWorkEmailConfirm}>
-                <label className="field">
-                  <span>OTP</span>
-                  <input
-                    inputMode="numeric"
-                    maxLength={6}
-                    onChange={(event) => setOtp(event.target.value)}
-                    placeholder="6-digit code"
-                    value={otp}
-                  />
-                </label>
-                <Button
-                  disabled={busyAction === 'work-email-confirm' || otp.length !== 6}
-                  fullWidth
-                  type="submit"
-                  variant="secondary"
-                >
-                  Verify email
-                </Button>
-              </form>
+              <div className="trust-method-grid">
+                <Card className="verification-method-card trust-method-panel trust-method-panel-primary">
+                  <div className="mini-row">
+                    <Badge tone="green">Recommended</Badge>
+                    <MailCheck size={18} />
+                  </div>
+                  <h3>Verify with Work Email</h3>
+                  <p>
+                    Corporate email verification is the fastest path to a verified badge and
+                    company attribution.
+                  </p>
 
-              {otpPreview && (
-                <div className="dev-note">
-                  <strong>Local OTP preview</strong>
-                  <span>{otpPreview}</span>
+                  <form className="stack-form" onSubmit={handleWorkEmailRequest}>
+                    <label className="field">
+                      <span>Work email</span>
+                      <input
+                        onChange={(event) => setWorkEmail(event.target.value)}
+                        placeholder="name@company.com"
+                        type="email"
+                        value={workEmail}
+                      />
+                    </label>
+                    <Button
+                      disabled={busyAction === 'work-email-request' || !workEmail}
+                      fullWidth
+                      type="submit"
+                    >
+                      {busyAction === 'work-email-request' ? 'Sending OTP...' : 'Send OTP'}
+                    </Button>
+                  </form>
+
+                  {otpExpiresInMinutes && (
+                    <div className="otp-status-row">
+                      <span className="pill success-pill">
+                        <CheckCircle2 size={14} />
+                        OTP sent
+                      </span>
+                      <span className="pill info-pill">
+                        <TimerReset size={14} />
+                        Expires in {formatOtpCountdown(otpExpiresAt)}
+                      </span>
+                    </div>
+                  )}
+
+                  <form className="stack-form compact-form" onSubmit={handleWorkEmailConfirm}>
+                    <label className="field">
+                      <span>OTP</span>
+                      <input
+                        inputMode="numeric"
+                        maxLength={6}
+                        onChange={(event) => setOtp(event.target.value)}
+                        placeholder="6-digit code"
+                        value={otp}
+                      />
+                    </label>
+                    <Button
+                      disabled={busyAction === 'work-email-confirm' || otp.length !== 6}
+                      fullWidth
+                      type="submit"
+                      variant="secondary"
+                    >
+                      {busyAction === 'work-email-confirm' ? 'Verifying...' : 'Verify email'}
+                    </Button>
+                  </form>
+
+                  {otpPreview && (
+                    <div className="dev-note">
+                      <strong>Local OTP preview</strong>
+                      <span>{otpPreview}</span>
+                    </div>
+                  )}
+                </Card>
+
+                <Card className="verification-method-card trust-method-panel">
+                  <div className="mini-row">
+                    <Badge tone="gray">Fallback</Badge>
+                    <LinkIcon size={18} />
+                  </div>
+                  <h3>Verify with LinkedIn</h3>
+                  <p>
+                    Submit a public LinkedIn profile URL to enter manual review. This path works if
+                    you cannot verify with company email yet.
+                  </p>
+
+                  <form className="stack-form" onSubmit={handleLinkedinSubmit}>
+                    <label className="field">
+                      <span>LinkedIn profile URL</span>
+                      <input
+                        onChange={(event) => setLinkedinUrl(event.target.value)}
+                        placeholder="https://www.linkedin.com/in/your-profile"
+                        type="url"
+                        value={linkedinUrl}
+                      />
+                    </label>
+                    <Button disabled={busyAction === 'linkedin' || !linkedinUrl} fullWidth type="submit">
+                      {busyAction === 'linkedin' ? 'Submitting...' : 'Submit for review'}
+                    </Button>
+                  </form>
+
+                  {canCancelLinkedinVerification(verification) && (
+                    <Button
+                      disabled={busyAction === 'linkedin-cancel'}
+                      fullWidth
+                      onClick={() => void handleLinkedinCancel()}
+                      variant="ghost"
+                    >
+                      {busyAction === 'linkedin-cancel' ? 'Canceling...' : 'Cancel LinkedIn verification'}
+                    </Button>
+                  )}
+
+                  {canCancelLinkedinVerification(verification) && (
+                    <div className="helper-inline-note">
+                      <CircleX size={14} />
+                      <span>You can cancel this path anytime before approval and switch to work email OTP.</span>
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {metrics && (
+                <div className="trust-metrics-grid trust-metrics-ribbon">
+                  <Card>
+                    <span className="muted">Verified users</span>
+                    <strong>{metrics.verifiedUsers}</strong>
+                    <p>{metrics.verificationRate}% of the current user base</p>
+                  </Card>
+                  <Card>
+                    <span className="muted">Pending LinkedIn reviews</span>
+                    <strong>{metrics.pendingLinkedinReviews}</strong>
+                    <p>Manual review workload for the trust queue</p>
+                  </Card>
+                  <Card>
+                    <span className="muted">Boosted listings</span>
+                    <strong>{metrics.boostedListings}</strong>
+                    <p>Listings receiving paid or manual priority</p>
+                  </Card>
+                  <Card>
+                    <span className="muted">Tracked KPIs</span>
+                    <strong>{metrics.trackedMetrics.length}</strong>
+                    <p>Verification funnel and listing success indicators</p>
+                  </Card>
                 </div>
               )}
-            </Card>
-
-            <Card className="verification-method-card">
-              <div className="mini-row">
-                <Badge tone="gray">Secondary</Badge>
-                <LinkIcon size={18} />
-              </div>
-              <h3>Verify with LinkedIn</h3>
-              <p>
-                Submit a public LinkedIn profile URL to enter manual review. This keeps MVP
-                scope lean without relying on the LinkedIn API.
-              </p>
-
-              <form className="stack-form" onSubmit={handleLinkedinSubmit}>
-                <label className="field">
-                  <span>LinkedIn profile URL</span>
-                  <input
-                    onChange={(event) => setLinkedinUrl(event.target.value)}
-                    placeholder="https://www.linkedin.com/in/your-profile"
-                    type="url"
-                    value={linkedinUrl}
-                  />
-                </label>
-                <Button disabled={busyAction === 'linkedin' || !linkedinUrl} fullWidth type="submit">
-                  Submit for review
-                </Button>
-              </form>
-            </Card>
-          </div>
-
-          {feedback && <div className="feedback-banner">{feedback}</div>}
-
-          {metrics && (
-            <div className="trust-metrics-grid">
-              <Card>
-                <span className="muted">Verified users</span>
-                <strong>{metrics.verifiedUsers}</strong>
-                <p>{metrics.verificationRate}% of the current user base</p>
-              </Card>
-              <Card>
-                <span className="muted">Pending LinkedIn reviews</span>
-                <strong>{metrics.pendingLinkedinReviews}</strong>
-                <p>Manual review workload for the trust queue</p>
-              </Card>
-              <Card>
-                <span className="muted">Boosted listings</span>
-                <strong>{metrics.boostedListings}</strong>
-                <p>Listings receiving paid or manual priority</p>
-              </Card>
-              <Card>
-                <span className="muted">Tracked KPIs</span>
-                <strong>{metrics.trackedMetrics.length}</strong>
-                <p>Verification funnel and listing success indicators</p>
-              </Card>
             </div>
-          )}
+          </div>
 
           <div className="listing-priority-section">
             <div className="section-head">
@@ -530,4 +690,21 @@ function statusToneFor(statusLabel?: string) {
   }
 
   return statusToneMap[statusLabel as keyof typeof statusToneMap]
+}
+
+function formatOtpCountdown(expiresAt: number | null) {
+  if (!expiresAt) {
+    return 'less than a minute'
+  }
+
+  const remainingMs = Math.max(0, expiresAt - Date.now())
+  const totalSeconds = Math.ceil(remainingMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function canCancelLinkedinVerification(verification: VerificationResponse | null) {
+  return verification?.user.verificationType === 'LINKEDIN' && verification.user.isVerified === false
 }

@@ -1,10 +1,36 @@
-import { Building2, CalendarRange, Home, MapPin, ShieldCheck, UserRoundSearch } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  Building2,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  LoaderCircle,
+  MapPin,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserRoundSearch,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { useAppAuth } from '../context/AppAuthContext'
 import { apiRequest } from '../lib/api'
+import {
+  cleanupUploadedListingImages,
+  type ListingImageUploadPayload,
+  uploadListingImageToCloudinary,
+} from '../lib/cloudinary'
+
+type ListingImage = {
+  id: string
+  imageUrl: string
+  thumbnailUrl: string
+  detailUrl: string
+  isCover: boolean
+  sortOrder: number
+}
 
 type Listing = {
   id: string
@@ -21,6 +47,7 @@ type Listing = {
   urgencyLevel: string
   contactMode: string
   isBoosted: boolean
+  images: ListingImage[]
   owner: {
     id: string
     fullName: string
@@ -70,16 +97,49 @@ type FindRoomForm = {
   notes: string
 }
 
+type DraftListingImage = {
+  id: string
+  fileName: string
+  previewUrl: string
+  status: 'uploading' | 'uploaded' | 'error'
+  upload?: ListingImageUploadPayload
+  error?: string
+}
+
+type FeedbackState = {
+  tone: 'success' | 'error' | 'info'
+  message: string
+}
+
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
 const occupancyTypes = ['SINGLE', 'DOUBLE', 'SHARED']
+const listingImageSuggestions = [
+  'Living room',
+  'Bedroom',
+  'Kitchen',
+  'Bathroom',
+  'Balcony / view',
+  'Building exterior',
+  'Extra angle 1',
+  'Extra angle 2',
+]
 
 export function FindTenantPage() {
-  const { user } = useAppAuth()
+  const { sessionToken, user } = useAppAuth()
   const [activeWorkflow, setActiveWorkflow] = useState<'replace' | 'room'>('replace')
+  const [showAllListings, setShowAllListings] = useState(false)
   const [listings, setListings] = useState<Listing[]>([])
   const [housingNeeds, setHousingNeeds] = useState<HousingNeed[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null)
+  const [listingImages, setListingImages] = useState<DraftListingImage[]>([])
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [isSubmittingListing, setIsSubmittingListing] = useState(false)
+  const [isCleaningUpUploads, setIsCleaningUpUploads] = useState(false)
+  const [isSubmittingRoomNeed, setIsSubmittingRoomNeed] = useState(false)
+  const [uploadSummary, setUploadSummary] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const listingImagesRef = useRef<DraftListingImage[]>([])
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>({
     title: '',
     description: '',
@@ -105,7 +165,28 @@ export function FindTenantPage() {
     void loadHousingData()
   }, [])
 
-  const featuredListings = useMemo(() => listings.slice(0, 6), [listings])
+  useEffect(() => {
+    listingImagesRef.current = listingImages
+  }, [listingImages])
+
+  useEffect(() => {
+    return () => {
+      listingImagesRef.current.forEach((image) => {
+        if (image.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(image.previewUrl)
+        }
+      })
+    }
+  }, [])
+
+  const myListings = useMemo(
+    () => (user ? listings.filter((listing) => listing.owner.id === user.id) : []),
+    [listings, user],
+  )
+  const featuredListings = useMemo(
+    () => (showAllListings ? listings : listings.slice(0, 8)),
+    [listings, showAllListings],
+  )
   const featuredNeeds = useMemo(() => housingNeeds.slice(0, 6), [housingNeeds])
 
   async function loadHousingData() {
@@ -117,10 +198,18 @@ export function FindTenantPage() {
         apiRequest<HousingNeed[]>('/housing-needs?status=OPEN'),
       ])
 
-      setListings(listingsPayload)
+      setListings(
+        listingsPayload.map((listing) => ({
+          ...listing,
+          images: Array.isArray(listing.images) ? listing.images : [],
+        })),
+      )
       setHousingNeeds(needsPayload)
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Unable to load housing posts.')
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to load housing posts.',
+      })
     } finally {
       setIsLoading(false)
     }
@@ -130,11 +219,39 @@ export function FindTenantPage() {
     event.preventDefault()
 
     if (!user) {
-      setFeedback('Please sign in with Google before posting a replacement tenant listing.')
+      setFeedback({
+        tone: 'error',
+        message: 'Please sign in with Google before posting a replacement tenant listing.',
+      })
+      return
+    }
+
+    if (isUploadingImages) {
+      setFeedback({
+        tone: 'info',
+        message: 'Please wait for all listing images to finish uploading.',
+      })
+      return
+    }
+
+    const uploadedImages = listingImages
+      .filter((image) => image.status === 'uploaded' && image.upload)
+      .map((image, index) => ({
+        ...image.upload,
+        isCover: index === 0,
+        sortOrder: index,
+      }))
+
+    if (uploadedImages.length < 2) {
+      setFeedback({
+        tone: 'error',
+        message: 'Please upload at least 2 flat images before posting.',
+      })
       return
     }
 
     try {
+      setIsSubmittingListing(true)
       setFeedback(null)
       await apiRequest('/listings', {
         method: 'POST',
@@ -152,6 +269,7 @@ export function FindTenantPage() {
           occupancyType: replaceTenantForm.occupancyType,
           moveInDate: toIsoDate(replaceTenantForm.moveInDate),
           status: 'PUBLISHED',
+          images: uploadedImages,
         }),
       })
 
@@ -166,10 +284,52 @@ export function FindTenantPage() {
         occupancyType: 'SHARED',
         moveInDate: '',
       })
-      setFeedback('Replacement tenant listing posted successfully.')
+      clearListingImages()
+      setUploadSummary(null)
       await loadHousingData()
+      setFeedback({
+        tone: 'success',
+        message: 'Replacement tenant listing posted successfully.',
+      })
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Unable to post replacement listing.')
+      if (sessionToken && uploadedImages.length > 0) {
+        try {
+          setIsCleaningUpUploads(true)
+          setUploadSummary('Listing failed. Cleaning up uploaded images...')
+          await cleanupUploadedListingImages(
+            uploadedImages
+              .map((image) => image.providerAssetId)
+              .filter((assetId): assetId is string => Boolean(assetId)),
+            sessionToken,
+          )
+          clearListingImages()
+          setUploadSummary(null)
+          setFeedback({
+            tone: 'error',
+            message:
+              (error instanceof Error ? error.message : 'Unable to post replacement listing.') +
+              ' Uploaded images were cleaned up.',
+          })
+          return
+        } catch {
+          setFeedback({
+            tone: 'error',
+            message:
+              (error instanceof Error ? error.message : 'Unable to post replacement listing.') +
+              ' Cleanup failed, so the uploaded images may still exist in storage.',
+          })
+          return
+        } finally {
+          setIsCleaningUpUploads(false)
+        }
+      }
+
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to post replacement listing.',
+      })
+    } finally {
+      setIsSubmittingListing(false)
     }
   }
 
@@ -177,11 +337,15 @@ export function FindTenantPage() {
     event.preventDefault()
 
     if (!user) {
-      setFeedback('Please sign in with Google before posting a room requirement.')
+      setFeedback({
+        tone: 'error',
+        message: 'Please sign in with Google before posting a room requirement.',
+      })
       return
     }
 
     try {
+      setIsSubmittingRoomNeed(true)
       setFeedback(null)
       await apiRequest('/housing-needs', {
         method: 'POST',
@@ -207,15 +371,170 @@ export function FindTenantPage() {
         moveInDate: '',
         notes: '',
       })
-      setFeedback('Room requirement posted successfully.')
       await loadHousingData()
+      setFeedback({
+        tone: 'success',
+        message: 'Room requirement posted successfully.',
+      })
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Unable to post room requirement.')
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to post room requirement.',
+      })
+    } finally {
+      setIsSubmittingRoomNeed(false)
     }
   }
 
   function openWhatsappDraft(message: string) {
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+  }
+
+  async function handleListingImageSelection(event: ChangeEvent<HTMLInputElement>) {
+    await uploadSelectedListingImages(event.target.files)
+    event.target.value = ''
+  }
+
+  async function uploadSelectedListingImages(fileList: FileList | null) {
+    const files = Array.from(fileList ?? [])
+    if (files.length === 0) {
+      return
+    }
+
+    if (!sessionToken) {
+      setFeedback({
+        tone: 'error',
+        message: 'Please sign in with Google before uploading flat images.',
+      })
+      return
+    }
+
+    if (listingImages.length + files.length > 8) {
+      setFeedback({
+        tone: 'error',
+        message: 'You can upload a maximum of 8 flat images.',
+      })
+      return
+    }
+
+    setFeedback(null)
+    setIsUploadingImages(true)
+    setUploadSummary(`Uploading ${files.length} image${files.length > 1 ? 's' : ''}...`)
+
+    const nextDrafts = files.map((file) => ({
+      id: window.crypto.randomUUID(),
+      fileName: file.name,
+      previewUrl: URL.createObjectURL(file),
+      status: 'uploading' as const,
+    }))
+
+    setListingImages((current) => [...current, ...nextDrafts])
+
+    const uploadResults = await Promise.all(
+      files.map(async (file, index) => {
+        const draftId = nextDrafts[index].id
+
+        try {
+          const upload = await uploadListingImageToCloudinary(file, sessionToken)
+          setListingImages((current) =>
+            current.map((image) =>
+              image.id === draftId
+                ? (() => {
+                    if (image.previewUrl.startsWith('blob:')) {
+                      URL.revokeObjectURL(image.previewUrl)
+                    }
+
+                    return {
+                      ...image,
+                      status: 'uploaded',
+                      upload,
+                      previewUrl: upload.thumbnailUrl,
+                    }
+                  })()
+                : image,
+            ),
+          )
+          return { success: true as const }
+        } catch (error) {
+          setListingImages((current) =>
+            current.map((image) =>
+              image.id === draftId
+                ? {
+                    ...image,
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Upload failed.',
+                  }
+                : image,
+            ),
+          )
+          return {
+            success: false as const,
+            message: error instanceof Error ? error.message : 'Upload failed.',
+          }
+        }
+      }),
+    )
+
+    const successCount = uploadResults.filter((result) => result.success).length
+    const failureCount = uploadResults.length - successCount
+
+    if (failureCount === 0) {
+      setUploadSummary(`${successCount} image${successCount > 1 ? 's' : ''} uploaded and optimized.`)
+    } else {
+      setUploadSummary(
+        `${successCount} image${successCount === 1 ? '' : 's'} uploaded. ${failureCount} failed.`,
+      )
+      const firstFailure = uploadResults.find((result) => !result.success)
+      setFeedback({
+        tone: 'error',
+        message: firstFailure?.message ?? 'Some images could not be uploaded.',
+      })
+    }
+
+    setIsUploadingImages(false)
+  }
+
+  function handleListingImageDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault()
+    setIsDragActive(false)
+    void uploadSelectedListingImages(event.dataTransfer.files)
+  }
+
+  function moveListingImage(index: number, direction: -1 | 1) {
+    setListingImages((current) => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= current.length) {
+        return current
+      }
+
+      const next = [...current]
+      const [image] = next.splice(index, 1)
+      next.splice(nextIndex, 0, image)
+      return next
+    })
+  }
+
+  function removeListingImage(id: string) {
+    setListingImages((current) => {
+      const imageToRemove = current.find((image) => image.id === id)
+      if (imageToRemove?.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(imageToRemove.previewUrl)
+      }
+
+      return current.filter((image) => image.id !== id)
+    })
+  }
+
+  function clearListingImages() {
+    setListingImages((current) => {
+      current.forEach((image) => {
+        if (image.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(image.previewUrl)
+        }
+      })
+
+      return []
+    })
   }
 
   return (
@@ -255,6 +574,75 @@ export function FindTenantPage() {
             </Card>
           </div>
 
+          {user && (
+            <div className="hub-panel hub-panel-wide">
+              <div className="hub-panel-head">
+                <div>
+                  <span className="muted">My listings</span>
+                  <h2>Your posted replacement listings</h2>
+                </div>
+                <Badge tone="purple">{isLoading ? 'Loading' : `${myListings.length} posted`}</Badge>
+              </div>
+
+              <div className="feed-grid listing-feed-grid">
+                {myListings.map((listing) => (
+                  <Card className="feed-card" key={`my-${listing.id}`}>
+                    {listing.images?.[0] && (
+                      <div className="feed-media">
+                        <img
+                          alt={listing.title}
+                          src={listing.images[0].thumbnailUrl || listing.images[0].imageUrl}
+                        />
+                      </div>
+                    )}
+
+                    <div className="feed-card-top">
+                      <div>
+                        <strong>{listing.title}</strong>
+                        <p>
+                          {listing.city}, {listing.locality}
+                        </p>
+                      </div>
+                      <Badge tone={listing.isBoosted ? 'purple' : 'green'}>
+                        {listing.isBoosted ? 'Boosted' : 'Published'}
+                      </Badge>
+                    </div>
+
+                    <div className="feed-meta-row">
+                      <span>
+                        <Building2 size={16} />
+                        {formatMoney(listing.rentAmount)} / month
+                      </span>
+                      <span>
+                        <CalendarRange size={16} />
+                        Move in {formatShortDate(listing.moveInDate)}
+                      </span>
+                    </div>
+
+                    <p className="feed-copy">{listing.description}</p>
+
+                    <div className="feed-owner-row">
+                      <div>
+                        <strong>{listing.owner.fullName}</strong>
+                        <span>{listing.owner.companyName ?? 'Independent owner'}</span>
+                      </div>
+                      <span className="pill">Visible in housing feed</span>
+                    </div>
+                  </Card>
+                ))}
+
+                {!isLoading && myListings.length === 0 && (
+                  <Card className="feed-card">
+                    <strong>You have not posted any listings yet</strong>
+                    <p className="feed-copy">
+                      Your replacement tenant posts will appear here after they are created successfully.
+                    </p>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="hub-layout">
             <div className="hub-panel">
               <div className="hub-panel-head">
@@ -262,12 +650,30 @@ export function FindTenantPage() {
                   <span className="muted">Live feed</span>
                   <h2>Flats posted on the portal</h2>
                 </div>
-                <Badge tone="green">{isLoading ? 'Loading' : `${featuredListings.length} live`}</Badge>
+                <div className="hub-panel-actions">
+                  <Badge tone="green">
+                    {isLoading ? 'Loading' : `${featuredListings.length}${showAllListings ? '' : ` of ${listings.length}`} live`}
+                  </Badge>
+                  {listings.length > 8 && (
+                    <Button onClick={() => setShowAllListings((current) => !current)} variant="ghost">
+                      {showAllListings ? 'Show 8 listings' : 'Show all listings'}
+                    </Button>
+                  )}
+                </div>
               </div>
 
-              <div className="feed-grid">
+              <div className="feed-grid listing-feed-grid">
                 {featuredListings.map((listing) => (
                   <Card className="feed-card" key={listing.id}>
+                    {listing.images?.[0] && (
+                      <div className="feed-media">
+                        <img
+                          alt={listing.title}
+                          src={listing.images[0].thumbnailUrl || listing.images[0].imageUrl}
+                        />
+                      </div>
+                    )}
+
                     <div className="feed-card-top">
                       <div>
                         <strong>{listing.title}</strong>
@@ -430,7 +836,7 @@ export function FindTenantPage() {
               </div>
             )}
 
-            {feedback && <div className="feedback-banner">{feedback}</div>}
+            {feedback && <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div>}
 
             {activeWorkflow === 'replace' ? (
               <Card className="post-form-card">
@@ -569,8 +975,132 @@ export function FindTenantPage() {
                     />
                   </div>
 
-                  <Button fullWidth type="submit">
-                    Post replacement listing
+                  <div className="field">
+                    <label htmlFor="listing-images">Flat images</label>
+                    <div className="uploader-meta-row">
+                      <span>Minimum 2 images</span>
+                      <span>Maximum 8 images</span>
+                      <span>First image becomes cover</span>
+                    </div>
+
+                    {(isUploadingImages || isCleaningUpUploads || uploadSummary) && (
+                      <div className="inline-loader-banner">
+                        {isUploadingImages || isCleaningUpUploads ? (
+                          <LoaderCircle className="spin" size={16} />
+                        ) : (
+                          <Upload size={16} />
+                        )}
+                        <span>
+                          {isCleaningUpUploads
+                            ? 'Cleaning up uploaded images...'
+                            : isUploadingImages
+                              ? 'Uploading images securely...'
+                              : uploadSummary}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="suggested-order-grid">
+                      {listingImageSuggestions.map((label) => (
+                        <span className="suggested-order-chip" key={label}>
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <label
+                      className={`listing-upload-dropzone${isDragActive ? ' active' : ''}${isUploadingImages ? ' uploading' : ''}`}
+                      htmlFor="listing-images"
+                      onDragEnter={() => setIsDragActive(true)}
+                      onDragLeave={() => setIsDragActive(false)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={handleListingImageDrop}
+                    >
+                      <input
+                        accept="image/*"
+                        disabled={isUploadingImages || isSubmittingListing || isCleaningUpUploads}
+                        id="listing-images"
+                        multiple
+                        onChange={handleListingImageSelection}
+                        type="file"
+                      />
+                      <Upload size={20} />
+                      <strong>Upload flat photos</strong>
+                      <p>
+                        {isUploadingImages
+                          ? 'Uploading images to Cloudinary...'
+                          : 'Drag and drop images here or choose files from your device.'}
+                      </p>
+                      <span className="muted">
+                        Backend-signed Cloudinary upload with thumbnail and detail-size optimization.
+                      </span>
+                    </label>
+
+                    <div className="listing-image-grid">
+                      {listingImages.map((image, index) => (
+                        <div className="listing-image-card" key={image.id}>
+                          <div className="listing-image-preview">
+                            <img alt={image.fileName} src={image.previewUrl} />
+                            {index === 0 && <span className="cover-badge">Cover</span>}
+                          </div>
+
+                          <div className="listing-image-copy">
+                            <strong>{listingImageSuggestions[index] ?? `Image ${index + 1}`}</strong>
+                            <span>{image.fileName}</span>
+                            <span>
+                              {image.status === 'uploading'
+                                ? 'Uploading to Cloudinary...'
+                                : image.status === 'error'
+                                  ? image.error ?? 'Upload failed.'
+                                  : 'Uploaded and optimized'}
+                            </span>
+                          </div>
+
+                          <div className="listing-image-actions">
+                            <button
+                              aria-label="Move image left"
+                              disabled={index === 0}
+                              onClick={() => moveListingImage(index, -1)}
+                              type="button"
+                            >
+                              <ChevronLeft size={16} />
+                            </button>
+                            <button
+                              aria-label="Move image right"
+                              disabled={index === listingImages.length - 1}
+                              onClick={() => moveListingImage(index, 1)}
+                              type="button"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                            <button
+                              aria-label="Remove image"
+                              onClick={() => removeListingImage(image.id)}
+                              type="button"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="helper-copy">
+                      Cover image should usually be the living room or best wide shot. Detail views
+                      are optimized for roughly 800–1200px display.
+                    </p>
+                  </div>
+
+                  <Button
+                    fullWidth
+                    type="submit"
+                    disabled={isSubmittingListing || isUploadingImages || isCleaningUpUploads}
+                  >
+                    {isCleaningUpUploads
+                      ? 'Cleaning up images...'
+                      : isSubmittingListing
+                        ? 'Posting replacement listing...'
+                        : 'Post replacement listing'}
                   </Button>
                 </form>
               </Card>
@@ -692,8 +1222,8 @@ export function FindTenantPage() {
                     />
                   </div>
 
-                  <Button fullWidth type="submit">
-                    Post room requirement
+                  <Button fullWidth type="submit" disabled={isSubmittingRoomNeed}>
+                    {isSubmittingRoomNeed ? 'Posting room requirement...' : 'Post room requirement'}
                   </Button>
                 </form>
               </Card>

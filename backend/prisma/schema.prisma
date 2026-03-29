@@ -40,6 +40,11 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum AssetProvider {
+  CLOUDINARY
+  S3
+}
+
 enum VerificationType {
   WORK_EMAIL
   LINKEDIN
@@ -346,14 +351,23 @@ model Listing {
 }
 
 model ListingImage {
-  id        String   @id @default(cuid())
-  listingId String
-  imageUrl  String
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  listingId       String
+  assetProvider   AssetProvider @default(CLOUDINARY)
+  providerAssetId String
+  imageUrl        String
+  thumbnailUrl    String
+  detailUrl       String
+  width           Int?
+  height          Int?
+  bytes           Int?
+  isCover         Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  listing         Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([listingId, sortOrder])
+  @@index([listingId, isCover])
 }
 
 model HousingNeed {

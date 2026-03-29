@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { ConfirmWorkEmailOtpDto } from './dto/confirm-work-email-otp.dto';
 import { RequestWorkEmailOtpDto } from './dto/request-work-email-otp.dto';
+import { ResendEmailService } from './resend-email.service';
 import { ReviewLinkedinVerificationDto } from './dto/review-linkedin-verification.dto';
 import { SubmitLinkedinVerificationDto } from './dto/submit-linkedin-verification.dto';
 
@@ -32,7 +33,10 @@ const userSummarySelect = {
 
 @Injectable()
 export class VerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resendEmailService: ResendEmailService,
+  ) {}
 
   async getMyVerificationStatus(session: AuthenticatedSession) {
     const user = await this.prisma.user.findUnique({
@@ -119,7 +123,7 @@ export class VerificationService {
 
     const otp = this.generateOtp();
 
-    await this.prisma.workEmailOtp.create({
+    const otpRecord = await this.prisma.workEmailOtp.create({
       data: {
         userId: session.user.id,
         workEmail,
@@ -128,10 +132,31 @@ export class VerificationService {
       },
     });
 
+    let deliveryResult: Awaited<ReturnType<ResendEmailService['sendWorkEmailOtp']>>;
+
+    try {
+      deliveryResult = await this.resendEmailService.sendWorkEmailOtp({
+        otp,
+        to: workEmail,
+        recipientName: session.user.name,
+        companyName: this.companyNameFromDomain(domain),
+        expiresInMinutes: 5,
+      });
+    } catch (error) {
+      await this.prisma.workEmailOtp.deleteMany({
+        where: {
+          id: otpRecord.id,
+        },
+      });
+
+      throw error;
+    }
+
     return {
       success: true,
       delivery: {
         channel: 'email',
+        provider: deliveryResult.provider,
         destination: this.maskEmail(workEmail),
         expiresInMinutes: 5,
       },
@@ -252,6 +277,60 @@ export class VerificationService {
       linkedinUrl,
       proofCode: dto.proofCode ?? null,
       message: 'LinkedIn verification submitted for manual review.',
+    };
+  }
+
+  async cancelLinkedinVerification(session: AuthenticatedSession) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: userSummarySelect,
+    });
+
+    if (!existingUser) {
+      throw new NotFoundException('User not found.');
+    }
+
+    if (existingUser.verificationType !== VerificationType.LINKEDIN) {
+      throw new BadRequestException('There is no active LinkedIn verification to cancel.');
+    }
+
+    if (existingUser.isVerified) {
+      throw new BadRequestException(
+        'Approved LinkedIn verification cannot be canceled here. Verify with work email if you want to switch methods later.',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          linkedinUrl: null,
+          verificationType: null,
+          verificationStatus: null,
+          isVerified: false,
+        },
+      }),
+      this.prisma.verificationProfile.upsert({
+        where: { userId: session.user.id },
+        update: {
+          linkedinVerified: false,
+          verificationBadge: VerificationBadge.NONE,
+          trustScore: 0,
+          lastVerifiedAt: null,
+        },
+        create: {
+          userId: session.user.id,
+          linkedinVerified: false,
+          verificationBadge: VerificationBadge.NONE,
+          trustScore: 0,
+          lastVerifiedAt: null,
+        },
+      }),
+    ]);
+
+    return {
+      success: true,
+      message: 'LinkedIn verification was canceled. You can now verify with work email instead.',
     };
   }
 

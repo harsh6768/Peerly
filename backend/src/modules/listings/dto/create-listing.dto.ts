@@ -2,14 +2,19 @@ import { ContactMode, ListingStatus, OccupancyType, PropertyType, UrgencyLevel }
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { CreateListingImageDto } from './create-listing-image.dto';
 
 export class CreateListingDto {
   // Required fields are just normal properties now.
@@ -94,4 +99,12 @@ export class CreateListingDto {
   @Type(() => Boolean)
   @IsBoolean()
   brokerAllowed?: boolean;
+
+  @ApiProperty({ type: [CreateListingImageDto], minItems: 2, maxItems: 8 })
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(8)
+  @ValidateNested({ each: true })
+  @Type(() => CreateListingImageDto)
+  images: CreateListingImageDto[];
 }

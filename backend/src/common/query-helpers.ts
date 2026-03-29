@@ -44,6 +44,11 @@ export const listingInclude = {
       isVerifiedNetwork: true,
     },
   },
+  images: {
+    orderBy: {
+      sortOrder: 'asc',
+    },
+  },
 } as const;
 
 export function buildWhere(filters: Record<string, unknown>) {
