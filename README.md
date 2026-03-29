@@ -2,6 +2,14 @@
 
 Trusted Network is a hyperlocal, trust-based platform for solving urgent real-life problems through a verified professional or community network.
 
+## Workspace layout
+
+This repository now uses a simple workspace structure:
+
+- `frontend/` for the React + Vite app
+- `backend/` for the NestJS + Prisma API
+- `docs/` for product and architecture references
+
 ## Current MVP focus
 
 - Find replacement tenants
@@ -26,18 +34,41 @@ Recommended reading order:
 4. [Backend Blueprint](./docs/backend-blueprint.md)
 5. [MVP Schema Design](./docs/mvp-schema-design.md)
 6. [Entity Relationship Diagram](./docs/entity-relationship-diagram.md)
-7. [Platform Deployment Guide](./docs/platform-deployment.md)
+7. [Backend API MVP](./docs/backend-api-mvp.md)
+8. [Backend TypeScript Guide](./docs/backend-typescript-guide.md)
+9. [Platform Deployment Guide](./docs/platform-deployment.md)
 
 ## Local development
 
+Frontend:
+
 ```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-## Validation
+Backend:
 
 ```bash
+cd backend
+npm install
+npm run start:dev
+```
+
+## Validation
+
+Frontend:
+
+```bash
+cd frontend
 npm run build
 npm run lint
+```
+
+Backend:
+
+```bash
+cd backend
+npm run build
 ```

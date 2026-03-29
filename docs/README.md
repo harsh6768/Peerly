@@ -10,7 +10,9 @@ This folder is the current working architecture reference for Trusted Network.
 4. [Backend Blueprint](./backend-blueprint.md)
 5. [MVP Schema Design](./mvp-schema-design.md)
 6. [Entity Relationship Diagram](./entity-relationship-diagram.md)
-7. [Platform Deployment Guide](./platform-deployment.md)
+7. [Backend API MVP](./backend-api-mvp.md)
+8. [Backend TypeScript Guide](./backend-typescript-guide.md)
+9. [Platform Deployment Guide](./platform-deployment.md)
 
 ## What these docs cover
 
@@ -18,6 +20,8 @@ This folder is the current working architecture reference for Trusted Network.
 - The database comparison and why PostgreSQL is the preferred default
 - The modular frontend structure we should move toward as the product grows
 - The backend domain model, service boundaries, API surfaces, and rollout path
+- The first working backend API slice and example payloads for the MVP
+- A lightweight guide for reading and working in the backend TypeScript code
 - The visual relationship map between schema entities
 - The recommended free-stack deployment plan and environment setup
 

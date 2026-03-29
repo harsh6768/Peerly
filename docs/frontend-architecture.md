@@ -6,7 +6,11 @@ Keep the frontend modular, readable, and easy for future developers to change wi
 
 ## Current state
 
-The current repo is still in early MVP mode:
+The current workspace is still in early MVP mode:
+
+- the frontend app now lives in `frontend/`
+- the backend API now lives in `backend/`
+- shared documentation lives in `docs/`
 
 - page files contain a lot of UI markup
 - shared styling lives in a single global CSS file
@@ -30,7 +34,7 @@ That means we group code by product area:
 ## Recommended folder structure
 
 ```text
-src/
+frontend/src/
   app/
     AppProviders.tsx
     router.tsx
@@ -132,7 +136,7 @@ Do not keep all product seed data in one giant file forever.
 Recommended split:
 
 ```text
-src/data/
+frontend/src/data/
   designTokens.ts
   homeSeed.ts
   tenantSeed.ts
