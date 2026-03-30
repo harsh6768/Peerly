@@ -327,6 +327,10 @@ model Listing {
   description    String           @db.Text
   city           String
   locality       String
+  locationName   String?          @db.Text
+  latitude       Float?
+  longitude      Float?
+  contactPhone   String?          @db.VarChar(20)
   rentAmount     Int
   depositAmount  Int?
   propertyType   PropertyType

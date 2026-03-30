@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
+  Lock,
   LoaderCircle,
   MapPin,
   ShieldCheck,
@@ -15,6 +16,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent,
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
+import { LocationSummaryCard, PlaceAutocompleteField } from '../components/PlaceAutocompleteField'
 import { useAppAuth } from '../context/AppAuthContext'
 import { apiRequest } from '../lib/api'
 import {
@@ -38,6 +40,10 @@ type Listing = {
   description: string
   city: string
   locality: string
+  locationName: string | null
+  latitude: number | null
+  longitude: number | null
+  contactPhone: string | null
   rentAmount: number
   depositAmount: number | null
   propertyType: string
@@ -80,10 +86,15 @@ type ReplaceTenantForm = {
   description: string
   city: string
   locality: string
+  locationName: string
+  latitude: number | null
+  longitude: number | null
   rentAmount: string
   depositAmount: string
   propertyType: string
   occupancyType: string
+  contactMode: string
+  contactPhone: string
   moveInDate: string
 }
 
@@ -111,8 +122,40 @@ type FeedbackState = {
   message: string
 }
 
+type ListingStateFilter = 'BOOSTED' | 'VERIFIED' | 'STANDARD'
+
+type ListingFilters = {
+  city: string
+  propertyTypes: string[]
+  occupancyTypes: string[]
+  listingStates: ListingStateFilter[]
+}
+
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
 const occupancyTypes = ['SINGLE', 'DOUBLE', 'SHARED']
+const majorCities = [
+  'Bengaluru',
+  'Mumbai',
+  'Delhi',
+  'Gurugram',
+  'Noida',
+  'Hyderabad',
+  'Pune',
+  'Chennai',
+  'Kolkata',
+  'Ahmedabad',
+  'Jaipur',
+  'Chandigarh',
+  'Kochi',
+  'Indore',
+  'Lucknow',
+]
+const otherCityOptionValue = '__OTHER_CITY__'
+const listingStateOptions: Array<{ label: string; value: ListingStateFilter }> = [
+  { label: 'Boosted', value: 'BOOSTED' },
+  { label: 'Verified', value: 'VERIFIED' },
+  { label: 'Standard', value: 'STANDARD' },
+]
 const listingImageSuggestions = [
   'Living room',
   'Bedroom',
@@ -123,6 +166,7 @@ const listingImageSuggestions = [
   'Extra angle 1',
   'Extra angle 2',
 ]
+const liveFeedPreviewCount = 6
 
 export function FindTenantPage() {
   const { sessionToken, user } = useAppAuth()
@@ -137,18 +181,38 @@ export function FindTenantPage() {
   const [isSubmittingListing, setIsSubmittingListing] = useState(false)
   const [isCleaningUpUploads, setIsCleaningUpUploads] = useState(false)
   const [isSubmittingRoomNeed, setIsSubmittingRoomNeed] = useState(false)
+  const [isRefreshingAllListings, setIsRefreshingAllListings] = useState(false)
+  const [isListingFilterPanelOpen, setIsListingFilterPanelOpen] = useState(false)
   const [uploadSummary, setUploadSummary] = useState<string | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
+  const [listingFilters, setListingFilters] = useState<ListingFilters>({
+    city: '',
+    propertyTypes: [],
+    occupancyTypes: [],
+    listingStates: [],
+  })
   const listingImagesRef = useRef<DraftListingImage[]>([])
+  const replaceWorkflowRef = useRef<HTMLDivElement | null>(null)
+  const roomWorkflowRef = useRef<HTMLDivElement | null>(null)
+  const workflowScrollTargetRef = useRef<'replace' | 'room' | null>(null)
+  const [replaceTenantCityOption, setReplaceTenantCityOption] = useState('')
+  const [replaceTenantCustomCity, setReplaceTenantCustomCity] = useState('')
+  const [findRoomCityOption, setFindRoomCityOption] = useState('')
+  const [findRoomCustomCity, setFindRoomCustomCity] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>({
     title: '',
     description: '',
     city: '',
     locality: '',
+    locationName: '',
+    latitude: null,
+    longitude: null,
     rentAmount: '',
     depositAmount: '',
     propertyType: 'APARTMENT',
     occupancyType: 'SHARED',
+    contactMode: 'WHATSAPP',
+    contactPhone: '',
     moveInDate: '',
   })
   const [findRoomForm, setFindRoomForm] = useState<FindRoomForm>({
@@ -179,31 +243,113 @@ export function FindTenantPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (workflowScrollTargetRef.current !== activeWorkflow) {
+      return
+    }
+
+    const nextTarget =
+      activeWorkflow === 'replace' ? replaceWorkflowRef.current : roomWorkflowRef.current
+
+    nextTarget?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+    workflowScrollTargetRef.current = null
+  }, [activeWorkflow])
+
   const myListings = useMemo(
     () => (user ? listings.filter((listing) => listing.owner.id === user.id) : []),
     [listings, user],
   )
+  const selectedListingLocation = useMemo(
+    () =>
+      toSelectedPlaceLocation(
+        replaceTenantForm.locationName,
+        replaceTenantForm.latitude,
+        replaceTenantForm.longitude,
+      ),
+    [replaceTenantForm.latitude, replaceTenantForm.locationName, replaceTenantForm.longitude],
+  )
+  const cityFilterOptions = useMemo(
+    () => Array.from(new Set(listings.map((listing) => listing.city))).sort((left, right) => left.localeCompare(right)),
+    [listings],
+  )
+  const filteredListings = useMemo(
+    () =>
+      listings.filter((listing) => {
+        if (listingFilters.city && listing.city !== listingFilters.city) {
+          return false
+        }
+
+        if (
+          listingFilters.propertyTypes.length > 0 &&
+          !listingFilters.propertyTypes.includes(listing.propertyType)
+        ) {
+          return false
+        }
+
+        if (
+          listingFilters.occupancyTypes.length > 0 &&
+          !listingFilters.occupancyTypes.includes(listing.occupancyType)
+        ) {
+          return false
+        }
+
+        if (
+          listingFilters.listingStates.length > 0 &&
+          !listingFilters.listingStates.some((state) => matchesListingState(listing, state))
+        ) {
+          return false
+        }
+
+        return true
+      }),
+    [listings, listingFilters],
+  )
   const featuredListings = useMemo(
-    () => (showAllListings ? listings : listings.slice(0, 8)),
-    [listings, showAllListings],
+    () =>
+      showAllListings ? filteredListings : filteredListings.slice(0, liveFeedPreviewCount),
+    [filteredListings, showAllListings],
   )
   const featuredNeeds = useMemo(() => housingNeeds.slice(0, 6), [housingNeeds])
+  const hasListingFilters = useMemo(
+    () =>
+      Boolean(listingFilters.city) ||
+      listingFilters.propertyTypes.length > 0 ||
+      listingFilters.occupancyTypes.length > 0 ||
+      listingFilters.listingStates.length > 0,
+    [listingFilters],
+  )
+  const activeListingFilterLabels = useMemo(() => {
+    const labels: string[] = []
+
+    if (listingFilters.city) {
+      labels.push(listingFilters.city)
+    }
+
+    labels.push(...listingFilters.propertyTypes.map((type) => formatEnum(type)))
+    labels.push(...listingFilters.occupancyTypes.map((type) => formatEnum(type)))
+    labels.push(
+      ...listingFilters.listingStates.map(
+        (state) => listingStateOptions.find((option) => option.value === state)?.label ?? state,
+      ),
+    )
+
+    return labels
+  }, [listingFilters])
+  const canShowAllListings = filteredListings.length > liveFeedPreviewCount
 
   async function loadHousingData() {
     try {
       setIsLoading(true)
       setFeedback(null)
       const [listingsPayload, needsPayload] = await Promise.all([
-        apiRequest<Listing[]>('/listings?status=PUBLISHED'),
+        getPublishedListings(),
         apiRequest<HousingNeed[]>('/housing-needs?status=OPEN'),
       ])
 
-      setListings(
-        listingsPayload.map((listing) => ({
-          ...listing,
-          images: Array.isArray(listing.images) ? listing.images : [],
-        })),
-      )
+      setListings(normalizeListings(listingsPayload))
       setHousingNeeds(needsPayload)
     } catch (error) {
       setFeedback({
@@ -212,6 +358,28 @@ export function FindTenantPage() {
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleShowAllListings() {
+    if (showAllListings) {
+      setShowAllListings(false)
+      return
+    }
+
+    try {
+      setIsRefreshingAllListings(true)
+      setFeedback(null)
+      const listingsPayload = await getPublishedListings()
+      setListings(normalizeListings(listingsPayload))
+      setShowAllListings(true)
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to load all live listings.',
+      })
+    } finally {
+      setIsRefreshingAllListings(false)
     }
   }
 
@@ -230,6 +398,32 @@ export function FindTenantPage() {
       setFeedback({
         tone: 'info',
         message: 'Please wait for all listing images to finish uploading.',
+      })
+      return
+    }
+
+    const city = resolveCityValue(replaceTenantCityOption, replaceTenantCustomCity)
+
+    if (!city) {
+      setFeedback({
+        tone: 'error',
+        message: 'Select a city from the dropdown or enter a custom city before posting.',
+      })
+      return
+    }
+
+    if (!selectedListingLocation) {
+      setFeedback({
+        tone: 'error',
+        message: 'Search and select the property location from Google before posting the listing.',
+      })
+      return
+    }
+
+    if (!replaceTenantForm.contactPhone.trim()) {
+      setFeedback({
+        tone: 'error',
+        message: 'Add a contact phone or WhatsApp number for the listing.',
       })
       return
     }
@@ -259,8 +453,13 @@ export function FindTenantPage() {
           ownerUserId: user.id,
           title: replaceTenantForm.title,
           description: replaceTenantForm.description,
-          city: replaceTenantForm.city,
+          city,
           locality: replaceTenantForm.locality,
+          locationName: replaceTenantForm.locationName,
+          latitude: replaceTenantForm.latitude,
+          longitude: replaceTenantForm.longitude,
+          contactMode: replaceTenantForm.contactMode,
+          contactPhone: replaceTenantForm.contactPhone.trim(),
           rentAmount: Number(replaceTenantForm.rentAmount),
           depositAmount: replaceTenantForm.depositAmount
             ? Number(replaceTenantForm.depositAmount)
@@ -278,12 +477,19 @@ export function FindTenantPage() {
         description: '',
         city: '',
         locality: '',
+        locationName: '',
+        latitude: null,
+        longitude: null,
         rentAmount: '',
         depositAmount: '',
         propertyType: 'APARTMENT',
         occupancyType: 'SHARED',
+        contactMode: 'WHATSAPP',
+        contactPhone: '',
         moveInDate: '',
       })
+      setReplaceTenantCityOption('')
+      setReplaceTenantCustomCity('')
       clearListingImages()
       setUploadSummary(null)
       await loadHousingData()
@@ -344,6 +550,16 @@ export function FindTenantPage() {
       return
     }
 
+    const city = resolveCityValue(findRoomCityOption, findRoomCustomCity)
+
+    if (!city) {
+      setFeedback({
+        tone: 'error',
+        message: 'Select a city from the dropdown or enter a custom city before posting.',
+      })
+      return
+    }
+
     try {
       setIsSubmittingRoomNeed(true)
       setFeedback(null)
@@ -351,7 +567,7 @@ export function FindTenantPage() {
         method: 'POST',
         body: JSON.stringify({
           userId: user.id,
-          city: findRoomForm.city,
+          city,
           locality: findRoomForm.locality || undefined,
           preferredPropertyType: findRoomForm.preferredPropertyType,
           preferredOccupancy: findRoomForm.preferredOccupancy,
@@ -371,6 +587,8 @@ export function FindTenantPage() {
         moveInDate: '',
         notes: '',
       })
+      setFindRoomCityOption('')
+      setFindRoomCustomCity('')
       await loadHousingData()
       setFeedback({
         tone: 'success',
@@ -537,6 +755,48 @@ export function FindTenantPage() {
     })
   }
 
+  function handleWorkflowShortcut(workflow: 'replace' | 'room') {
+    if (workflow === activeWorkflow) {
+      const currentTarget = workflow === 'replace' ? replaceWorkflowRef.current : roomWorkflowRef.current
+      currentTarget?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+      return
+    }
+
+    workflowScrollTargetRef.current = workflow
+    setActiveWorkflow(workflow)
+  }
+
+  function toggleListingFilter(
+    key: 'propertyTypes' | 'occupancyTypes' | 'listingStates',
+    value: string,
+  ) {
+    setListingFilters((current) => {
+      const currentValues = current[key] as string[]
+      const nextValues = currentValues.includes(value)
+        ? currentValues.filter((item) => item !== value)
+        : [...currentValues, value]
+
+      return {
+        ...current,
+        [key]: nextValues,
+      } as ListingFilters
+    })
+  }
+
+  function clearListingFilters() {
+    setListingFilters({
+      city: '',
+      propertyTypes: [],
+      occupancyTypes: [],
+      listingStates: [],
+    })
+    setShowAllListings(false)
+    setIsListingFilterPanelOpen(false)
+  }
+
   return (
     <div className="page">
       <section className="section">
@@ -557,7 +817,7 @@ export function FindTenantPage() {
               </div>
               <strong>Replace Tenant</strong>
               <p>Post your flat details and fill a vacancy faster.</p>
-              <Button onClick={() => setActiveWorkflow('replace')} variant="secondary">
+              <Button onClick={() => handleWorkflowShortcut('replace')} variant="secondary">
                 Post replacement
               </Button>
             </Card>
@@ -568,7 +828,7 @@ export function FindTenantPage() {
               </div>
               <strong>Find Room</strong>
               <p>Post your budget, location, and move-in requirement.</p>
-              <Button onClick={() => setActiveWorkflow('room')} variant="secondary">
+              <Button onClick={() => handleWorkflowShortcut('room')} variant="secondary">
                 Post room need
               </Button>
             </Card>
@@ -621,6 +881,46 @@ export function FindTenantPage() {
 
                     <p className="feed-copy">{listing.description}</p>
 
+                    <LocationSummaryCard
+                      compact
+                      location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
+                    />
+
+                    <div className="listing-contact-card">
+                      <div className="listing-contact-head">
+                        <strong>
+                          {listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}
+                        </strong>
+                        <span className="muted">
+                          {canViewListingContact(listing, user)
+                            ? formatContactPhone(listing.contactPhone)
+                            : 'Protected for verified members'}
+                        </span>
+                      </div>
+
+                      {canViewListingContact(listing, user) ? (
+                        <Button
+                          onClick={() =>
+                            window.open(
+                              listing.contactMode === 'CALL'
+                                ? buildCallLink(listing.contactPhone)
+                                : buildWhatsappLink(listing.contactPhone),
+                              '_blank',
+                              'noopener,noreferrer',
+                            )
+                          }
+                          variant="secondary"
+                        >
+                          {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
+                        </Button>
+                      ) : (
+                        <div className="listing-contact-lock">
+                          <Lock size={16} />
+                          <span>{getContactVisibilityMessage(user)}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="feed-owner-row">
                       <div>
                         <strong>{listing.owner.fullName}</strong>
@@ -643,24 +943,152 @@ export function FindTenantPage() {
             </div>
           )}
 
-          <div className="hub-layout">
-            <div className="hub-panel">
-              <div className="hub-panel-head">
+          <div className="hub-feed-stack">
+            <div className="hub-panel hub-panel-wide live-feed-panel">
+              <div className="hub-panel-head live-feed-head">
                 <div>
                   <span className="muted">Live feed</span>
                   <h2>Flats posted on the portal</h2>
+                  <p className="panel-subtitle">
+                    Scan the newest replacement-tenant listings, narrow the stream with stacked filters,
+                    or expand into the full portal inventory when you need the bigger view.
+                  </p>
                 </div>
                 <div className="hub-panel-actions">
                   <Badge tone="green">
-                    {isLoading ? 'Loading' : `${featuredListings.length}${showAllListings ? '' : ` of ${listings.length}`} live`}
+                    {isLoading
+                      ? 'Loading'
+                      : showAllListings
+                        ? `${featuredListings.length} live`
+                        : `${featuredListings.length} of ${filteredListings.length} live`}
                   </Badge>
-                  {listings.length > 8 && (
-                    <Button onClick={() => setShowAllListings((current) => !current)} variant="ghost">
-                      {showAllListings ? 'Show 8 listings' : 'Show all listings'}
+                  {hasListingFilters && <Badge tone="gray">{activeListingFilterLabels.length} filters</Badge>}
+                  {(showAllListings || canShowAllListings) && (
+                    <Button onClick={handleShowAllListings} variant="secondary" disabled={isRefreshingAllListings}>
+                      {isRefreshingAllListings
+                        ? 'Loading all listings...'
+                        : showAllListings
+                          ? 'Back to live preview'
+                          : 'Show all listings'}
                     </Button>
                   )}
                 </div>
               </div>
+
+              <div className="live-feed-toolbar">
+                <div className="live-feed-summary">
+                  <strong>
+                    {isLoading
+                      ? 'Loading live listings'
+                      : `${filteredListings.length} matching listing${filteredListings.length === 1 ? '' : 's'}`}
+                  </strong>
+                  <span>
+                    Mix city, home type, occupancy, and trust filters to scan the feed faster.
+                  </span>
+                </div>
+                <div className="listing-filter-toolbar-actions">
+                  <Button
+                    onClick={() => setIsListingFilterPanelOpen((current) => !current)}
+                    variant={isListingFilterPanelOpen ? 'secondary' : 'ghost'}
+                  >
+                    {isListingFilterPanelOpen ? 'Hide filters' : 'Filter listings'}
+                  </Button>
+                  {hasListingFilters && (
+                    <Button onClick={clearListingFilters} variant="ghost">
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {activeListingFilterLabels.length > 0 && (
+                <div className="listing-filter-token-row">
+                  {activeListingFilterLabels.slice(0, 4).map((label) => (
+                    <span className="pill" key={label}>
+                      {label}
+                    </span>
+                  ))}
+                  {activeListingFilterLabels.length > 4 && (
+                    <span className="pill">+{activeListingFilterLabels.length - 4} more</span>
+                  )}
+                </div>
+              )}
+
+              {isListingFilterPanelOpen && (
+                <div className="listing-filter-grid">
+                  <div className="field">
+                    <label htmlFor="listing-filter-city">City</label>
+                    <select
+                      id="listing-filter-city"
+                      onChange={(event) =>
+                        setListingFilters((current) => ({
+                          ...current,
+                          city: event.target.value,
+                        }))
+                      }
+                      value={listingFilters.city}
+                    >
+                      <option value="">All live cities</option>
+                      {cityFilterOptions.map((city) => (
+                        <option key={city} value={city}>
+                          {city}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Property type</span>
+                    <div className="listing-filter-chip-row">
+                      {propertyTypes.map((type) => (
+                        <button
+                          aria-pressed={listingFilters.propertyTypes.includes(type)}
+                          className={`listing-filter-chip${listingFilters.propertyTypes.includes(type) ? ' active' : ''}`}
+                          key={type}
+                          onClick={() => toggleListingFilter('propertyTypes', type)}
+                          type="button"
+                        >
+                          {formatEnum(type)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Occupancy</span>
+                    <div className="listing-filter-chip-row">
+                      {occupancyTypes.map((type) => (
+                        <button
+                          aria-pressed={listingFilters.occupancyTypes.includes(type)}
+                          className={`listing-filter-chip${listingFilters.occupancyTypes.includes(type) ? ' active' : ''}`}
+                          key={type}
+                          onClick={() => toggleListingFilter('occupancyTypes', type)}
+                          type="button"
+                        >
+                          {formatEnum(type)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Trust signals</span>
+                    <div className="listing-filter-chip-row">
+                      {listingStateOptions.map((state) => (
+                        <button
+                          aria-pressed={listingFilters.listingStates.includes(state.value)}
+                          className={`listing-filter-chip${listingFilters.listingStates.includes(state.value) ? ' active' : ''}`}
+                          key={state.value}
+                          onClick={() => toggleListingFilter('listingStates', state.value)}
+                          type="button"
+                        >
+                          {state.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="feed-grid listing-feed-grid">
                 {featuredListings.map((listing) => (
@@ -699,6 +1127,46 @@ export function FindTenantPage() {
 
                     <p className="feed-copy">{listing.description}</p>
 
+                    <LocationSummaryCard
+                      compact
+                      location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
+                    />
+
+                    <div className="listing-contact-card">
+                      <div className="listing-contact-head">
+                        <strong>
+                          {listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}
+                        </strong>
+                        <span className="muted">
+                          {canViewListingContact(listing, user)
+                            ? formatContactPhone(listing.contactPhone)
+                            : 'Protected for verified members'}
+                        </span>
+                      </div>
+
+                      {canViewListingContact(listing, user) ? (
+                        <Button
+                          onClick={() =>
+                            window.open(
+                              listing.contactMode === 'CALL'
+                                ? buildCallLink(listing.contactPhone)
+                                : buildWhatsappLink(listing.contactPhone),
+                              '_blank',
+                              'noopener,noreferrer',
+                            )
+                          }
+                          variant="secondary"
+                        >
+                          {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
+                        </Button>
+                      ) : (
+                        <div className="listing-contact-lock">
+                          {user ? <ShieldCheck size={16} /> : <Lock size={16} />}
+                          <span>{getContactVisibilityMessage(user)}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="feed-owner-row">
                       <div>
                         <strong>{listing.owner.fullName}</strong>
@@ -711,42 +1179,36 @@ export function FindTenantPage() {
                         </span>
                       )}
                     </div>
-
-                    <div className="detail-actions">
-                      <Button
-                        onClick={() =>
-                          openWhatsappDraft(
-                            `Hi ${listing.owner.fullName}, I saw your listing "${listing.title}" on Trusted Network and wanted to know if it is still available.`,
-                          )
-                        }
-                      >
-                        WhatsApp lister
-                      </Button>
-                    </div>
                   </Card>
                 ))}
 
                 {!isLoading && featuredListings.length === 0 && (
                   <Card className="feed-card">
-                    <strong>No live flat posts yet</strong>
+                    <strong>{hasListingFilters ? 'No listings match those filters yet' : 'No live flat posts yet'}</strong>
                     <p className="feed-copy">
-                      Be the first to post a replacement tenant listing for your area.
+                      {hasListingFilters
+                        ? 'Try clearing one or two filters to widen the feed again.'
+                        : 'Be the first to post a replacement tenant listing for your area.'}
                     </p>
                   </Card>
                 )}
               </div>
             </div>
 
-            <div className="hub-panel">
-              <div className="hub-panel-head">
+            <div className="hub-panel room-seekers-panel">
+              <div className="hub-panel-head room-seekers-head">
                 <div>
                   <span className="muted">Room seekers</span>
                   <h2>People looking for housing</h2>
+                  <p className="panel-subtitle">
+                    Browse active requirements after the live listings feed so both sides of the marketplace
+                    feel easier to compare.
+                  </p>
                 </div>
                 <Badge tone="purple">{isLoading ? 'Loading' : `${featuredNeeds.length} active`}</Badge>
               </div>
 
-              <div className="feed-grid">
+              <div className="feed-grid room-seeker-grid">
                 {featuredNeeds.map((need) => (
                   <Card className="feed-card" key={need.id}>
                     <div className="feed-card-top">
@@ -816,14 +1278,14 @@ export function FindTenantPage() {
             <div className="toggle-wrap">
               <button
                 className={`toggle-pill${activeWorkflow === 'replace' ? ' active' : ''}`}
-                onClick={() => setActiveWorkflow('replace')}
+                onClick={() => handleWorkflowShortcut('replace')}
                 type="button"
               >
                 Replace Tenant
               </button>
               <button
                 className={`toggle-pill${activeWorkflow === 'room' ? ' active' : ''}`}
-                onClick={() => setActiveWorkflow('room')}
+                onClick={() => handleWorkflowShortcut('room')}
                 type="button"
               >
                 Find Room
@@ -839,16 +1301,17 @@ export function FindTenantPage() {
             {feedback && <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div>}
 
             {activeWorkflow === 'replace' ? (
-              <Card className="post-form-card">
-                <div className="hub-panel-head">
-                  <div>
-                    <span className="muted">Create post</span>
-                    <h2>Post replacement tenant listing</h2>
+              <div ref={replaceWorkflowRef}>
+                <Card className="post-form-card">
+                  <div className="hub-panel-head">
+                    <div>
+                      <span className="muted">Create post</span>
+                      <h2>Post replacement tenant listing</h2>
+                    </div>
+                    <Badge tone="purple">Workflow 1</Badge>
                   </div>
-                  <Badge tone="purple">Workflow 1</Badge>
-                </div>
 
-                <form className="form-grid" onSubmit={handleReplaceTenantSubmit}>
+                  <form className="form-grid" onSubmit={handleReplaceTenantSubmit}>
                   <div className="field">
                     <label htmlFor="listing-title">Listing title</label>
                     <input
@@ -875,29 +1338,80 @@ export function FindTenantPage() {
 
                   <div className="split-form-grid">
                     <div className="field">
-                      <label htmlFor="listing-city">City</label>
-                      <input
-                        id="listing-city"
-                        onChange={(event) =>
-                          setReplaceTenantForm((current) => ({ ...current, city: event.target.value }))
-                        }
-                        placeholder="Bengaluru"
-                        value={replaceTenantForm.city}
-                      />
-                    </div>
+                      <label htmlFor="listing-city-select">City</label>
+                      <select
+                        id="listing-city-select"
+                        onChange={(event) => {
+                          const nextValue = event.target.value
+                          setReplaceTenantCityOption(nextValue)
 
-                    <div className="field">
-                      <label htmlFor="listing-locality">Locality</label>
-                      <input
-                        id="listing-locality"
-                        onChange={(event) =>
-                          setReplaceTenantForm((current) => ({ ...current, locality: event.target.value }))
-                        }
-                        placeholder="HSR Layout"
-                        value={replaceTenantForm.locality}
-                      />
+                          if (nextValue === otherCityOptionValue) {
+                            setReplaceTenantForm((current) => ({ ...current, city: replaceTenantCustomCity }))
+                            return
+                          }
+
+                          setReplaceTenantCustomCity('')
+                          setReplaceTenantForm((current) => ({ ...current, city: nextValue }))
+                        }}
+                        value={replaceTenantCityOption}
+                      >
+                        <option value="">Select a city</option>
+                        {majorCities.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
+                        <option value={otherCityOptionValue}>Other city</option>
+                      </select>
                     </div>
                   </div>
+
+                  {replaceTenantCityOption === otherCityOptionValue && (
+                    <div className="field">
+                      <label htmlFor="listing-city-custom">Enter city</label>
+                      <input
+                        id="listing-city-custom"
+                        onChange={(event) => {
+                          setReplaceTenantCustomCity(event.target.value)
+                          setReplaceTenantForm((current) => ({ ...current, city: event.target.value }))
+                        }}
+                        placeholder="Enter your city"
+                        value={replaceTenantCustomCity}
+                      />
+                    </div>
+                  )}
+
+                  <PlaceAutocompleteField
+                    helperText="Search for the exact locality, apartment, or address. The selected Google location will be saved as the listing locality and map location."
+                    inputValue={replaceTenantForm.locality}
+                    label="Property location"
+                    onInputValueChange={(nextValue) =>
+                      setReplaceTenantForm((current) => ({
+                        ...current,
+                        locality: nextValue,
+                      }))
+                    }
+                    onClear={() =>
+                      setReplaceTenantForm((current) => ({
+                        ...current,
+                        locationName: '',
+                        latitude: null,
+                        longitude: null,
+                      }))
+                    }
+                    onSelect={(location) => {
+                      setReplaceTenantForm((current) => ({
+                        ...current,
+                        locality: location.locationName,
+                        locationName: location.locationName,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                      }))
+                    }}
+                    placeholder="Search locality, apartment, or full address"
+                    showSelectionCard={false}
+                    value={selectedListingLocation}
+                  />
 
                   <div className="split-form-grid">
                     <div className="field">
@@ -960,6 +1474,37 @@ export function FindTenantPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="split-form-grid">
+                    <div className="field">
+                      <label htmlFor="listing-contact-mode">Contact method</label>
+                      <select
+                        id="listing-contact-mode"
+                        onChange={(event) =>
+                          setReplaceTenantForm((current) => ({ ...current, contactMode: event.target.value }))
+                        }
+                        value={replaceTenantForm.contactMode}
+                      >
+                        <option value="WHATSAPP">WhatsApp</option>
+                        <option value="CALL">Phone call</option>
+                      </select>
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="listing-contact-phone">
+                        {replaceTenantForm.contactMode === 'CALL' ? 'Phone number' : 'WhatsApp number'}
+                      </label>
+                      <input
+                        id="listing-contact-phone"
+                        inputMode="tel"
+                        onChange={(event) =>
+                          setReplaceTenantForm((current) => ({ ...current, contactPhone: event.target.value }))
+                        }
+                        placeholder="+91 98765 43210"
+                        value={replaceTenantForm.contactPhone}
+                      />
                     </div>
                   </div>
 
@@ -1102,30 +1647,48 @@ export function FindTenantPage() {
                         ? 'Posting replacement listing...'
                         : 'Post replacement listing'}
                   </Button>
-                </form>
-              </Card>
+                  </form>
+                </Card>
+              </div>
             ) : (
-              <Card className="post-form-card">
-                <div className="hub-panel-head">
-                  <div>
-                    <span className="muted">Create post</span>
-                    <h2>Post room requirement</h2>
+              <div ref={roomWorkflowRef}>
+                <Card className="post-form-card">
+                  <div className="hub-panel-head">
+                    <div>
+                      <span className="muted">Create post</span>
+                      <h2>Post room requirement</h2>
+                    </div>
+                    <Badge tone="purple">Workflow 2</Badge>
                   </div>
-                  <Badge tone="purple">Workflow 2</Badge>
-                </div>
 
-                <form className="form-grid" onSubmit={handleFindRoomSubmit}>
+                  <form className="form-grid" onSubmit={handleFindRoomSubmit}>
                   <div className="split-form-grid">
                     <div className="field">
-                      <label htmlFor="need-city">City</label>
-                      <input
-                        id="need-city"
-                        onChange={(event) =>
-                          setFindRoomForm((current) => ({ ...current, city: event.target.value }))
-                        }
-                        placeholder="Bengaluru"
-                        value={findRoomForm.city}
-                      />
+                      <label htmlFor="need-city-select">City</label>
+                      <select
+                        id="need-city-select"
+                        onChange={(event) => {
+                          const nextValue = event.target.value
+                          setFindRoomCityOption(nextValue)
+
+                          if (nextValue === otherCityOptionValue) {
+                            setFindRoomForm((current) => ({ ...current, city: findRoomCustomCity }))
+                            return
+                          }
+
+                          setFindRoomCustomCity('')
+                          setFindRoomForm((current) => ({ ...current, city: nextValue }))
+                        }}
+                        value={findRoomCityOption}
+                      >
+                        <option value="">Select a city</option>
+                        {majorCities.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
+                        <option value={otherCityOptionValue}>Other city</option>
+                      </select>
                     </div>
 
                     <div className="field">
@@ -1140,6 +1703,21 @@ export function FindTenantPage() {
                       />
                     </div>
                   </div>
+
+                  {findRoomCityOption === otherCityOptionValue && (
+                    <div className="field">
+                      <label htmlFor="need-city-custom">Enter city</label>
+                      <input
+                        id="need-city-custom"
+                        onChange={(event) => {
+                          setFindRoomCustomCity(event.target.value)
+                          setFindRoomForm((current) => ({ ...current, city: event.target.value }))
+                        }}
+                        placeholder="Enter your city"
+                        value={findRoomCustomCity}
+                      />
+                    </div>
+                  )}
 
                   <div className="split-form-grid">
                     <div className="field">
@@ -1225,8 +1803,9 @@ export function FindTenantPage() {
                   <Button fullWidth type="submit" disabled={isSubmittingRoomNeed}>
                     {isSubmittingRoomNeed ? 'Posting room requirement...' : 'Post room requirement'}
                   </Button>
-                </form>
-              </Card>
+                  </form>
+                </Card>
+              </div>
             )}
           </div>
         </div>
@@ -1260,4 +1839,104 @@ function formatShortDate(value: string) {
 
 function toIsoDate(value: string) {
   return new Date(`${value}T00:00:00.000Z`).toISOString()
+}
+
+function resolveCityValue(selectedCity: string, customCity: string) {
+  return selectedCity === otherCityOptionValue ? customCity.trim() : selectedCity.trim()
+}
+
+function toSelectedPlaceLocation(
+  locationName?: string | null,
+  latitude?: number | null,
+  longitude?: number | null,
+) {
+  if (!locationName || latitude == null || longitude == null) {
+    return null
+  }
+
+  return {
+    locationName,
+    latitude,
+    longitude,
+  }
+}
+
+async function getPublishedListings() {
+  return apiRequest<Listing[]>('/listings?status=PUBLISHED')
+}
+
+function normalizeListings(listingsPayload: Listing[]) {
+  return listingsPayload.map((listing) => ({
+    ...listing,
+    images: Array.isArray(listing.images) ? listing.images : [],
+    locationName: typeof listing.locationName === 'string' ? listing.locationName : null,
+    latitude:
+      typeof listing.latitude === 'number'
+        ? listing.latitude
+        : typeof listing.latitude === 'string'
+          ? Number(listing.latitude)
+          : null,
+    longitude:
+      typeof listing.longitude === 'number'
+        ? listing.longitude
+        : typeof listing.longitude === 'string'
+          ? Number(listing.longitude)
+          : null,
+  }))
+}
+
+function matchesListingState(listing: Listing, state: ListingStateFilter) {
+  if (state === 'BOOSTED') {
+    return listing.isBoosted
+  }
+
+  if (state === 'VERIFIED') {
+    return listing.owner.isVerified
+  }
+
+  return !listing.isBoosted && !listing.owner.isVerified
+}
+
+function canViewListingContact(
+  listing: Listing,
+  viewer: { id: string; isVerified: boolean } | null,
+) {
+  if (!listing.contactPhone) {
+    return false
+  }
+
+  if (!viewer) {
+    return false
+  }
+
+  return viewer.isVerified || viewer.id === listing.owner.id
+}
+
+function getContactVisibilityMessage(viewer: { isVerified: boolean } | null) {
+  if (!viewer) {
+    return 'Sign in and verify your profile to unlock direct contact details.'
+  }
+
+  if (!viewer.isVerified) {
+    return 'Only verified members can view direct phone and WhatsApp details.'
+  }
+
+  return 'Contact details unavailable.'
+}
+
+function buildWhatsappLink(phone: string | null) {
+  const normalizedPhone = normalizePhoneForLink(phone)
+  return `https://wa.me/${normalizedPhone}`
+}
+
+function buildCallLink(phone: string | null) {
+  return `tel:${normalizePhoneForLink(phone)}`
+}
+
+function normalizePhoneForLink(phone: string | null) {
+  return (phone ?? '').replace(/[^\d+]/g, '')
+}
+
+function formatContactPhone(phone: string | null) {
+  return phone ?? 'Not shared'
 }

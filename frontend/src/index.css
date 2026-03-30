@@ -3289,6 +3289,12 @@ input:focus {
   margin-top: 28px;
 }
 
+.hub-feed-stack {
+  display: grid;
+  gap: 24px;
+  margin-top: 28px;
+}
+
 .hub-panel,
 .post-form-card {
   padding: 20px;
@@ -3320,30 +3326,326 @@ input:focus {
   justify-content: flex-end;
 }
 
-.listing-feed-grid {
+.live-feed-panel,
+.room-seekers-panel {
+  gap: 22px;
+}
+
+.live-feed-panel {
+  background:
+    radial-gradient(circle at top right, rgba(73, 214, 141, 0.14), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.94));
+}
+
+.live-feed-head,
+.room-seekers-head {
+  align-items: flex-start;
+}
+
+.panel-subtitle {
+  margin: 10px 0 0;
+  max-width: 64ch;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.live-feed-toolbar {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(229, 233, 239, 0.92);
+  background: rgba(250, 252, 253, 0.92);
+}
+
+.live-feed-summary {
+  display: grid;
+  gap: 4px;
+}
+
+.live-feed-summary strong {
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+}
+
+.live-feed-summary span {
+  color: var(--text-secondary);
+}
+
+.listing-filter-toolbar-actions,
+.listing-filter-token-row {
   display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.listing-filter-toolbar-actions {
+  justify-content: flex-start;
+}
+
+.listing-filter-token-row {
+  margin-top: -6px;
+}
+
+.listing-filter-grid {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(229, 233, 239, 0.92);
+  background: rgba(248, 251, 253, 0.9);
+}
+
+.listing-filter-group {
+  display: grid;
+  gap: 10px;
+}
+
+.listing-filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.listing-filter-chip {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(211, 218, 227, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition:
+    transform var(--timing-micro) var(--easing),
+    background var(--timing-standard) var(--easing),
+    border-color var(--timing-standard) var(--easing),
+    box-shadow var(--timing-standard) var(--easing),
+    color var(--timing-standard) var(--easing);
+}
+
+.listing-filter-chip:hover {
+  transform: translateY(-1px);
+  color: var(--text-primary);
+  border-color: rgba(108, 99, 255, 0.24);
+}
+
+.listing-filter-chip.active {
+  color: var(--primary-dark);
+  background: rgba(108, 99, 255, 0.1);
+  border-color: rgba(108, 99, 255, 0.32);
+  box-shadow: 0 12px 24px rgba(108, 99, 255, 0.12);
+}
+
+.location-autocomplete-shell {
+  position: relative;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 245, 255, 0.96)),
+    rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 20px 40px rgba(108, 99, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition:
+    border-color var(--timing-standard) var(--easing),
+    box-shadow var(--timing-standard) var(--easing);
+}
+
+.location-autocomplete-shell:focus-within {
+  border-color: rgba(108, 99, 255, 0.36);
+  box-shadow:
+    0 0 0 4px rgba(108, 99, 255, 0.12),
+    0 20px 40px rgba(108, 99, 255, 0.1);
+}
+
+.location-autocomplete-input-wrap {
+  position: relative;
+}
+
+.location-autocomplete-input {
+  min-height: 54px;
+  padding: 14px 48px 14px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.location-autocomplete-input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.location-autocomplete-input::placeholder {
+  color: rgba(107, 114, 128, 0.9);
+}
+
+.location-autocomplete-spinner {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  color: var(--primary-dark);
+}
+
+.location-autocomplete-suggestions,
+.location-autocomplete-empty {
+  margin: 0 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(108, 99, 255, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 22px 40px rgba(82, 63, 165, 0.14);
+}
+
+.location-autocomplete-suggestions {
+  overflow: hidden;
+}
+
+.location-autocomplete-option {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--text-secondary);
+  font: inherit;
+  transition:
+    background var(--timing-micro) var(--easing),
+    color var(--timing-micro) var(--easing);
+}
+
+.location-autocomplete-option + .location-autocomplete-option {
+  border-top: 1px solid rgba(108, 99, 255, 0.08);
+}
+
+.location-autocomplete-option:hover,
+.location-autocomplete-option.active {
+  background: linear-gradient(135deg, rgba(108, 99, 255, 0.12), rgba(255, 255, 255, 0.94));
+  color: var(--text-primary);
+}
+
+.location-autocomplete-option-main {
+  font-weight: 700;
+  color: inherit;
+}
+
+.location-autocomplete-empty {
+  padding: 13px 14px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.location-inline-status,
+.location-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.location-inline-status {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.location-summary-card,
+.location-summary-head,
+.location-summary-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.location-summary-card {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(229, 231, 235, 0.88);
+  background: rgba(247, 248, 252, 0.9);
+}
+
+.location-summary-card.compact {
+  padding: 12px;
+}
+
+.location-summary-head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.location-summary-title {
+  align-items: flex-start;
+}
+
+.location-summary-title strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.location-summary-title p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.location-summary-pin {
+  color: var(--primary-dark);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.location-summary-preview {
+  overflow: hidden;
+  border-radius: 14px;
+  aspect-ratio: 16 / 6;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.location-summary-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.location-summary-actions {
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+}
+
+.listing-contact-card,
+.listing-contact-head,
+.listing-contact-lock {
+  display: grid;
+  gap: 10px;
+}
+
+.listing-contact-card {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(229, 231, 235, 0.88);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.listing-contact-head strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.listing-contact-lock {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.listing-feed-grid {
+  display: grid;
   gap: 18px;
-  overflow-x: auto;
-  padding: 2px 4px 10px;
-  margin: 0 -4px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(108, 99, 255, 0.28) transparent;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .listing-feed-grid > * {
-  flex: 0 0 min(320px, calc(100vw - 72px));
   min-width: 0;
-  scroll-snap-align: start;
-}
-
-.listing-feed-grid::-webkit-scrollbar {
-  height: 8px;
-}
-
-.listing-feed-grid::-webkit-scrollbar-thumb {
-  background: rgba(108, 99, 255, 0.24);
-  border-radius: 999px;
 }
 
 .hub-panel-wide {
@@ -3358,6 +3660,10 @@ input:focus {
 .feed-card {
   display: grid;
   gap: 14px;
+}
+
+.room-seeker-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .feed-media {
@@ -3898,8 +4204,18 @@ input:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .listing-feed-grid > * {
-    flex-basis: 320px;
+  .live-feed-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .location-summary-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .listing-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3929,8 +4245,8 @@ input:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .listing-feed-grid > * {
-    flex-basis: 340px;
+  .listing-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -9,8 +9,11 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsLatitude,
+  IsLongitude,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -42,6 +45,29 @@ export class CreateListingDto {
   @ApiProperty()
   @IsString()
   locality: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationName?: string;
+
+  @ApiPropertyOptional({ example: 12.9715987 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsLatitude()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 77.5945627 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsLongitude()
+  longitude?: number;
+
+  @ApiPropertyOptional({ example: '+919876543210' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  contactPhone?: string;
 
   @ApiProperty()
   @Type(() => Number)
