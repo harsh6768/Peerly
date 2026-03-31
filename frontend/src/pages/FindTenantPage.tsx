@@ -34,6 +34,14 @@ type ListingImage = {
   sortOrder: number
 }
 
+type NearbyPlaceType = 'tech_park' | 'company'
+
+type NearbyPlace = {
+  id?: string
+  name: string
+  type: NearbyPlaceType
+}
+
 type Listing = {
   id: string
   title: string
@@ -54,6 +62,7 @@ type Listing = {
   contactMode: string
   isBoosted: boolean
   images: ListingImage[]
+  nearbyPlaces: NearbyPlace[]
   owner: {
     id: string
     fullName: string
@@ -89,6 +98,7 @@ type ReplaceTenantForm = {
   locationName: string
   latitude: number | null
   longitude: number | null
+  nearbyPlaces: NearbyPlace[]
   rentAmount: string
   depositAmount: string
   propertyType: string
@@ -126,6 +136,7 @@ type ListingStateFilter = 'BOOSTED' | 'VERIFIED' | 'STANDARD'
 
 type ListingFilters = {
   city: string
+  nearbyWorkplace: string
   propertyTypes: string[]
   occupancyTypes: string[]
   listingStates: ListingStateFilter[]
@@ -151,6 +162,18 @@ const majorCities = [
   'Lucknow',
 ]
 const otherCityOptionValue = '__OTHER_CITY__'
+const standardNearbyWorkplaces: NearbyPlace[] = [
+  { name: 'ITPL', type: 'tech_park' },
+  { name: 'Manyata', type: 'tech_park' },
+  { name: 'Ecospace', type: 'tech_park' },
+  { name: 'ETV', type: 'tech_park' },
+  { name: 'Bagmane Tech Park', type: 'tech_park' },
+  { name: 'RMZ Ecoworld', type: 'tech_park' },
+  { name: 'Google', type: 'company' },
+  { name: 'Amazon', type: 'company' },
+  { name: 'Microsoft', type: 'company' },
+  { name: 'Wipro', type: 'company' },
+]
 const listingStateOptions: Array<{ label: string; value: ListingStateFilter }> = [
   { label: 'Boosted', value: 'BOOSTED' },
   { label: 'Verified', value: 'VERIFIED' },
@@ -187,6 +210,7 @@ export function FindTenantPage() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [listingFilters, setListingFilters] = useState<ListingFilters>({
     city: '',
+    nearbyWorkplace: '',
     propertyTypes: [],
     occupancyTypes: [],
     listingStates: [],
@@ -199,6 +223,7 @@ export function FindTenantPage() {
   const [replaceTenantCustomCity, setReplaceTenantCustomCity] = useState('')
   const [findRoomCityOption, setFindRoomCityOption] = useState('')
   const [findRoomCustomCity, setFindRoomCustomCity] = useState('')
+  const [nearbyPlaceInput, setNearbyPlaceInput] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>({
     title: '',
     description: '',
@@ -207,6 +232,7 @@ export function FindTenantPage() {
     locationName: '',
     latitude: null,
     longitude: null,
+    nearbyPlaces: [],
     rentAmount: '',
     depositAmount: '',
     propertyType: 'APARTMENT',
@@ -275,10 +301,38 @@ export function FindTenantPage() {
     () => Array.from(new Set(listings.map((listing) => listing.city))).sort((left, right) => left.localeCompare(right)),
     [listings],
   )
+  const nearbyWorkplaceFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...standardNearbyWorkplaces.map((place) => place.name),
+          ...listings.flatMap((listing) => listing.nearbyPlaces.map((place) => place.name)),
+        ]),
+      ).sort((left, right) => left.localeCompare(right)),
+    [listings],
+  )
+  const suggestedNearbyPlaces = useMemo(() => {
+    const normalizedQuery = normalizeNearbyPlaceName(nearbyPlaceInput).toLowerCase()
+    const selectedNames = new Set(replaceTenantForm.nearbyPlaces.map((place) => place.name.toLowerCase()))
+
+    return standardNearbyWorkplaces
+      .filter((place) => !selectedNames.has(place.name.toLowerCase()))
+      .filter((place) =>
+        normalizedQuery ? place.name.toLowerCase().includes(normalizedQuery) : true,
+      )
+      .slice(0, 6)
+  }, [nearbyPlaceInput, replaceTenantForm.nearbyPlaces])
   const filteredListings = useMemo(
     () =>
       listings.filter((listing) => {
         if (listingFilters.city && listing.city !== listingFilters.city) {
+          return false
+        }
+
+        if (
+          listingFilters.nearbyWorkplace &&
+          !listing.nearbyPlaces.some((place) => place.name === listingFilters.nearbyWorkplace)
+        ) {
           return false
         }
 
@@ -316,6 +370,7 @@ export function FindTenantPage() {
   const hasListingFilters = useMemo(
     () =>
       Boolean(listingFilters.city) ||
+      Boolean(listingFilters.nearbyWorkplace) ||
       listingFilters.propertyTypes.length > 0 ||
       listingFilters.occupancyTypes.length > 0 ||
       listingFilters.listingStates.length > 0,
@@ -326,6 +381,10 @@ export function FindTenantPage() {
 
     if (listingFilters.city) {
       labels.push(listingFilters.city)
+    }
+
+    if (listingFilters.nearbyWorkplace) {
+      labels.push(`Near ${listingFilters.nearbyWorkplace}`)
     }
 
     labels.push(...listingFilters.propertyTypes.map((type) => formatEnum(type)))
@@ -458,6 +517,7 @@ export function FindTenantPage() {
           locationName: replaceTenantForm.locationName,
           latitude: replaceTenantForm.latitude,
           longitude: replaceTenantForm.longitude,
+          nearbyPlaces: replaceTenantForm.nearbyPlaces,
           contactMode: replaceTenantForm.contactMode,
           contactPhone: replaceTenantForm.contactPhone.trim(),
           rentAmount: Number(replaceTenantForm.rentAmount),
@@ -480,6 +540,7 @@ export function FindTenantPage() {
         locationName: '',
         latitude: null,
         longitude: null,
+        nearbyPlaces: [],
         rentAmount: '',
         depositAmount: '',
         propertyType: 'APARTMENT',
@@ -490,6 +551,7 @@ export function FindTenantPage() {
       })
       setReplaceTenantCityOption('')
       setReplaceTenantCustomCity('')
+      setNearbyPlaceInput('')
       clearListingImages()
       setUploadSummary(null)
       await loadHousingData()
@@ -789,12 +851,44 @@ export function FindTenantPage() {
   function clearListingFilters() {
     setListingFilters({
       city: '',
+      nearbyWorkplace: '',
       propertyTypes: [],
       occupancyTypes: [],
       listingStates: [],
     })
     setShowAllListings(false)
     setIsListingFilterPanelOpen(false)
+  }
+
+  function addNearbyPlace(place: { name: string; type: NearbyPlaceType }) {
+    const normalizedName = normalizeNearbyPlaceName(place.name)
+
+    if (!normalizedName) {
+      return
+    }
+
+    setReplaceTenantForm((current) => {
+      if (current.nearbyPlaces.length >= 5) {
+        return current
+      }
+
+      if (current.nearbyPlaces.some((item) => item.name.toLowerCase() === normalizedName.toLowerCase())) {
+        return current
+      }
+
+      return {
+        ...current,
+        nearbyPlaces: [...current.nearbyPlaces, { name: normalizedName, type: place.type }],
+      }
+    })
+    setNearbyPlaceInput('')
+  }
+
+  function removeNearbyPlace(name: string) {
+    setReplaceTenantForm((current) => ({
+      ...current,
+      nearbyPlaces: current.nearbyPlaces.filter((place) => place.name !== name),
+    }))
   }
 
   return (
@@ -880,6 +974,22 @@ export function FindTenantPage() {
                     </div>
 
                     <p className="feed-copy">{listing.description}</p>
+
+                    {listing.nearbyPlaces.length > 0 && (
+                      <div className="listing-nearby-places">
+                        <span className="muted">Near</span>
+                        <div className="nearby-place-chip-row compact">
+                          {getVisibleNearbyPlaces(listing.nearbyPlaces).map((place) => (
+                            <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
+                              {place.name}
+                            </span>
+                          ))}
+                          {listing.nearbyPlaces.length > 2 && (
+                            <span className="nearby-place-chip static">+{listing.nearbyPlaces.length - 2}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <LocationSummaryCard
                       compact
@@ -1037,6 +1147,27 @@ export function FindTenantPage() {
                     </select>
                   </div>
 
+                  <div className="field">
+                    <label htmlFor="listing-filter-nearby">Workplace</label>
+                    <select
+                      id="listing-filter-nearby"
+                      onChange={(event) =>
+                        setListingFilters((current) => ({
+                          ...current,
+                          nearbyWorkplace: event.target.value,
+                        }))
+                      }
+                      value={listingFilters.nearbyWorkplace}
+                    >
+                      <option value="">All workplaces</option>
+                      {nearbyWorkplaceFilterOptions.map((place) => (
+                        <option key={place} value={place}>
+                          {place}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="listing-filter-group">
                     <span className="muted">Property type</span>
                     <div className="listing-filter-chip-row">
@@ -1126,6 +1257,22 @@ export function FindTenantPage() {
                     </div>
 
                     <p className="feed-copy">{listing.description}</p>
+
+                    {listing.nearbyPlaces.length > 0 && (
+                      <div className="listing-nearby-places">
+                        <span className="muted">Near</span>
+                        <div className="nearby-place-chip-row compact">
+                          {getVisibleNearbyPlaces(listing.nearbyPlaces).map((place) => (
+                            <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
+                              {place.name}
+                            </span>
+                          ))}
+                          {listing.nearbyPlaces.length > 2 && (
+                            <span className="nearby-place-chip static">+{listing.nearbyPlaces.length - 2}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <LocationSummaryCard
                       compact
@@ -1412,6 +1559,74 @@ export function FindTenantPage() {
                     showSelectionCard={false}
                     value={selectedListingLocation}
                   />
+
+                  <div className="field">
+                    <label htmlFor="listing-nearby-place-input">Nearby workplaces</label>
+                    <div className="nearby-place-selected-row">
+                      {replaceTenantForm.nearbyPlaces.map((place) => (
+                        <span className="nearby-place-chip selected" key={place.name}>
+                          {place.name}
+                          <button
+                            aria-label={`Remove ${place.name}`}
+                            className="nearby-place-chip-remove"
+                            onClick={() => removeNearbyPlace(place.name)}
+                            type="button"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {replaceTenantForm.nearbyPlaces.length === 0 && (
+                        <span className="muted">Optional, but recommended. Add up to 5 nearby tech parks or companies.</span>
+                      )}
+                    </div>
+
+                    <div className="nearby-place-input-row">
+                      <input
+                        id="listing-nearby-place-input"
+                        onChange={(event) => setNearbyPlaceInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            addNearbyPlace({
+                              name: nearbyPlaceInput,
+                              type: inferNearbyPlaceType(nearbyPlaceInput),
+                            })
+                          }
+                        }}
+                        placeholder="Search ITPL, Manyata, Google, Amazon..."
+                        value={nearbyPlaceInput}
+                      />
+                      <Button
+                        disabled={!normalizeNearbyPlaceName(nearbyPlaceInput) || replaceTenantForm.nearbyPlaces.length >= 5}
+                        onClick={() =>
+                          addNearbyPlace({
+                            name: nearbyPlaceInput,
+                            type: inferNearbyPlaceType(nearbyPlaceInput),
+                          })
+                        }
+                        type="button"
+                        variant="secondary"
+                      >
+                        Add
+                      </Button>
+                    </div>
+
+                    {suggestedNearbyPlaces.length > 0 && (
+                      <div className="nearby-place-suggestion-row">
+                        {suggestedNearbyPlaces.map((place) => (
+                          <button
+                            className="nearby-place-chip"
+                            key={place.name}
+                            onClick={() => addNearbyPlace(place)}
+                            type="button"
+                          >
+                            {place.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="split-form-grid">
                     <div className="field">
@@ -1869,6 +2084,7 @@ function normalizeListings(listingsPayload: Listing[]) {
   return listingsPayload.map((listing) => ({
     ...listing,
     images: Array.isArray(listing.images) ? listing.images : [],
+    nearbyPlaces: Array.isArray(listing.nearbyPlaces) ? listing.nearbyPlaces : [],
     locationName: typeof listing.locationName === 'string' ? listing.locationName : null,
     latitude:
       typeof listing.latitude === 'number'
@@ -1895,6 +2111,21 @@ function matchesListingState(listing: Listing, state: ListingStateFilter) {
   }
 
   return !listing.isBoosted && !listing.owner.isVerified
+}
+
+function normalizeNearbyPlaceName(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function inferNearbyPlaceType(value: string): NearbyPlaceType {
+  const normalizedValue = normalizeNearbyPlaceName(value).toLowerCase()
+  const knownPlace = standardNearbyWorkplaces.find((place) => place.name.toLowerCase() === normalizedValue)
+
+  return knownPlace?.type ?? 'company'
+}
+
+function getVisibleNearbyPlaces(nearbyPlaces: NearbyPlace[]) {
+  return nearbyPlaces.slice(0, 2)
 }
 
 function canViewListingContact(

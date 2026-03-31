@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CreateListingImageDto } from './create-listing-image.dto';
+import { CreateListingNearbyPlaceDto } from './create-listing-nearby-place.dto';
 
 export class CreateListingDto {
   // Required fields are just normal properties now.
@@ -68,6 +69,14 @@ export class CreateListingDto {
   @IsString()
   @MaxLength(20)
   contactPhone?: string;
+
+  @ApiPropertyOptional({ type: [CreateListingNearbyPlaceDto], maxItems: 5 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => CreateListingNearbyPlaceDto)
+  nearbyPlaces?: CreateListingNearbyPlaceDto[];
 
   @ApiProperty()
   @Type(() => Number)

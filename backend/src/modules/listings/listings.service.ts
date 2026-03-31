@@ -16,9 +16,21 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 export class ListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(city?: string, status?: ListingStatus) {
+  async findAll(city?: string, status?: ListingStatus, nearby?: string) {
+    const trimmedNearby = nearby?.trim();
     const listings = await this.prisma.listing.findMany({
-      where: buildWhere({ city, status }),
+      where: {
+        ...buildWhere({ city, status }),
+        ...(trimmedNearby
+          ? {
+              nearbyPlaces: {
+                some: {
+                  name: trimmedNearby,
+                },
+              },
+            }
+          : {}),
+      },
       include: listingInclude,
       orderBy: {
         createdAt: 'desc',
@@ -75,6 +87,11 @@ export class ListingsService {
         status: dto.status,
         isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
+        nearbyPlaces: dto.nearbyPlaces?.length
+          ? {
+              create: this.normalizeNearbyPlaces(dto.nearbyPlaces),
+            }
+          : undefined,
         images: {
           create: this.normalizeListingImages(dto.images),
         },
@@ -110,6 +127,18 @@ export class ListingsService {
         status: dto.status,
         isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
+        ...(dto.nearbyPlaces !== undefined
+          ? {
+              nearbyPlaces: {
+                deleteMany: {},
+                ...(dto.nearbyPlaces.length
+                  ? {
+                      create: this.normalizeNearbyPlaces(dto.nearbyPlaces),
+                    }
+                  : {}),
+              },
+            }
+          : {}),
         ...(dto.images
           ? {
               images: {
@@ -231,5 +260,25 @@ export class ListingsService {
         sortOrder: index,
         isCover: index === 0,
       }));
+  }
+
+  private normalizeNearbyPlaces(nearbyPlaces: NonNullable<CreateListingDto['nearbyPlaces']>) {
+    const normalizedPlaces = nearbyPlaces
+      .map((place) => ({
+        name: place.name.trim().replace(/\s+/g, ' '),
+        type: place.type,
+      }))
+      .filter((place) => place.name.length > 0);
+
+    const uniquePlaces = normalizedPlaces.filter(
+      (place, index, places) =>
+        places.findIndex((candidate) => candidate.name.toLowerCase() === place.name.toLowerCase()) === index,
+    );
+
+    if (uniquePlaces.length > 5) {
+      throw new BadRequestException('A maximum of 5 nearby workplaces is allowed.');
+    }
+
+    return uniquePlaces;
   }
 }

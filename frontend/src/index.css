@@ -3438,6 +3438,70 @@ input:focus {
   box-shadow: 0 12px 24px rgba(108, 99, 255, 0.12);
 }
 
+.nearby-place-selected-row,
+.nearby-place-suggestion-row,
+.nearby-place-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.nearby-place-selected-row {
+  min-height: 40px;
+  align-items: center;
+}
+
+.nearby-place-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.nearby-place-chip {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(211, 218, 227, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+}
+
+.nearby-place-chip.selected {
+  color: var(--primary-dark);
+  background: rgba(108, 99, 255, 0.1);
+  border-color: rgba(108, 99, 255, 0.22);
+}
+
+.nearby-place-chip.static {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.86rem;
+}
+
+.nearby-place-chip-remove {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.listing-nearby-places {
+  display: grid;
+  gap: 8px;
+}
+
+.nearby-place-chip-row.compact {
+  gap: 8px;
+}
+
 .location-autocomplete-shell {
   position: relative;
   border-radius: 16px;

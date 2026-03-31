@@ -90,6 +90,11 @@ enum OccupancyType {
   SHARED
 }
 
+enum NearbyPlaceType {
+  tech_park
+  company
+}
+
 enum ListingInquiryStatus {
   NEW
   CONTACTED
@@ -347,11 +352,25 @@ model Listing {
   owner          User             @relation("ListingOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   images         ListingImage[]
+  nearbyPlaces   ListingNearby[]
   inquiries      ListingInquiry[]
 
   @@index([organizationId, status])
   @@index([city, locality, status])
   @@index([moveInDate, urgencyLevel])
+}
+
+model ListingNearby {
+  id        String          @id @default(cuid())
+  listingId String
+  name      String          @db.VarChar(120)
+  type      NearbyPlaceType
+  createdAt DateTime        @default(now())
+  listing   Listing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, name])
+  @@index([listingId, createdAt])
+  @@index([name])
 }
 
 model ListingImage {

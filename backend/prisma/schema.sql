@@ -41,6 +41,9 @@ CREATE TYPE "PropertyType" AS ENUM ('ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE'
 CREATE TYPE "OccupancyType" AS ENUM ('SINGLE', 'DOUBLE', 'SHARED');
 
 -- CreateEnum
+CREATE TYPE "NearbyPlaceType" AS ENUM ('tech_park', 'company');
+
+-- CreateEnum
 CREATE TYPE "ListingInquiryStatus" AS ENUM ('NEW', 'CONTACTED', 'SCHEDULED', 'CLOSED', 'DECLINED');
 
 -- CreateEnum
@@ -208,6 +211,17 @@ CREATE TABLE "Listing" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Listing_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ListingNearby" (
+    "id" TEXT NOT NULL,
+    "listingId" TEXT NOT NULL,
+    "name" VARCHAR(120) NOT NULL,
+    "type" "NearbyPlaceType" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ListingNearby_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -432,6 +446,15 @@ CREATE INDEX "Listing_city_locality_status_idx" ON "Listing"("city", "locality",
 CREATE INDEX "Listing_moveInDate_urgencyLevel_idx" ON "Listing"("moveInDate", "urgencyLevel");
 
 -- CreateIndex
+CREATE INDEX "ListingNearby_listingId_createdAt_idx" ON "ListingNearby"("listingId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ListingNearby_name_idx" ON "ListingNearby"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ListingNearby_listingId_name_key" ON "ListingNearby"("listingId", "name");
+
+-- CreateIndex
 CREATE INDEX "ListingImage_listingId_isCover_idx" ON "ListingImage"("listingId", "isCover");
 
 -- CreateIndex
@@ -511,6 +534,9 @@ ALTER TABLE "Listing" ADD CONSTRAINT "Listing_ownerUserId_fkey" FOREIGN KEY ("ow
 
 -- AddForeignKey
 ALTER TABLE "Listing" ADD CONSTRAINT "Listing_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ListingNearby" ADD CONSTRAINT "ListingNearby_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ListingImage" ADD CONSTRAINT "ListingImage_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;

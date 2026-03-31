@@ -18,12 +18,14 @@ export class ListingsController {
   @ApiOperation({ summary: 'List tenant replacement listings' })
   @ApiQuery({ name: 'city', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ListingStatus })
+  @ApiQuery({ name: 'nearby', required: false })
   @Get()
   findAll(
     @Query('city') city?: string,
     @Query('status') status?: ListingStatus,
+    @Query('nearby') nearby?: string,
   ) {
-    return this.listingsService.findAll(city, status);
+    return this.listingsService.findAll(city, status, nearby);
   }
 
   @ApiOperation({ summary: 'Get a replacement tenant listing by id' })

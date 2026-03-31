@@ -49,6 +49,11 @@ export const listingInclude = {
       sortOrder: 'asc',
     },
   },
+  nearbyPlaces: {
+    orderBy: {
+      createdAt: 'asc',
+    },
+  },
 } as const;
 
 export function buildWhere(filters: Record<string, unknown>) {
