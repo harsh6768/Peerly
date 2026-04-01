@@ -1,8 +1,9 @@
-import { House, LogOut, Search, ShieldCheck, UserRound } from 'lucide-react'
+import { House, Search, ShieldCheck, UserRound } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 import { useAppAuth } from '../context/AppAuthContext'
+import { housingIntentValues, useHousingIntent } from '../context/HousingIntentContext'
 
 const desktopLinks = [
   { to: '/', label: 'Home' },
@@ -17,7 +18,8 @@ const mobileLinks = [
 ]
 
 export function AppShell() {
-  const { configured, isLoading, isSyncing, signInWithGoogle, signOut, user } = useAppAuth()
+  const { configured, isLoading, isSyncing, signInWithGoogle, user } = useAppAuth()
+  const { intent, setIntent } = useHousingIntent()
 
   return (
     <div className="app-shell">
@@ -50,13 +52,30 @@ export function AppShell() {
           <div className="desktop-actions">
             {user ? (
               <>
+                <div
+                  aria-label="Housing intent"
+                  className="toggle-wrap header-intent-toggle"
+                  data-intent={intent}
+                >
+                  <button
+                    className={`toggle-pill${intent === housingIntentValues.findRoom ? ' active' : ''}`}
+                    onClick={() => setIntent(housingIntentValues.findRoom)}
+                    type="button"
+                  >
+                    Find room
+                  </button>
+                  <button
+                    className={`toggle-pill${intent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
+                    onClick={() => setIntent(housingIntentValues.tenantReplacement)}
+                    type="button"
+                  >
+                    Tenant replacement
+                  </button>
+                </div>
                 <NavLink className="header-user-chip" to="/profile">
                   <span className={`header-user-status${user.isVerified ? ' verified' : ''}`} />
                   <span>{user.name}</span>
                 </NavLink>
-                <Button icon={<LogOut size={16} />} onClick={() => void signOut()} variant="ghost">
-                  Sign out
-                </Button>
               </>
             ) : (
               <>

@@ -4,23 +4,22 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
-  Home,
   LoaderCircle,
   MapPin,
   PencilLine,
   Plus,
-  Search,
   ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { LocationSummaryCard, PlaceAutocompleteField } from '../components/PlaceAutocompleteField'
 import { useAppAuth } from '../context/AppAuthContext'
+import { housingIntentValues, useHousingIntent, type HousingIntent } from '../context/HousingIntentContext'
 import { apiRequest } from '../lib/api'
 import {
   cleanupUploadedListingImages,
@@ -120,13 +119,6 @@ type FeedbackState = {
   tone: 'success' | 'error' | 'info'
   message: string
 }
-
-const housingIntentValues = {
-  findRoom: 'FIND_ROOM',
-  findReplacement: 'FIND_REPLACEMENT',
-} as const
-
-type HousingIntent = (typeof housingIntentValues)[keyof typeof housingIntentValues]
 
 type ListingDetailsRouteState = {
   listing?: Listing
@@ -509,7 +501,7 @@ export function FindTenantListingDetailsPage() {
         <div className="page-inner">
           <div className="hub-panel hub-panel-wide listing-details-screen">
             <div className="listing-details-topbar">
-              <Button onClick={() => navigate('/find-tenant?intent=find_room')} variant="ghost">
+              <Button onClick={() => navigate('/find-tenant')} variant="ghost">
                 Back to search
               </Button>
               {listing ? <Badge tone={badgeTone}>{badgeLabel}</Badge> : null}
@@ -658,9 +650,8 @@ export function FindTenantListingDetailsPage() {
 
 export function FindTenantPage() {
   const { sessionToken, user } = useAppAuth()
+  const { intent, setIntent } = useHousingIntent()
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [intent, setIntent] = useState<HousingIntent>(getIntentFromSearchParams(searchParams))
   const [publicListings, setPublicListings] = useState<Listing[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -690,10 +681,15 @@ export function FindTenantPage() {
       ),
     [replaceTenantForm.latitude, replaceTenantForm.locationName, replaceTenantForm.longitude],
   )
+  const activeIntent = user ? intent : housingIntentValues.findRoom
   const filteredPublicListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
     return publicListings.filter((listing) => {
+      if (user && listing.owner.id === user.id) {
+        return false
+      }
+
       if (!normalizedQuery) {
         return true
       }
@@ -709,11 +705,7 @@ export function FindTenantPage() {
         .toLowerCase()
         .includes(normalizedQuery)
     })
-  }, [publicListings, searchQuery])
-
-  useEffect(() => {
-    setIntent(getIntentFromSearchParams(searchParams))
-  }, [searchParams])
+  }, [publicListings, searchQuery, user])
 
   useEffect(() => {
     listingImagesRef.current = listingImages
@@ -763,18 +755,18 @@ export function FindTenantPage() {
   }
 
   function handleIntentChange(nextIntent: HousingIntent) {
+    if (!user && nextIntent === housingIntentValues.tenantReplacement) {
+      navigate('/profile')
+      return
+    }
+
     setIntent(nextIntent)
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      next.set('intent', serializeIntent(nextIntent))
-      return next
-    })
   }
 
   function startCreateListing() {
     resetListingComposer()
     setHostStep(0)
-    handleIntentChange(housingIntentValues.findReplacement)
+    handleIntentChange(housingIntentValues.tenantReplacement)
   }
 
   function startEditingListing(listing: Listing) {
@@ -824,7 +816,7 @@ export function FindTenantPage() {
       })),
     )
     setHostStep(0)
-    handleIntentChange(housingIntentValues.findReplacement)
+    handleIntentChange(housingIntentValues.tenantReplacement)
     setFeedback(null)
   }
 
@@ -1159,7 +1151,7 @@ export function FindTenantPage() {
     <Card className="feed-card">
       <strong>You have no active listings yet</strong>
       <p className="feed-copy">
-        Create your first replacement post from find replacement mode and keep future edits, draft saves, and rented updates in one place.
+        Create your first replacement post from tenant replacement mode and keep future edits, draft saves, and rented updates in one place.
       </p>
     </Card>
   )
@@ -1172,36 +1164,8 @@ export function FindTenantPage() {
             <div className="eyebrow">Housing</div>
             <h1 className="page-title">Choose your housing intent first, then we keep the rest of the UI focused.</h1>
             <p className="page-subtitle">
-              Find room is for seekers. Find replacement is for owners posting or managing replacement listings.
+              Find room is for seekers. Tenant replacement is for owners posting or managing replacement listings.
             </p>
-          </div>
-
-          <div className="housing-intent-switch reveal">
-            <button
-              aria-pressed={intent === housingIntentValues.findRoom}
-              className={`housing-intent-card${intent === housingIntentValues.findRoom ? ' active' : ''}`}
-              onClick={() => handleIntentChange(housingIntentValues.findRoom)}
-              type="button"
-            >
-              <div className="workflow-entry-icon">
-                <Search size={24} />
-              </div>
-              <strong>Find room</strong>
-              <p>Browse live apartment listings with no replacement-management blocks mixed in.</p>
-            </button>
-
-            <button
-              aria-pressed={intent === housingIntentValues.findReplacement}
-              className={`housing-intent-card${intent === housingIntentValues.findReplacement ? ' active' : ''}`}
-              onClick={() => handleIntentChange(housingIntentValues.findReplacement)}
-              type="button"
-            >
-              <div className="workflow-entry-icon">
-                <Home size={24} />
-              </div>
-              <strong>Find replacement</strong>
-              <p>Manage only your own replacement listings and publish through a step-by-step flow.</p>
-            </button>
           </div>
 
           {feedback && (
@@ -1210,21 +1174,21 @@ export function FindTenantPage() {
             </div>
           )}
 
-          {intent === housingIntentValues.findRoom ? (
+          {activeIntent === housingIntentValues.findRoom ? (
             <div className="hub-panel hub-panel-wide live-feed-panel">
               <div className="hub-panel-head live-feed-head">
                 <div>
                   <span className="muted">Intent: Find room</span>
                   <h2>Live room listings</h2>
                   <p className="panel-subtitle">
-                    Explore published listings only. Open the desktop details screen to review the full apartment gallery, pricing, and owner contact.
+                    Explore published listings only. If you are signed in, your own posts stay hidden here so this feed remains purely for discovery.
                   </p>
                 </div>
                 <div className="hub-panel-actions">
                   <Badge tone="green">{isLoading ? 'Loading' : `${filteredPublicListings.length} live`}</Badge>
                   {user ? (
-                    <Button onClick={() => handleIntentChange(housingIntentValues.findReplacement)} variant="secondary">
-                      Switch to find replacement
+                    <Button onClick={() => handleIntentChange(housingIntentValues.tenantReplacement)} variant="secondary">
+                      Switch to tenant replacement
                     </Button>
                   ) : (
                     <Button to="/profile" variant="secondary">
@@ -1266,7 +1230,7 @@ export function FindTenantPage() {
               <div className="hub-panel host-dashboard-panel">
                 <div className="hub-panel-head">
                   <div>
-                    <span className="muted">Intent: Find replacement</span>
+                    <span className="muted">Intent: Tenant replacement</span>
                     <h2>Your replacement listings</h2>
                   </div>
                   <div className="hub-panel-actions">
@@ -1283,7 +1247,7 @@ export function FindTenantPage() {
                   <Card className="feed-card">
                     <strong>Sign in to host a listing</strong>
                     <p className="feed-copy">
-                      Find replacement mode is for creating drafts, publishing replacement listings, and managing rented status.
+                      Tenant replacement mode is for creating drafts, publishing replacement listings, and managing rented status.
                     </p>
                     <Button to="/profile" variant="secondary">
                       Open profile
@@ -1787,20 +1751,6 @@ export function FindTenantPage() {
       </section>
     </div>
   )
-}
-
-function getIntentFromSearchParams(searchParams: URLSearchParams): HousingIntent {
-  const intent = searchParams.get('intent')
-
-  if (intent === 'find_replacement') {
-    return housingIntentValues.findReplacement
-  }
-
-  return housingIntentValues.findRoom
-}
-
-function serializeIntent(intent: HousingIntent) {
-  return intent === housingIntentValues.findReplacement ? 'find_replacement' : 'find_room'
 }
 
 function makeEmptyReplaceTenantForm(): ReplaceTenantForm {

@@ -85,7 +85,7 @@ export function AppFooter() {
 
           <div className="footer-bottom">
             <span>Housing MVP is live first. Delivery flows are documented and parked for a later phase.</span>
-            <span>Find room helps seekers browse listings, and find replacement helps owners publish and manage listings.</span>
+            <span>Find room helps seekers browse listings, and tenant replacement helps owners publish and manage listings.</span>
           </div>
         </div>
       </div>

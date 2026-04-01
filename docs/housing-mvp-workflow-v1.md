@@ -15,7 +15,7 @@ Build a clear tenant replacement marketplace where:
 Trusted Network now behaves as one housing app with two explicit intents:
 
 - `FIND_ROOM`
-- `FIND_REPLACEMENT`
+- `TENANT_REPLACEMENT`
 
 ## Intent model
 
@@ -32,7 +32,7 @@ Rules:
 - do not show host dashboard controls
 - do not mix in seeker-posted requirements
 
-### Find replacement
+### Tenant replacement
 
 Purpose:
 
@@ -86,7 +86,10 @@ The schema keys were preserved. The current product language maps to existing sc
 ## Current implementation notes
 
 - find room uses published tenant replacement listings only
-- find replacement uses the listings API filtered by the signed-in user's id for drafts and active listings
+- signed-out users always stay in find room mode even if they try to enter tenant replacement flow
+- signed-in users can switch intent from the header and the last selection is saved locally
+- the public room feed hides the signed-in user's own listings so it remains a discovery surface
+- tenant replacement uses the listings API filtered by the signed-in user's id for drafts and active listings
 - desktop listing details open on a dedicated route with a full apartment image carousel
 - profile and verification remain available separately from housing mode selection
 
