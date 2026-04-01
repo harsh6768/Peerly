@@ -1,4 +1,4 @@
-import { House, LogOut, MessageSquareText, PlusSquare, ShieldCheck, UserRound } from 'lucide-react'
+import { House, LogOut, Search, ShieldCheck, UserRound } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
@@ -6,16 +6,14 @@ import { useAppAuth } from '../context/AppAuthContext'
 
 const desktopLinks = [
   { to: '/', label: 'Home' },
-  { to: '/auth', label: 'Trust Center' },
   { to: '/find-tenant', label: 'Housing' },
-  { to: '/send-item', label: 'Delivery' },
+  { to: '/profile', label: 'Profile' },
 ]
 
 const mobileLinks = [
   { to: '/', label: 'Home', icon: House },
-  { to: '/find-tenant', label: 'Housing', icon: UserRound },
-  { to: '/send-item', label: 'Delivery', icon: PlusSquare },
-  { to: '/auth', label: 'Trust', icon: MessageSquareText },
+  { to: '/find-tenant', label: 'Housing', icon: Search },
+  { to: '/profile', label: 'Profile', icon: UserRound },
 ]
 
 export function AppShell() {
@@ -31,7 +29,7 @@ export function AppShell() {
             </span>
             <span className="brand-copy">
               Trusted Network
-              <small>Housing + delivery OS</small>
+              <small>Housing MVP</small>
             </span>
           </NavLink>
 
@@ -52,7 +50,7 @@ export function AppShell() {
           <div className="desktop-actions">
             {user ? (
               <>
-                <NavLink className="header-user-chip" to="/auth">
+                <NavLink className="header-user-chip" to="/profile">
                   <span className={`header-user-status${user.isVerified ? ' verified' : ''}`} />
                   <span>{user.name}</span>
                 </NavLink>
@@ -62,7 +60,7 @@ export function AppShell() {
               </>
             ) : (
               <>
-                <Button to="/auth" variant="ghost">
+                <Button to="/profile" variant="ghost">
                   Login
                 </Button>
                 <Button

@@ -7,16 +7,16 @@ const footerColumns = [
     heading: 'Platform',
     items: [
       { label: 'Home', to: '/' },
-      { label: 'Find Tenant', to: '/find-tenant' },
-      { label: 'Send Item', to: '/send-item' },
+      { label: 'Housing', to: '/find-tenant' },
+      { label: 'Profile', to: '/profile' },
     ],
   },
   {
     heading: 'Use Cases',
     items: [
-      { label: 'Tenant discovery' },
-      { label: 'Parcel matching' },
-      { label: 'Route coordination' },
+      { label: 'Find a room' },
+      { label: 'List a replacement' },
+      { label: 'Verified profiles' },
     ],
   },
   {
@@ -52,8 +52,7 @@ export function AppFooter() {
               <div>
                 <strong>Trusted Network</strong>
                 <p>
-                  Verified housing discovery and route-based delivery in one high-trust
-                  product experience.
+                  Housing-first tenant replacement marketplace with a simple intent-driven flow.
                 </p>
               </div>
             </div>
@@ -85,14 +84,14 @@ export function AppFooter() {
           </div>
 
           <div className="footer-bottom">
-            <span>Built mobile-first from your Trusted Network design tokens.</span>
-            <span>Responsive shell, reusable cards, sticky CTAs, and seeded product data.</span>
+            <span>Housing MVP is live first. Delivery flows are documented and parked for a later phase.</span>
+            <span>Find room helps seekers browse listings, and find replacement helps owners publish and manage listings.</span>
           </div>
         </div>
       </div>
 
       <div className="footer-credit">
-        Made with love ❤️ for a more trusted way to move, stay, and connect.
+        Built for a clearer way to find a room or replace a tenant.
       </div>
     </footer>
   )

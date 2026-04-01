@@ -32,27 +32,22 @@ http://localhost:4000/swagger
 - `GET /listings/:id`
 - `POST /listings`
 - `PATCH /listings/:id`
-- `GET /housing-needs`
-- `GET /housing-needs/:id`
-- `POST /housing-needs`
-- `PATCH /housing-needs/:id`
-- `GET /traveler-routes`
-- `GET /traveler-routes/:id`
-- `POST /traveler-routes`
-- `PATCH /traveler-routes/:id`
-- `GET /shipment-requests`
-- `GET /shipment-requests/:id`
-- `POST /shipment-requests`
-- `PATCH /shipment-requests/:id`
 
 ## What each module represents
 
 - `auth`: exchanges a Supabase Google session for an app session and stores the app user profile
 - `verification`: optional trust layer for work email OTP verification, LinkedIn review, and trust metrics
-- `listings`: replacement-tenant posts for rooms, flats, and 2BHK listings
-- `housing-needs`: users searching for a flat, 2BHK, or room in an existing flat
-- `traveler-routes`: users posting travel plans between cities
-- `shipment-requests`: users asking for help sending or bringing items between cities
+- `listings`: housing-first replacement-tenant posts, including drafts, published listings, and rented state management
+
+## Parked modules
+
+The following modules remain in the codebase and schema history, but they are not mounted in the active app right now:
+
+- `housing-needs`
+- `traveler-routes`
+- `shipment-requests`
+
+See [Parked Delivery Module](./parked-delivery-module.md) for the recovery notes.
 
 ## Authentication and verification flow
 
@@ -106,6 +101,8 @@ curl -X POST "http://localhost:4000/api/verification/linkedin/submit" \
 
 - `city`
 - `status`
+- `nearby`
+- `ownerUserId`
 
 Example:
 
@@ -113,123 +110,70 @@ Example:
 curl "http://localhost:4000/api/listings?city=Bengaluru&status=PUBLISHED"
 ```
 
-### Housing needs
-
-- `city`
-- `status`
-
-Example:
+Use `ownerUserId` when the housing UI needs the current user's listing feed.
 
 ```bash
-curl "http://localhost:4000/api/housing-needs?city=Bengaluru&status=OPEN"
-```
-
-### Traveler routes
-
-- `sourceCity`
-- `destinationCity`
-- `status`
-
-Example:
-
-```bash
-curl "http://localhost:4000/api/traveler-routes?sourceCity=Bengaluru&destinationCity=Delhi"
-```
-
-### Shipment requests
-
-- `sourceCity`
-- `destinationCity`
-- `status`
-
-Example:
-
-```bash
-curl "http://localhost:4000/api/shipment-requests?sourceCity=Delhi&destinationCity=Bengaluru"
+curl "http://localhost:4000/api/listings?ownerUserId=USER_ID"
 ```
 
 ## Sample payloads
 
-### 1. Post a replacement-tenant listing
+### 1. Save a draft replacement-tenant listing
 
 ```json
 {
   "ownerUserId": "USER_ID",
-  "organizationId": "ORG_ID",
+  "title": "Private room near HSR Layout",
+  "status": "DRAFT"
+}
+```
+
+### 2. Publish a replacement-tenant listing
+
+```json
+{
+  "ownerUserId": "USER_ID",
   "title": "Replacement tenant needed for furnished 2BHK in HSR Layout",
   "description": "Looking for a replacement tenant for a semi-furnished 2BHK near HSR Layout Sector 2.",
   "city": "Bengaluru",
   "locality": "HSR Layout",
+  "locationName": "HSR Layout Sector 2, Bengaluru",
+  "latitude": 12.911622,
+  "longitude": 77.638862,
   "rentAmount": 36000,
   "depositAmount": 120000,
+  "maintenanceAmount": 2500,
+  "amenities": ["Wifi", "Parking", "Washing machine", "Fridge"],
   "propertyType": "APARTMENT",
   "occupancyType": "SHARED",
   "moveInDate": "2026-04-05T00:00:00.000Z",
-  "moveOutDate": "2026-04-02T00:00:00.000Z",
-  "urgencyLevel": "IMMEDIATE",
   "contactMode": "WHATSAPP",
+  "contactPhone": "+919876543210",
   "status": "PUBLISHED",
-  "isBoosted": true,
-  "brokerAllowed": false
+  "images": [
+    {
+      "assetProvider": "CLOUDINARY",
+      "providerAssetId": "trusted-network/listings/user_123/living-room",
+      "imageUrl": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+      "thumbnailUrl": "https://res.cloudinary.com/demo/image/upload/w_400/sample.jpg",
+      "detailUrl": "https://res.cloudinary.com/demo/image/upload/w_1200/sample.jpg"
+    },
+    {
+      "assetProvider": "CLOUDINARY",
+      "providerAssetId": "trusted-network/listings/user_123/bedroom",
+      "imageUrl": "https://res.cloudinary.com/demo/image/upload/sample-2.jpg",
+      "thumbnailUrl": "https://res.cloudinary.com/demo/image/upload/w_400/sample-2.jpg",
+      "detailUrl": "https://res.cloudinary.com/demo/image/upload/w_1200/sample-2.jpg"
+    }
+  ]
 }
 ```
 
-### 2. Post a housing need for a 2BHK or room in 2BHK
+### 3. Mark a listing as rented
 
 ```json
 {
-  "userId": "USER_ID",
-  "organizationId": "ORG_ID",
-  "city": "Bengaluru",
-  "locality": "Koramangala",
-  "preferredPropertyType": "APARTMENT",
-  "preferredOccupancy": "SHARED",
-  "maxRentAmount": 28000,
-  "moveInDate": "2026-04-10T00:00:00.000Z",
-  "urgencyLevel": "THIS_WEEK",
-  "preferredContactMode": "WHATSAPP",
-  "notes": "Searching for either a full 2BHK flat or a room in an existing 2BHK flat."
-}
-```
-
-### 3. Post a traveler route from Bengaluru to Delhi
-
-```json
-{
-  "userId": "USER_ID",
-  "organizationId": "ORG_ID",
-  "sourceCity": "Bengaluru",
-  "sourceArea": "Indiranagar",
-  "destinationCity": "Delhi",
-  "destinationArea": "South Delhi",
-  "travelDate": "2026-04-08T00:00:00.000Z",
-  "travelTimeWindow": "Evening flight",
-  "capacityType": "SMALL_BAG",
-  "capacityNotes": "Can carry documents and lightweight packages.",
-  "allowedItemTypes": ["DOCUMENTS", "ELECTRONICS", "CLOTHING"],
-  "status": "PUBLISHED"
-}
-```
-
-### 4. Post a shipment request from Delhi to Bengaluru for documents
-
-```json
-{
-  "userId": "USER_ID",
-  "organizationId": "ORG_ID",
-  "sourceCity": "Delhi",
-  "sourceArea": "Nehru Place",
-  "destinationCity": "Bengaluru",
-  "destinationArea": "Koramangala",
-  "requiredBy": "2026-04-16T00:00:00.000Z",
-  "itemType": "DOCUMENTS",
-  "itemSize": "SMALL",
-  "itemWeightKg": 0.35,
-  "specialHandlingNotes": "Looking for help bringing signed documents from Delhi to Bengaluru.",
-  "urgencyLevel": "THIS_WEEK",
-  "quotedBudget": 600,
-  "prohibitedItemConfirmed": true,
-  "status": "OPEN"
+  "status": "FILLED"
 }
 ```
 
@@ -240,11 +184,6 @@ The backend seeds demo data on first boot when the database is empty.
 Seeded examples include:
 
 - one replacement-tenant listing in Bengaluru
-- one housing-need post for a 2BHK or room in Bengaluru
-- one traveler route from Bengaluru to Delhi
-- one traveler route from Delhi to Bengaluru
-- one shipment request from Bengaluru to Delhi
-- one shipment request from Delhi to Bengaluru for documents
 
 ## Run locally
 

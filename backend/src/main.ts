@@ -23,16 +23,13 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Trusted Network API')
     .setDescription(
-      'MVP backend APIs for replacement tenant listings, housing needs, traveler routes, and shipment requests.',
+      'Housing-first MVP backend APIs for tenant replacement listings, trust, and authentication.',
     )
     .setVersion('1.0.0')
     .addTag('health')
     .addTag('auth')
     .addTag('verification')
     .addTag('listings')
-    .addTag('housing-needs')
-    .addTag('traveler-routes')
-    .addTag('shipment-requests')
     .build();
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
