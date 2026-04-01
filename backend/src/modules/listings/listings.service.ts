@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { ListingStatus } from '@prisma/client';
+import { ListingStatus, ListingType } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import {
@@ -16,11 +16,11 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 export class ListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(city?: string, status?: ListingStatus, nearby?: string) {
+  async findAll(city?: string, status?: ListingStatus, nearby?: string, type?: ListingType) {
     const trimmedNearby = nearby?.trim();
     const listings = await this.prisma.listing.findMany({
       where: {
-        ...buildWhere({ city, status }),
+        ...buildWhere({ city, status, type }),
         ...(trimmedNearby
           ? {
               nearbyPlaces: {
@@ -64,70 +64,99 @@ export class ListingsService {
   }
 
   create(dto: CreateListingDto) {
+    const listingType = dto.type ?? ListingType.tenant_replacement;
+
+    this.validateListingPayload(listingType, dto);
+
     return this.prisma.listing.create({
       data: {
         ownerUserId: dto.ownerUserId,
         organizationId: dto.organizationId,
+        type: listingType,
         title: dto.title,
-        description: dto.description,
-        city: dto.city,
-        locality: dto.locality,
-        locationName: dto.locationName,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
+        description: dto.description?.trim() || undefined,
+        city: listingType === ListingType.tenant_replacement ? dto.city?.trim() : undefined,
+        locality: listingType === ListingType.tenant_replacement ? dto.locality?.trim() : undefined,
+        locationName: listingType === ListingType.tenant_replacement ? dto.locationName : undefined,
+        latitude: listingType === ListingType.tenant_replacement ? dto.latitude : undefined,
+        longitude: listingType === ListingType.tenant_replacement ? dto.longitude : undefined,
+        fromCity: listingType === ListingType.send_request ? dto.fromCity?.trim() : undefined,
+        toCity: listingType === ListingType.send_request ? dto.toCity?.trim() : undefined,
+        itemType: listingType === ListingType.send_request ? dto.itemType : undefined,
+        requiredDate: listingType === ListingType.send_request ? toRequiredDate(dto.requiredDate!) : undefined,
         contactPhone: dto.contactPhone,
-        rentAmount: dto.rentAmount,
+        rentAmount: listingType === ListingType.tenant_replacement ? dto.rentAmount : undefined,
         depositAmount: dto.depositAmount,
-        propertyType: dto.propertyType,
-        occupancyType: dto.occupancyType,
-        moveInDate: toRequiredDate(dto.moveInDate),
+        propertyType: listingType === ListingType.tenant_replacement ? dto.propertyType : undefined,
+        occupancyType: listingType === ListingType.tenant_replacement ? dto.occupancyType : undefined,
+        moveInDate:
+          listingType === ListingType.tenant_replacement && dto.moveInDate
+            ? toRequiredDate(dto.moveInDate)
+            : undefined,
         moveOutDate: toOptionalDate(dto.moveOutDate),
         urgencyLevel: dto.urgencyLevel,
         contactMode: dto.contactMode,
         status: dto.status,
         isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
-        nearbyPlaces: dto.nearbyPlaces?.length
+        nearbyPlaces: listingType === ListingType.tenant_replacement && dto.nearbyPlaces?.length
           ? {
               create: this.normalizeNearbyPlaces(dto.nearbyPlaces),
             }
           : undefined,
-        images: {
-          create: this.normalizeListingImages(dto.images),
-        },
+        images: dto.images?.length
+          ? {
+              create: this.normalizeListingImages(dto.images, listingType),
+            }
+          : undefined,
       },
       include: listingInclude,
     });
   }
 
   async update(id: string, dto: UpdateListingDto) {
-    await this.findById(id);
+    const existingListing = await this.findById(id);
+    const listingType = dto.type ?? existingListing.type;
 
     return this.prisma.listing.update({
       where: { id },
       data: {
         ownerUserId: dto.ownerUserId,
         organizationId: dto.organizationId,
+        type: dto.type,
         title: dto.title,
-        description: dto.description,
-        city: dto.city,
-        locality: dto.locality,
-        locationName: dto.locationName,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
+        description: dto.description?.trim(),
+        city: listingType === ListingType.tenant_replacement ? dto.city?.trim() : dto.city === null ? null : undefined,
+        locality:
+          listingType === ListingType.tenant_replacement ? dto.locality?.trim() : dto.locality === null ? null : undefined,
+        locationName: listingType === ListingType.tenant_replacement ? dto.locationName : null,
+        latitude: listingType === ListingType.tenant_replacement ? dto.latitude : null,
+        longitude: listingType === ListingType.tenant_replacement ? dto.longitude : null,
+        fromCity: listingType === ListingType.send_request ? dto.fromCity?.trim() : null,
+        toCity: listingType === ListingType.send_request ? dto.toCity?.trim() : null,
+        itemType: listingType === ListingType.send_request ? dto.itemType : null,
+        requiredDate:
+          listingType === ListingType.send_request
+            ? dto.requiredDate
+              ? toRequiredDate(dto.requiredDate)
+              : dto.requiredDate === null
+                ? null
+                : undefined
+            : null,
         contactPhone: dto.contactPhone,
-        rentAmount: dto.rentAmount,
+        rentAmount: listingType === ListingType.tenant_replacement ? dto.rentAmount : null,
         depositAmount: dto.depositAmount,
-        propertyType: dto.propertyType,
-        occupancyType: dto.occupancyType,
+        propertyType: listingType === ListingType.tenant_replacement ? dto.propertyType : null,
+        occupancyType: listingType === ListingType.tenant_replacement ? dto.occupancyType : null,
         ...(dto.moveInDate ? { moveInDate: toRequiredDate(dto.moveInDate) } : {}),
+        ...(listingType !== ListingType.tenant_replacement ? { moveInDate: null } : {}),
         ...(dto.moveOutDate !== undefined ? { moveOutDate: toOptionalDate(dto.moveOutDate) } : {}),
         urgencyLevel: dto.urgencyLevel,
         contactMode: dto.contactMode,
         status: dto.status,
         isBoosted: dto.isBoosted,
         brokerAllowed: dto.brokerAllowed,
-        ...(dto.nearbyPlaces !== undefined
+        ...(listingType === ListingType.tenant_replacement && dto.nearbyPlaces !== undefined
           ? {
               nearbyPlaces: {
                 deleteMany: {},
@@ -138,12 +167,18 @@ export class ListingsService {
                   : {}),
               },
             }
-          : {}),
+          : dto.nearbyPlaces !== undefined
+            ? {
+                nearbyPlaces: {
+                  deleteMany: {},
+                },
+              }
+            : {}),
         ...(dto.images
           ? {
               images: {
                 deleteMany: {},
-                create: this.normalizeListingImages(dto.images),
+                create: this.normalizeListingImages(dto.images, listingType),
               },
             }
           : {}),
@@ -237,9 +272,9 @@ export class ListingsService {
     };
   }
 
-  private normalizeListingImages(images: CreateListingDto['images']) {
-    if (images.length < 2) {
-      throw new BadRequestException('At least 2 listing images are required.');
+  private normalizeListingImages(images: NonNullable<CreateListingDto['images']>, listingType: ListingType) {
+    if (listingType === ListingType.tenant_replacement && images.length < 2) {
+      throw new BadRequestException('At least 2 listing images are required for tenant replacement posts.');
     }
 
     if (images.length > 8) {
@@ -280,5 +315,63 @@ export class ListingsService {
     }
 
     return uniquePlaces;
+  }
+
+  private validateListingPayload(listingType: ListingType, dto: CreateListingDto) {
+    if (!dto.title.trim()) {
+      throw new BadRequestException('Listing title is required.');
+    }
+
+    if (!dto.contactPhone?.trim()) {
+      throw new BadRequestException('A contact phone or WhatsApp number is required.');
+    }
+
+    if (listingType === ListingType.tenant_replacement) {
+      if (!dto.city?.trim()) {
+        throw new BadRequestException('City is required for tenant replacement listings.');
+      }
+
+      if (!dto.locality?.trim()) {
+        throw new BadRequestException('Locality is required for tenant replacement listings.');
+      }
+
+      if (dto.rentAmount === undefined) {
+        throw new BadRequestException('Rent amount is required for tenant replacement listings.');
+      }
+
+      if (!dto.propertyType) {
+        throw new BadRequestException('Property type is required for tenant replacement listings.');
+      }
+
+      if (!dto.occupancyType) {
+        throw new BadRequestException('Occupancy type is required for tenant replacement listings.');
+      }
+
+      if (!dto.moveInDate) {
+        throw new BadRequestException('Move-in date is required for tenant replacement listings.');
+      }
+
+      if (!dto.images?.length) {
+        throw new BadRequestException('At least 2 listing images are required for tenant replacement posts.');
+      }
+
+      return;
+    }
+
+    if (!dto.fromCity?.trim()) {
+      throw new BadRequestException('From city is required for send item requests.');
+    }
+
+    if (!dto.toCity?.trim()) {
+      throw new BadRequestException('To city is required for send item requests.');
+    }
+
+    if (!dto.itemType) {
+      throw new BadRequestException('Item type is required for send item requests.');
+    }
+
+    if (!dto.requiredDate) {
+      throw new BadRequestException('Required date is required for send item requests.');
+    }
   }
 }

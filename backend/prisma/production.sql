@@ -35,6 +35,9 @@ CREATE TYPE "ContactMode" AS ENUM ('WHATSAPP', 'CALL', 'CHAT');
 CREATE TYPE "ListingStatus" AS ENUM ('DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED', 'FILLED');
 
 -- CreateEnum
+CREATE TYPE "ListingType" AS ENUM ('tenant_replacement', 'send_request');
+
+-- CreateEnum
 CREATE TYPE "PropertyType" AS ENUM ('ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE');
 
 -- CreateEnum
@@ -188,19 +191,24 @@ CREATE TABLE "Listing" (
     "id" TEXT NOT NULL,
     "ownerUserId" TEXT NOT NULL,
     "organizationId" TEXT,
+    "type" "ListingType" NOT NULL DEFAULT 'tenant_replacement',
     "title" TEXT NOT NULL,
-    "description" TEXT NOT NULL,
-    "city" TEXT NOT NULL,
-    "locality" TEXT NOT NULL,
+    "description" TEXT,
+    "city" TEXT,
+    "locality" TEXT,
     "locationName" TEXT,
     "latitude" DOUBLE PRECISION,
     "longitude" DOUBLE PRECISION,
+    "fromCity" TEXT,
+    "toCity" TEXT,
+    "itemType" "ItemType",
+    "requiredDate" TIMESTAMP(3),
     "contactPhone" VARCHAR(20),
-    "rentAmount" INTEGER NOT NULL,
+    "rentAmount" INTEGER,
     "depositAmount" INTEGER,
-    "propertyType" "PropertyType" NOT NULL,
-    "occupancyType" "OccupancyType" NOT NULL,
-    "moveInDate" TIMESTAMP(3) NOT NULL,
+    "propertyType" "PropertyType",
+    "occupancyType" "OccupancyType",
+    "moveInDate" TIMESTAMP(3),
     "moveOutDate" TIMESTAMP(3),
     "urgencyLevel" "UrgencyLevel" NOT NULL DEFAULT 'FLEXIBLE',
     "contactMode" "ContactMode" NOT NULL DEFAULT 'WHATSAPP',
@@ -444,6 +452,9 @@ CREATE INDEX "Listing_city_locality_status_idx" ON "Listing"("city", "locality",
 
 -- CreateIndex
 CREATE INDEX "Listing_moveInDate_urgencyLevel_idx" ON "Listing"("moveInDate", "urgencyLevel");
+
+-- CreateIndex
+CREATE INDEX "Listing_type_status_idx" ON "Listing"("type", "status");
 
 -- CreateIndex
 CREATE INDEX "ListingNearby_listingId_createdAt_idx" ON "ListingNearby"("listingId", "createdAt");

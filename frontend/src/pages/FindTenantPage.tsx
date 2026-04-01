@@ -19,6 +19,7 @@ import { Card } from '../components/Card'
 import { LocationSummaryCard, PlaceAutocompleteField } from '../components/PlaceAutocompleteField'
 import { useAppAuth } from '../context/AppAuthContext'
 import { apiRequest } from '../lib/api'
+import { majorCities, otherCityOptionValue } from '../lib/majorCities'
 import {
   cleanupUploadedListingImages,
   type ListingImageUploadPayload,
@@ -44,6 +45,7 @@ type NearbyPlace = {
 
 type Listing = {
   id: string
+  type: string
   title: string
   description: string
   city: string
@@ -144,24 +146,6 @@ type ListingFilters = {
 
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
 const occupancyTypes = ['SINGLE', 'DOUBLE', 'SHARED']
-const majorCities = [
-  'Bengaluru',
-  'Mumbai',
-  'Delhi',
-  'Gurugram',
-  'Noida',
-  'Hyderabad',
-  'Pune',
-  'Chennai',
-  'Kolkata',
-  'Ahmedabad',
-  'Jaipur',
-  'Chandigarh',
-  'Kochi',
-  'Indore',
-  'Lucknow',
-]
-const otherCityOptionValue = '__OTHER_CITY__'
 const standardNearbyWorkplaces: NearbyPlace[] = [
   { name: 'ITPL', type: 'tech_park' },
   { name: 'Manyata', type: 'tech_park' },
@@ -510,6 +494,7 @@ export function FindTenantPage() {
         method: 'POST',
         body: JSON.stringify({
           ownerUserId: user.id,
+          type: 'tenant_replacement',
           title: replaceTenantForm.title,
           description: replaceTenantForm.description,
           city,
@@ -2077,7 +2062,7 @@ function toSelectedPlaceLocation(
 }
 
 async function getPublishedListings() {
-  return apiRequest<Listing[]>('/listings?status=PUBLISHED')
+  return apiRequest<Listing[]>('/listings?status=PUBLISHED&type=tenant_replacement')
 }
 
 function normalizeListings(listingsPayload: Listing[]) {

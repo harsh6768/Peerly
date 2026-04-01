@@ -1,9 +1,8 @@
-import { ContactMode, ListingStatus, OccupancyType, PropertyType, UrgencyLevel } from '@prisma/client';
+import { ContactMode, ItemType, ListingStatus, ListingType, OccupancyType, PropertyType, UrgencyLevel } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsBoolean,
   IsArray,
   IsDateString,
@@ -31,21 +30,29 @@ export class CreateListingDto {
   @IsString()
   organizationId?: string;
 
+  @ApiPropertyOptional({ enum: ListingType, example: ListingType.tenant_replacement })
+  @IsOptional()
+  @IsEnum(ListingType)
+  type?: ListingType;
+
   @ApiProperty()
   @IsString()
   title: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  city: string;
+  city?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  locality: string;
+  locality?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -64,6 +71,26 @@ export class CreateListingDto {
   @IsLongitude()
   longitude?: number;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fromCity?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  toCity?: string;
+
+  @ApiPropertyOptional({ enum: ItemType })
+  @IsOptional()
+  @IsEnum(ItemType)
+  itemType?: ItemType;
+
+  @ApiPropertyOptional({ example: '2026-04-16T00:00:00.000Z' })
+  @IsOptional()
+  @IsDateString()
+  requiredDate?: string;
+
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
   @IsString()
@@ -78,11 +105,12 @@ export class CreateListingDto {
   @Type(() => CreateListingNearbyPlaceDto)
   nearbyPlaces?: CreateListingNearbyPlaceDto[];
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  rentAmount: number;
+  rentAmount?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -91,17 +119,20 @@ export class CreateListingDto {
   @Min(0)
   depositAmount?: number;
 
-  @ApiProperty({ enum: PropertyType })
+  @ApiPropertyOptional({ enum: PropertyType })
+  @IsOptional()
   @IsEnum(PropertyType)
-  propertyType: PropertyType;
+  propertyType?: PropertyType;
 
-  @ApiProperty({ enum: OccupancyType })
+  @ApiPropertyOptional({ enum: OccupancyType })
+  @IsOptional()
   @IsEnum(OccupancyType)
-  occupancyType: OccupancyType;
+  occupancyType?: OccupancyType;
 
-  @ApiProperty({ example: '2026-04-05T00:00:00.000Z' })
+  @ApiPropertyOptional({ example: '2026-04-05T00:00:00.000Z' })
+  @IsOptional()
   @IsDateString()
-  moveInDate: string;
+  moveInDate?: string;
 
   @ApiPropertyOptional({ example: '2026-04-02T00:00:00.000Z' })
   @IsOptional()
@@ -135,11 +166,11 @@ export class CreateListingDto {
   @IsBoolean()
   brokerAllowed?: boolean;
 
-  @ApiProperty({ type: [CreateListingImageDto], minItems: 2, maxItems: 8 })
+  @ApiPropertyOptional({ type: [CreateListingImageDto], maxItems: 8 })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(2)
   @ArrayMaxSize(8)
   @ValidateNested({ each: true })
   @Type(() => CreateListingImageDto)
-  images: CreateListingImageDto[];
+  images?: CreateListingImageDto[];
 }

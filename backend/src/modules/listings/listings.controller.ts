@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ListingStatus } from '@prisma/client';
+import { ListingStatus, ListingType } from '@prisma/client';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { AppSessionGuard } from '../auth/app-session.guard';
@@ -19,13 +19,15 @@ export class ListingsController {
   @ApiQuery({ name: 'city', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ListingStatus })
   @ApiQuery({ name: 'nearby', required: false })
+  @ApiQuery({ name: 'type', required: false, enum: ListingType })
   @Get()
   findAll(
     @Query('city') city?: string,
     @Query('status') status?: ListingStatus,
     @Query('nearby') nearby?: string,
+    @Query('type') type?: ListingType,
   ) {
-    return this.listingsService.findAll(city, status, nearby);
+    return this.listingsService.findAll(city, status, nearby, type);
   }
 
   @ApiOperation({ summary: 'Get a replacement tenant listing by id' })

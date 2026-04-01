@@ -76,6 +76,11 @@ enum ListingStatus {
   FILLED
 }
 
+enum ListingType {
+  tenant_replacement
+  send_request
+}
+
 enum PropertyType {
   ROOM
   STUDIO
@@ -328,19 +333,24 @@ model Listing {
   id             String           @id @default(cuid())
   ownerUserId    String
   organizationId String?
+  type           ListingType      @default(tenant_replacement)
   title          String
-  description    String           @db.Text
-  city           String
-  locality       String
+  description    String?          @db.Text
+  city           String?
+  locality       String?
   locationName   String?          @db.Text
   latitude       Float?
   longitude      Float?
+  fromCity       String?
+  toCity         String?
+  itemType       ItemType?
+  requiredDate   DateTime?
   contactPhone   String?          @db.VarChar(20)
-  rentAmount     Int
+  rentAmount     Int?
   depositAmount  Int?
-  propertyType   PropertyType
-  occupancyType  OccupancyType
-  moveInDate     DateTime
+  propertyType   PropertyType?
+  occupancyType  OccupancyType?
+  moveInDate     DateTime?
   moveOutDate    DateTime?
   urgencyLevel   UrgencyLevel     @default(FLEXIBLE)
   contactMode    ContactMode      @default(WHATSAPP)
@@ -358,6 +368,7 @@ model Listing {
   @@index([organizationId, status])
   @@index([city, locality, status])
   @@index([moveInDate, urgencyLevel])
+  @@index([type, status])
 }
 
 model ListingNearby {
