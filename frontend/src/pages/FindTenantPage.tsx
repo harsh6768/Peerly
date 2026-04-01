@@ -13,6 +13,7 @@ import {
   UserRoundSearch,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
@@ -56,6 +57,9 @@ type Listing = {
   contactPhone: string | null
   rentAmount: number
   depositAmount: number | null
+  maintenanceAmount: number | null
+  miscCharges: string | null
+  amenities: string[]
   propertyType: string
   occupancyType: string
   moveInDate: string
@@ -103,6 +107,9 @@ type ReplaceTenantForm = {
   nearbyPlaces: NearbyPlace[]
   rentAmount: string
   depositAmount: string
+  maintenanceAmount: string
+  miscCharges: string
+  amenities: string[]
   propertyType: string
   occupancyType: string
   contactMode: string
@@ -173,7 +180,531 @@ const listingImageSuggestions = [
   'Extra angle 1',
   'Extra angle 2',
 ]
+const standardAmenities = [
+  'Lift',
+  'Power backup',
+  'Wifi',
+  'Parking',
+  'Gated security',
+  'Gym',
+  'Housekeeping',
+  'Washing machine',
+  'Fridge',
+  'Air conditioning',
+  'Balcony',
+  'Pet friendly',
+]
 const liveFeedPreviewCount = 6
+
+type ListingFeedCardProps = {
+  listing: Listing
+  viewer: { id: string; isVerified: boolean } | null
+  badgeTone: 'purple' | 'green' | 'gray'
+  badgeLabel: string
+  ownerPillLabel?: string
+}
+
+type ListingDetailsRouteState = {
+  listing?: Listing
+}
+
+function ListingFeedCard({
+  listing,
+  viewer,
+  badgeTone,
+  badgeLabel,
+  ownerPillLabel,
+}: ListingFeedCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const navigate = useNavigate()
+  const canViewContact = canViewListingContact(listing, viewer)
+
+  function handleShowDetails() {
+    if (isDesktopViewport()) {
+      navigate(`/find-tenant/listings/${listing.id}`, {
+        state: { listing } as ListingDetailsRouteState,
+      })
+      return
+    }
+
+    setIsExpanded((current) => !current)
+  }
+
+  return (
+    <Card className={`feed-card${isExpanded ? ' expanded' : ''}`}>
+      {renderListingCoverImage(listing)}
+
+      <div className="feed-card-top">
+        <div>
+          <strong>{listing.title}</strong>
+          <p>
+            {listing.city}, {listing.locality}
+          </p>
+        </div>
+        <Badge tone={badgeTone}>{badgeLabel}</Badge>
+      </div>
+
+      <div className="feed-meta-row">
+        <span>
+          <Building2 size={16} />
+          {formatMoney(listing.rentAmount)} / month
+        </span>
+        <span>
+          <CalendarRange size={16} />
+          Move in {formatShortDate(listing.moveInDate)}
+        </span>
+      </div>
+
+      <div className="nearby-place-chip-row compact">
+        <span className="nearby-place-chip static">{formatEnum(listing.propertyType)}</span>
+        <span className="nearby-place-chip static">{formatEnum(listing.occupancyType)}</span>
+      </div>
+
+      <div className="feed-card-actions">
+        <Button onClick={handleShowDetails} variant="secondary">
+          {isExpanded ? 'Hide details' : 'Show details'}
+        </Button>
+      </div>
+
+      {isExpanded ? (
+        <div className="listing-details-panel">
+          {listing.images.length > 1 ? (
+            <div className="listing-details-section">
+              <span className="muted">Photos</span>
+              {renderListingImageGallery(listing, {
+                className: 'feed-media feed-media-expanded',
+                hideCount: true,
+              })}
+            </div>
+          ) : null}
+
+          <div className="listing-details-fact-grid">
+            <div className="listing-details-fact">
+              <span className="muted">Rent</span>
+              <strong>{formatMoney(listing.rentAmount)} / month</strong>
+            </div>
+            {listing.depositAmount ? (
+              <div className="listing-details-fact">
+                <span className="muted">Deposit</span>
+                <strong>{formatMoney(listing.depositAmount)}</strong>
+              </div>
+            ) : null}
+            {listing.maintenanceAmount ? (
+              <div className="listing-details-fact">
+                <span className="muted">Maintenance</span>
+                <strong>{formatMoney(listing.maintenanceAmount)}</strong>
+              </div>
+            ) : null}
+            <div className="listing-details-fact">
+              <span className="muted">Move in</span>
+              <strong>{formatShortDate(listing.moveInDate)}</strong>
+            </div>
+          </div>
+
+          <div className="listing-details-section">
+            <p className="feed-copy">{listing.description}</p>
+            {listing.miscCharges ? <p className="feed-copy feed-copy-compact">Extras: {listing.miscCharges}</p> : null}
+          </div>
+
+          {listing.nearbyPlaces.length > 0 ? (
+            <div className="listing-nearby-places">
+              <span className="muted">Near</span>
+              <div className="nearby-place-chip-row compact">
+                {getVisibleNearbyPlaces(listing.nearbyPlaces).map((place) => (
+                  <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
+                    {place.name}
+                  </span>
+                ))}
+                {listing.nearbyPlaces.length > 2 ? (
+                  <span className="nearby-place-chip static">+{listing.nearbyPlaces.length - 2}</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {listing.amenities.length > 0 ? (
+            <div className="listing-amenities">
+              <span className="muted">Amenities</span>
+              <div className="nearby-place-chip-row compact">
+                {getVisibleAmenities(listing.amenities).map((amenity) => (
+                  <span className="nearby-place-chip static" key={`${listing.id}-${amenity}`}>
+                    {amenity}
+                  </span>
+                ))}
+                {listing.amenities.length > 4 ? (
+                  <span className="nearby-place-chip static">+{listing.amenities.length - 4}</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <LocationSummaryCard
+            compact
+            location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
+          />
+
+          <div className="listing-contact-card">
+            <div className="listing-contact-head">
+              <strong>{listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}</strong>
+              <span className="muted">
+                {canViewContact
+                  ? formatContactPhone(listing.contactPhone)
+                  : 'Protected for verified members'}
+              </span>
+            </div>
+
+            {canViewContact ? (
+              <Button
+                onClick={() =>
+                  window.open(
+                    listing.contactMode === 'CALL'
+                      ? buildCallLink(listing.contactPhone)
+                      : buildWhatsappLink(listing.contactPhone),
+                    '_blank',
+                    'noopener,noreferrer',
+                  )
+                }
+                variant="secondary"
+              >
+                {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
+              </Button>
+            ) : (
+              <div className="listing-contact-lock">
+                {viewer ? <ShieldCheck size={16} /> : <Lock size={16} />}
+                <span>{getContactVisibilityMessage(viewer)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="feed-owner-row">
+        <div>
+          <strong>{listing.owner.fullName}</strong>
+          <span>{listing.owner.companyName ?? 'Independent owner'}</span>
+        </div>
+        {ownerPillLabel ? (
+          <span className="pill">{ownerPillLabel}</span>
+        ) : listing.owner.isVerified ? (
+          <span className="pill">
+            <ShieldCheck size={14} />
+            Verified
+          </span>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
+function ListingImageCarousel({ listing }: { listing: Listing }) {
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const images = listing.images
+  const activeImage = images[activeImageIndex] ?? images[0]
+  const hasMultipleImages = images.length > 1
+
+  useEffect(() => {
+    setActiveImageIndex(0)
+  }, [listing.id])
+
+  if (!activeImage) {
+    return null
+  }
+
+  function showPreviousImage() {
+    setActiveImageIndex((current) => (current === 0 ? images.length - 1 : current - 1))
+  }
+
+  function showNextImage() {
+    setActiveImageIndex((current) => (current === images.length - 1 ? 0 : current + 1))
+  }
+
+  return (
+    <div className="listing-carousel">
+      <div className="listing-carousel-stage">
+        <img
+          alt={`${listing.title} photo ${activeImageIndex + 1}`}
+          className="listing-carousel-image"
+          loading="lazy"
+          src={activeImage.detailUrl || activeImage.imageUrl || activeImage.thumbnailUrl}
+        />
+
+        {hasMultipleImages ? (
+          <>
+            <button
+              aria-label="Show previous apartment photo"
+              className="circle-button listing-carousel-nav listing-carousel-nav-prev"
+              onClick={showPreviousImage}
+              type="button"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              aria-label="Show next apartment photo"
+              className="circle-button listing-carousel-nav listing-carousel-nav-next"
+              onClick={showNextImage}
+              type="button"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </>
+        ) : null}
+
+        <span className="feed-media-count listing-carousel-count">
+          {activeImageIndex + 1} / {images.length}
+        </span>
+      </div>
+
+      {hasMultipleImages ? (
+        <div aria-label={`${listing.title} photo thumbnails`} className="listing-carousel-thumbnails" role="list">
+          {images.map((image, index) => (
+            <button
+              aria-label={`Show apartment photo ${index + 1}`}
+              aria-pressed={index === activeImageIndex}
+              className={`listing-carousel-thumb${index === activeImageIndex ? ' active' : ''}`}
+              key={image.id}
+              onClick={() => setActiveImageIndex(index)}
+              role="listitem"
+              type="button"
+            >
+              <img
+                alt={`${listing.title} thumbnail ${index + 1}`}
+                loading="lazy"
+                src={image.thumbnailUrl || image.imageUrl}
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function FindTenantListingDetailsPage() {
+  const { listingId } = useParams<{ listingId: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { user } = useAppAuth()
+  const routeState = location.state as ListingDetailsRouteState | null
+  const initialListing = useMemo(
+    () => (routeState?.listing && routeState.listing.id === listingId ? normalizeListing(routeState.listing) : null),
+    [listingId, routeState],
+  )
+  const [listing, setListing] = useState<Listing | null>(initialListing)
+  const [isLoading, setIsLoading] = useState(initialListing === null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!listingId) {
+      setListing(null)
+      setError('Listing not found.')
+      setIsLoading(false)
+      return
+    }
+
+    if (initialListing) {
+      return
+    }
+
+    let isCancelled = false
+
+    async function loadListing() {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const listingPayload = await apiRequest<Listing>(`/listings/${listingId}`)
+
+        if (!isCancelled) {
+          setListing(normalizeListing(listingPayload))
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load this listing right now.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadListing()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [initialListing, listingId])
+
+  const badgeTone =
+    listing?.isBoosted ? 'purple' : listing?.owner.isVerified ? 'green' : 'gray'
+  const badgeLabel = listing
+    ? listing.isBoosted
+      ? 'Boosted'
+      : listing.owner.id === user?.id
+        ? 'Published'
+        : listing.owner.isVerified
+          ? 'Verified'
+          : 'Live'
+    : 'Listing'
+  const canViewContact = listing ? canViewListingContact(listing, user) : false
+
+  return (
+    <div className="page">
+      <section className="section">
+        <div className="page-inner">
+          <div className="hub-panel hub-panel-wide listing-details-screen">
+            <div className="listing-details-topbar">
+              <Button onClick={() => navigate('/find-tenant')} variant="ghost">
+                Back to listings
+              </Button>
+              {listing ? <Badge tone={badgeTone}>{badgeLabel}</Badge> : null}
+            </div>
+
+            {isLoading ? (
+              <Card className="feed-card">
+                <strong>Loading listing details</strong>
+                <p className="feed-copy">Pulling the apartment photos and latest details now.</p>
+              </Card>
+            ) : error || !listing ? (
+              <Card className="feed-card">
+                <strong>Listing unavailable</strong>
+                <p className="feed-copy">{error ?? 'We could not find this apartment listing.'}</p>
+              </Card>
+            ) : (
+              <>
+                <div className="listing-details-hero">
+                  <ListingImageCarousel listing={listing} />
+
+                  <div className="listing-details-sidebar">
+                    <div className="listing-details-heading">
+                      <span className="muted">Apartment details</span>
+                      <h1>{listing.title}</h1>
+                      <p>
+                        {listing.city}, {listing.locality}
+                      </p>
+                    </div>
+
+                    <div className="nearby-place-chip-row compact">
+                      <span className="nearby-place-chip static">{formatEnum(listing.propertyType)}</span>
+                      <span className="nearby-place-chip static">{formatEnum(listing.occupancyType)}</span>
+                      {listing.owner.isVerified ? <span className="nearby-place-chip static">Verified owner</span> : null}
+                    </div>
+
+                    <div className="listing-details-fact-grid">
+                      <div className="listing-details-fact">
+                        <span className="muted">Rent</span>
+                        <strong>{formatMoney(listing.rentAmount)} / month</strong>
+                      </div>
+                      {listing.depositAmount ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">Deposit</span>
+                          <strong>{formatMoney(listing.depositAmount)}</strong>
+                        </div>
+                      ) : null}
+                      {listing.maintenanceAmount ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">Maintenance</span>
+                          <strong>{formatMoney(listing.maintenanceAmount)}</strong>
+                        </div>
+                      ) : null}
+                      <div className="listing-details-fact">
+                        <span className="muted">Move in</span>
+                        <strong>{formatShortDate(listing.moveInDate)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="feed-owner-row listing-details-owner">
+                      <div>
+                        <strong>{listing.owner.fullName}</strong>
+                        <span>{listing.owner.companyName ?? 'Independent owner'}</span>
+                      </div>
+                      {listing.owner.isVerified ? (
+                        <span className="pill">
+                          <ShieldCheck size={14} />
+                          Verified
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="listing-contact-card">
+                      <div className="listing-contact-head">
+                        <strong>{listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}</strong>
+                        <span className="muted">
+                          {canViewContact
+                            ? formatContactPhone(listing.contactPhone)
+                            : 'Protected for verified members'}
+                        </span>
+                      </div>
+
+                      {canViewContact ? (
+                        <Button
+                          onClick={() =>
+                            window.open(
+                              listing.contactMode === 'CALL'
+                                ? buildCallLink(listing.contactPhone)
+                                : buildWhatsappLink(listing.contactPhone),
+                              '_blank',
+                              'noopener,noreferrer',
+                            )
+                          }
+                          variant="secondary"
+                        >
+                          {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
+                        </Button>
+                      ) : (
+                        <div className="listing-contact-lock">
+                          {user ? <ShieldCheck size={16} /> : <Lock size={16} />}
+                          <span>{getContactVisibilityMessage(user)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="listing-details-content">
+                  <div className="listing-details-section">
+                    <strong>About this apartment</strong>
+                    <p className="feed-copy">{listing.description}</p>
+                    {listing.miscCharges ? <p className="feed-copy feed-copy-compact">Extras: {listing.miscCharges}</p> : null}
+                  </div>
+
+                  {listing.nearbyPlaces.length > 0 ? (
+                    <div className="listing-nearby-places">
+                      <strong>Nearby workplaces</strong>
+                      <div className="nearby-place-chip-row compact">
+                        {listing.nearbyPlaces.map((place) => (
+                          <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
+                            {place.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {listing.amenities.length > 0 ? (
+                    <div className="listing-amenities">
+                      <strong>Amenities</strong>
+                      <div className="nearby-place-chip-row compact">
+                        {listing.amenities.map((amenity) => (
+                          <span className="nearby-place-chip static" key={`${listing.id}-${amenity}`}>
+                            {amenity}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <LocationSummaryCard
+                    location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
 
 export function FindTenantPage() {
   const { sessionToken, user } = useAppAuth()
@@ -208,6 +739,7 @@ export function FindTenantPage() {
   const [findRoomCityOption, setFindRoomCityOption] = useState('')
   const [findRoomCustomCity, setFindRoomCustomCity] = useState('')
   const [nearbyPlaceInput, setNearbyPlaceInput] = useState('')
+  const [amenityInput, setAmenityInput] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>({
     title: '',
     description: '',
@@ -219,6 +751,9 @@ export function FindTenantPage() {
     nearbyPlaces: [],
     rentAmount: '',
     depositAmount: '',
+    maintenanceAmount: '',
+    miscCharges: '',
+    amenities: [],
     propertyType: 'APARTMENT',
     occupancyType: 'SHARED',
     contactMode: 'WHATSAPP',
@@ -509,6 +1044,11 @@ export function FindTenantPage() {
           depositAmount: replaceTenantForm.depositAmount
             ? Number(replaceTenantForm.depositAmount)
             : undefined,
+          maintenanceAmount: replaceTenantForm.maintenanceAmount
+            ? Number(replaceTenantForm.maintenanceAmount)
+            : undefined,
+          miscCharges: replaceTenantForm.miscCharges.trim() || undefined,
+          amenities: replaceTenantForm.amenities,
           propertyType: replaceTenantForm.propertyType,
           occupancyType: replaceTenantForm.occupancyType,
           moveInDate: toIsoDate(replaceTenantForm.moveInDate),
@@ -528,6 +1068,9 @@ export function FindTenantPage() {
         nearbyPlaces: [],
         rentAmount: '',
         depositAmount: '',
+        maintenanceAmount: '',
+        miscCharges: '',
+        amenities: [],
         propertyType: 'APARTMENT',
         occupancyType: 'SHARED',
         contactMode: 'WHATSAPP',
@@ -537,6 +1080,7 @@ export function FindTenantPage() {
       setReplaceTenantCityOption('')
       setReplaceTenantCustomCity('')
       setNearbyPlaceInput('')
+      setAmenityInput('')
       clearListingImages()
       setUploadSummary(null)
       await loadHousingData()
@@ -876,6 +1420,39 @@ export function FindTenantPage() {
     }))
   }
 
+  function toggleAmenity(amenity: string) {
+    setReplaceTenantForm((current) => {
+      const hasAmenity = current.amenities.some((item) => item.toLowerCase() === amenity.toLowerCase())
+
+      return {
+        ...current,
+        amenities: hasAmenity
+          ? current.amenities.filter((item) => item.toLowerCase() !== amenity.toLowerCase())
+          : [...current.amenities, amenity],
+      }
+    })
+  }
+
+  function addCustomAmenity() {
+    const normalizedAmenity = normalizeAmenityName(amenityInput)
+
+    if (!normalizedAmenity) {
+      return
+    }
+
+    setReplaceTenantForm((current) => {
+      if (current.amenities.some((item) => item.toLowerCase() === normalizedAmenity.toLowerCase())) {
+        return current
+      }
+
+      return {
+        ...current,
+        amenities: [...current.amenities, normalizedAmenity],
+      }
+    })
+    setAmenityInput('')
+  }
+
   return (
     <div className="page">
       <section className="section">
@@ -925,105 +1502,14 @@ export function FindTenantPage() {
 
               <div className="feed-grid listing-feed-grid">
                 {myListings.map((listing) => (
-                  <Card className="feed-card" key={`my-${listing.id}`}>
-                    {listing.images?.[0] && (
-                      <div className="feed-media">
-                        <img
-                          alt={listing.title}
-                          src={listing.images[0].thumbnailUrl || listing.images[0].imageUrl}
-                        />
-                      </div>
-                    )}
-
-                    <div className="feed-card-top">
-                      <div>
-                        <strong>{listing.title}</strong>
-                        <p>
-                          {listing.city}, {listing.locality}
-                        </p>
-                      </div>
-                      <Badge tone={listing.isBoosted ? 'purple' : 'green'}>
-                        {listing.isBoosted ? 'Boosted' : 'Published'}
-                      </Badge>
-                    </div>
-
-                    <div className="feed-meta-row">
-                      <span>
-                        <Building2 size={16} />
-                        {formatMoney(listing.rentAmount)} / month
-                      </span>
-                      <span>
-                        <CalendarRange size={16} />
-                        Move in {formatShortDate(listing.moveInDate)}
-                      </span>
-                    </div>
-
-                    <p className="feed-copy">{listing.description}</p>
-
-                    {listing.nearbyPlaces.length > 0 && (
-                      <div className="listing-nearby-places">
-                        <span className="muted">Near</span>
-                        <div className="nearby-place-chip-row compact">
-                          {getVisibleNearbyPlaces(listing.nearbyPlaces).map((place) => (
-                            <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
-                              {place.name}
-                            </span>
-                          ))}
-                          {listing.nearbyPlaces.length > 2 && (
-                            <span className="nearby-place-chip static">+{listing.nearbyPlaces.length - 2}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <LocationSummaryCard
-                      compact
-                      location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
-                    />
-
-                    <div className="listing-contact-card">
-                      <div className="listing-contact-head">
-                        <strong>
-                          {listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}
-                        </strong>
-                        <span className="muted">
-                          {canViewListingContact(listing, user)
-                            ? formatContactPhone(listing.contactPhone)
-                            : 'Protected for verified members'}
-                        </span>
-                      </div>
-
-                      {canViewListingContact(listing, user) ? (
-                        <Button
-                          onClick={() =>
-                            window.open(
-                              listing.contactMode === 'CALL'
-                                ? buildCallLink(listing.contactPhone)
-                                : buildWhatsappLink(listing.contactPhone),
-                              '_blank',
-                              'noopener,noreferrer',
-                            )
-                          }
-                          variant="secondary"
-                        >
-                          {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
-                        </Button>
-                      ) : (
-                        <div className="listing-contact-lock">
-                          <Lock size={16} />
-                          <span>{getContactVisibilityMessage(user)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="feed-owner-row">
-                      <div>
-                        <strong>{listing.owner.fullName}</strong>
-                        <span>{listing.owner.companyName ?? 'Independent owner'}</span>
-                      </div>
-                      <span className="pill">Visible in housing feed</span>
-                    </div>
-                  </Card>
+                  <ListingFeedCard
+                    badgeLabel={listing.isBoosted ? 'Boosted' : 'Published'}
+                    badgeTone={listing.isBoosted ? 'purple' : 'green'}
+                    key={`my-${listing.id}`}
+                    listing={listing}
+                    ownerPillLabel="Visible in housing feed"
+                    viewer={user}
+                  />
                 ))}
 
                 {!isLoading && myListings.length === 0 && (
@@ -1208,110 +1694,13 @@ export function FindTenantPage() {
 
               <div className="feed-grid listing-feed-grid">
                 {featuredListings.map((listing) => (
-                  <Card className="feed-card" key={listing.id}>
-                    {listing.images?.[0] && (
-                      <div className="feed-media">
-                        <img
-                          alt={listing.title}
-                          src={listing.images[0].thumbnailUrl || listing.images[0].imageUrl}
-                        />
-                      </div>
-                    )}
-
-                    <div className="feed-card-top">
-                      <div>
-                        <strong>{listing.title}</strong>
-                        <p>
-                          {listing.city}, {listing.locality}
-                        </p>
-                      </div>
-                      <Badge tone={listing.isBoosted ? 'purple' : listing.owner.isVerified ? 'green' : 'gray'}>
-                        {listing.isBoosted ? 'Boosted' : listing.owner.isVerified ? 'Verified' : 'Live'}
-                      </Badge>
-                    </div>
-
-                    <div className="feed-meta-row">
-                      <span>
-                        <Building2 size={16} />
-                        {formatMoney(listing.rentAmount)} / month
-                      </span>
-                      <span>
-                        <CalendarRange size={16} />
-                        Move in {formatShortDate(listing.moveInDate)}
-                      </span>
-                    </div>
-
-                    <p className="feed-copy">{listing.description}</p>
-
-                    {listing.nearbyPlaces.length > 0 && (
-                      <div className="listing-nearby-places">
-                        <span className="muted">Near</span>
-                        <div className="nearby-place-chip-row compact">
-                          {getVisibleNearbyPlaces(listing.nearbyPlaces).map((place) => (
-                            <span className="nearby-place-chip static" key={`${listing.id}-${place.name}`}>
-                              {place.name}
-                            </span>
-                          ))}
-                          {listing.nearbyPlaces.length > 2 && (
-                            <span className="nearby-place-chip static">+{listing.nearbyPlaces.length - 2}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <LocationSummaryCard
-                      compact
-                      location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
-                    />
-
-                    <div className="listing-contact-card">
-                      <div className="listing-contact-head">
-                        <strong>
-                          {listing.contactMode === 'CALL' ? 'Phone contact' : 'WhatsApp contact'}
-                        </strong>
-                        <span className="muted">
-                          {canViewListingContact(listing, user)
-                            ? formatContactPhone(listing.contactPhone)
-                            : 'Protected for verified members'}
-                        </span>
-                      </div>
-
-                      {canViewListingContact(listing, user) ? (
-                        <Button
-                          onClick={() =>
-                            window.open(
-                              listing.contactMode === 'CALL'
-                                ? buildCallLink(listing.contactPhone)
-                                : buildWhatsappLink(listing.contactPhone),
-                              '_blank',
-                              'noopener,noreferrer',
-                            )
-                          }
-                          variant="secondary"
-                        >
-                          {listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'}
-                        </Button>
-                      ) : (
-                        <div className="listing-contact-lock">
-                          {user ? <ShieldCheck size={16} /> : <Lock size={16} />}
-                          <span>{getContactVisibilityMessage(user)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="feed-owner-row">
-                      <div>
-                        <strong>{listing.owner.fullName}</strong>
-                        <span>{listing.owner.companyName ?? 'Independent owner'}</span>
-                      </div>
-                      {listing.owner.isVerified && (
-                        <span className="pill">
-                          <ShieldCheck size={14} />
-                          Verified
-                        </span>
-                      )}
-                    </div>
-                  </Card>
+                  <ListingFeedCard
+                    badgeLabel={listing.isBoosted ? 'Boosted' : listing.owner.isVerified ? 'Verified' : 'Live'}
+                    badgeTone={listing.isBoosted ? 'purple' : listing.owner.isVerified ? 'green' : 'gray'}
+                    key={listing.id}
+                    listing={listing}
+                    viewer={user}
+                  />
                 ))}
 
                 {!isLoading && featuredListings.length === 0 && (
@@ -1613,38 +2002,135 @@ export function FindTenantPage() {
                     )}
                   </div>
 
-                  <div className="split-form-grid">
-                    <div className="field">
-                      <label htmlFor="listing-rent">Rent amount</label>
-                      <input
-                        id="listing-rent"
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setReplaceTenantForm((current) => ({ ...current, rentAmount: event.target.value }))
-                        }
-                        placeholder="25000"
-                        value={replaceTenantForm.rentAmount}
-                      />
-                    </div>
+	                  <div className="post-form-section">
+	                    <div className="post-form-section-head">
+	                      <span className="muted">Pricing</span>
+	                      <strong>Monthly and one-time charges</strong>
+	                    </div>
 
-                    <div className="field">
-                      <label htmlFor="listing-deposit">Deposit amount</label>
-                      <input
-                        id="listing-deposit"
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setReplaceTenantForm((current) => ({ ...current, depositAmount: event.target.value }))
-                        }
-                        placeholder="50000"
-                        value={replaceTenantForm.depositAmount}
-                      />
-                    </div>
-                  </div>
+	                    <div className="split-form-grid">
+	                      <div className="field">
+	                        <label htmlFor="listing-rent">Rent amount</label>
+	                        <input
+	                          id="listing-rent"
+	                          inputMode="numeric"
+	                          onChange={(event) =>
+	                            setReplaceTenantForm((current) => ({ ...current, rentAmount: event.target.value }))
+	                          }
+	                          placeholder="25000"
+	                          value={replaceTenantForm.rentAmount}
+	                        />
+	                      </div>
 
-                  <div className="split-form-grid">
-                    <div className="field">
-                      <label htmlFor="listing-property-type">Room type</label>
-                      <select
+	                      <div className="field">
+	                        <label htmlFor="listing-deposit">Deposit amount</label>
+	                        <input
+	                          id="listing-deposit"
+	                          inputMode="numeric"
+	                          onChange={(event) =>
+	                            setReplaceTenantForm((current) => ({ ...current, depositAmount: event.target.value }))
+	                          }
+	                          placeholder="50000"
+	                          value={replaceTenantForm.depositAmount}
+	                        />
+	                      </div>
+	                    </div>
+
+	                    <div className="split-form-grid">
+	                      <div className="field">
+	                        <label htmlFor="listing-maintenance">Maintenance amount</label>
+	                        <input
+	                          id="listing-maintenance"
+	                          inputMode="numeric"
+	                          onChange={(event) =>
+	                            setReplaceTenantForm((current) => ({ ...current, maintenanceAmount: event.target.value }))
+	                          }
+	                          placeholder="3500"
+	                          value={replaceTenantForm.maintenanceAmount}
+	                        />
+	                      </div>
+
+	                      <div className="field">
+	                        <label htmlFor="listing-misc-charges">Miscellaneous charges</label>
+	                        <textarea
+	                          id="listing-misc-charges"
+	                          onChange={(event) =>
+	                            setReplaceTenantForm((current) => ({ ...current, miscCharges: event.target.value }))
+	                          }
+	                          placeholder="Maid extra, WiFi charges, parking charges, electricity notes..."
+	                          value={replaceTenantForm.miscCharges}
+	                        />
+	                      </div>
+	                    </div>
+	                  </div>
+
+	                  <div className="post-form-section">
+	                    <div className="post-form-section-head">
+	                      <span className="muted">Amenities</span>
+	                      <strong>Highlight what the flat already offers</strong>
+	                    </div>
+
+	                    <div className="amenity-chip-grid">
+	                      {standardAmenities.map((amenity) => (
+	                        <button
+	                          aria-pressed={replaceTenantForm.amenities.includes(amenity)}
+	                          className={`listing-filter-chip${replaceTenantForm.amenities.includes(amenity) ? ' active' : ''}`}
+	                          key={amenity}
+	                          onClick={() => toggleAmenity(amenity)}
+	                          type="button"
+	                        >
+	                          {amenity}
+	                        </button>
+	                      ))}
+	                    </div>
+
+	                    <div className="amenity-input-row">
+	                      <input
+	                        id="listing-custom-amenity"
+	                        onChange={(event) => setAmenityInput(event.target.value)}
+	                        onKeyDown={(event) => {
+	                          if (event.key === 'Enter') {
+	                            event.preventDefault()
+	                            addCustomAmenity()
+	                          }
+	                        }}
+	                        placeholder="Add another amenity"
+	                        value={amenityInput}
+	                      />
+	                      <Button disabled={!normalizeAmenityName(amenityInput)} onClick={addCustomAmenity} type="button" variant="secondary">
+	                        Add
+	                      </Button>
+	                    </div>
+
+	                    {replaceTenantForm.amenities.length > 0 && (
+	                      <div className="nearby-place-selected-row">
+	                        {replaceTenantForm.amenities.map((amenity) => (
+	                          <span className="nearby-place-chip selected" key={amenity}>
+	                            {amenity}
+	                            <button
+	                              aria-label={`Remove ${amenity}`}
+	                              className="nearby-place-chip-remove"
+	                              onClick={() => toggleAmenity(amenity)}
+	                              type="button"
+	                            >
+	                              ×
+	                            </button>
+	                          </span>
+	                        ))}
+	                      </div>
+	                    )}
+	                  </div>
+
+	                  <div className="post-form-section">
+	                    <div className="post-form-section-head">
+	                      <span className="muted">Property basics</span>
+	                      <strong>Type, occupancy, contact, and move-in</strong>
+	                    </div>
+
+	                  <div className="split-form-grid">
+	                    <div className="field">
+	                      <label htmlFor="listing-property-type">Room type</label>
+	                      <select
                         id="listing-property-type"
                         onChange={(event) =>
                           setReplaceTenantForm((current) => ({ ...current, propertyType: event.target.value }))
@@ -1716,9 +2202,10 @@ export function FindTenantPage() {
                         setReplaceTenantForm((current) => ({ ...current, moveInDate: event.target.value }))
                       }
                       type="date"
-                      value={replaceTenantForm.moveInDate}
-                    />
-                  </div>
+	                      value={replaceTenantForm.moveInDate}
+	                    />
+	                  </div>
+	                  </div>
 
                   <div className="field">
                     <label htmlFor="listing-images">Flat images</label>
@@ -2065,12 +2552,14 @@ async function getPublishedListings() {
   return apiRequest<Listing[]>('/listings?status=PUBLISHED&type=tenant_replacement')
 }
 
-function normalizeListings(listingsPayload: Listing[]) {
-  return listingsPayload.map((listing) => ({
+function normalizeListing(listing: Listing) {
+  return {
     ...listing,
     images: Array.isArray(listing.images) ? listing.images : [],
     nearbyPlaces: Array.isArray(listing.nearbyPlaces) ? listing.nearbyPlaces : [],
+    amenities: Array.isArray(listing.amenities) ? listing.amenities : [],
     locationName: typeof listing.locationName === 'string' ? listing.locationName : null,
+    miscCharges: typeof listing.miscCharges === 'string' ? listing.miscCharges : null,
     latitude:
       typeof listing.latitude === 'number'
         ? listing.latitude
@@ -2083,7 +2572,23 @@ function normalizeListings(listingsPayload: Listing[]) {
         : typeof listing.longitude === 'string'
           ? Number(listing.longitude)
           : null,
-  }))
+    maintenanceAmount:
+      typeof listing.maintenanceAmount === 'number'
+        ? listing.maintenanceAmount
+        : typeof listing.maintenanceAmount === 'string'
+          ? Number(listing.maintenanceAmount)
+          : null,
+  }
+}
+
+function normalizeListings(listingsPayload: Listing[]) {
+  return listingsPayload.map((listing) => normalizeListing(listing))
+}
+
+function isDesktopViewport() {
+  return typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(min-width: 720px)').matches
 }
 
 function matchesListingState(listing: Listing, state: ListingStateFilter) {
@@ -2102,6 +2607,10 @@ function normalizeNearbyPlaceName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+function normalizeAmenityName(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
 function inferNearbyPlaceType(value: string): NearbyPlaceType {
   const normalizedValue = normalizeNearbyPlaceName(value).toLowerCase()
   const knownPlace = standardNearbyWorkplaces.find((place) => place.name.toLowerCase() === normalizedValue)
@@ -2111,6 +2620,59 @@ function inferNearbyPlaceType(value: string): NearbyPlaceType {
 
 function getVisibleNearbyPlaces(nearbyPlaces: NearbyPlace[]) {
   return nearbyPlaces.slice(0, 2)
+}
+
+function getVisibleAmenities(amenities: string[]) {
+  return amenities.slice(0, 4)
+}
+
+function renderListingCoverImage(listing: Listing) {
+  const coverImage = listing.images.find((image) => image.isCover) ?? listing.images[0]
+
+  if (!coverImage) {
+    return null
+  }
+
+  return (
+    <div className="feed-media">
+      {listing.images.length > 1 ? <span className="feed-media-count">{listing.images.length} photos</span> : null}
+      <div className="feed-media-slide">
+        <img
+          alt={`${listing.title} cover photo`}
+          loading="lazy"
+          src={coverImage.thumbnailUrl || coverImage.imageUrl}
+        />
+      </div>
+    </div>
+  )
+}
+
+function renderListingImageGallery(
+  listing: Listing,
+  options?: { className?: string; hideCount?: boolean },
+) {
+  if (!listing.images?.length) {
+    return null
+  }
+
+  return (
+    <div className={options?.className ?? 'feed-media'}>
+      {!options?.hideCount && listing.images.length > 1 ? (
+        <span className="feed-media-count">{listing.images.length} photos</span>
+      ) : null}
+      <div aria-label={`${listing.title} photos`} className="feed-media-track" role="list">
+        {listing.images.map((image, index) => (
+          <div className="feed-media-slide" key={image.id} role="listitem">
+            <img
+              alt={`${listing.title} photo ${index + 1}`}
+              loading="lazy"
+              src={image.thumbnailUrl || image.imageUrl}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function canViewListingContact(

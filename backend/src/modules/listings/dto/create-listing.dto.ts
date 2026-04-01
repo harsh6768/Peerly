@@ -119,6 +119,25 @@ export class CreateListingDto {
   @Min(0)
   depositAmount?: number;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maintenanceAmount?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  miscCharges?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 24 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @IsString({ each: true })
+  amenities?: string[];
+
   @ApiPropertyOptional({ enum: PropertyType })
   @IsOptional()
   @IsEnum(PropertyType)

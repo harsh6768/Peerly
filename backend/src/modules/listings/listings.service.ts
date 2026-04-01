@@ -87,6 +87,9 @@ export class ListingsService {
         contactPhone: dto.contactPhone,
         rentAmount: listingType === ListingType.tenant_replacement ? dto.rentAmount : undefined,
         depositAmount: dto.depositAmount,
+        maintenanceAmount: listingType === ListingType.tenant_replacement ? dto.maintenanceAmount : undefined,
+        miscCharges: listingType === ListingType.tenant_replacement ? dto.miscCharges?.trim() || undefined : undefined,
+        amenities: listingType === ListingType.tenant_replacement ? this.normalizeAmenities(dto.amenities) : undefined,
         propertyType: listingType === ListingType.tenant_replacement ? dto.propertyType : undefined,
         occupancyType: listingType === ListingType.tenant_replacement ? dto.occupancyType : undefined,
         moveInDate:
@@ -146,6 +149,9 @@ export class ListingsService {
         contactPhone: dto.contactPhone,
         rentAmount: listingType === ListingType.tenant_replacement ? dto.rentAmount : null,
         depositAmount: dto.depositAmount,
+        maintenanceAmount: listingType === ListingType.tenant_replacement ? dto.maintenanceAmount : null,
+        miscCharges: listingType === ListingType.tenant_replacement ? dto.miscCharges?.trim() : null,
+        amenities: listingType === ListingType.tenant_replacement ? this.normalizeAmenities(dto.amenities) : [],
         propertyType: listingType === ListingType.tenant_replacement ? dto.propertyType : null,
         occupancyType: listingType === ListingType.tenant_replacement ? dto.occupancyType : null,
         ...(dto.moveInDate ? { moveInDate: toRequiredDate(dto.moveInDate) } : {}),
@@ -315,6 +321,23 @@ export class ListingsService {
     }
 
     return uniquePlaces;
+  }
+
+  private normalizeAmenities(amenities?: CreateListingDto['amenities']) {
+    if (!amenities?.length) {
+      return [];
+    }
+
+    return amenities
+      .map((amenity) => amenity.trim().replace(/\s+/g, ' '))
+      .filter((amenity, index, allAmenities) => {
+        if (!amenity) {
+          return false;
+        }
+
+        return allAmenities.findIndex((candidate) => candidate.toLowerCase() === amenity.toLowerCase()) === index;
+      })
+      .slice(0, 24);
   }
 
   private validateListingPayload(listingType: ListingType, dto: CreateListingDto) {

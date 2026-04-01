@@ -348,6 +348,9 @@ model Listing {
   contactPhone   String?          @db.VarChar(20)
   rentAmount     Int?
   depositAmount  Int?
+  maintenanceAmount Int?
+  miscCharges    String?          @db.Text
+  amenities      String[]         @default([])
   propertyType   PropertyType?
   occupancyType  OccupancyType?
   moveInDate     DateTime?

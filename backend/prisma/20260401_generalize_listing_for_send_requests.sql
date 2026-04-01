@@ -7,14 +7,14 @@ ALTER TABLE "Listing"
   ADD COLUMN IF NOT EXISTS "itemType" "ItemType",
   ADD COLUMN IF NOT EXISTS "requiredDate" TIMESTAMP(3);
 
--- ALTER TABLE "Listing"
---   ALTER COLUMN "description" DROP NOT NULL,
---   ALTER COLUMN "city" DROP NOT NULL,
---   ALTER COLUMN "locality" DROP NOT NULL,
---   ALTER COLUMN "rentAmount" DROP NOT NULL,
---   ALTER COLUMN "propertyType" DROP NOT NULL,
---   ALTER COLUMN "occupancyType" DROP NOT NULL,
---   ALTER COLUMN "moveInDate" DROP NOT NULL;
+ALTER TABLE "Listing"
+  ALTER COLUMN "description" DROP NOT NULL,
+  ALTER COLUMN "city" DROP NOT NULL,
+  ALTER COLUMN "locality" DROP NOT NULL,
+  ALTER COLUMN "rentAmount" DROP NOT NULL,
+  ALTER COLUMN "propertyType" DROP NOT NULL,
+  ALTER COLUMN "occupancyType" DROP NOT NULL,
+  ALTER COLUMN "moveInDate" DROP NOT NULL;
 
 UPDATE "Listing"
 SET "type" = 'tenant_replacement'

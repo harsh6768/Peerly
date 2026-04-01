@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   AssetProvider,
   CapacityType,
@@ -21,7 +21,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
-export class AppBootstrapService implements OnModuleInit {
+export class AppBootstrapService {
   private readonly logger = new Logger(AppBootstrapService.name);
 
   constructor(private readonly prisma: PrismaService) {}
