@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 type ButtonProps = {
   children: ReactNode
   variant?: 'primary' | 'secondary' | 'ghost'
+  className?: string
   fullWidth?: boolean
   type?: 'button' | 'submit'
   icon?: ReactNode
@@ -15,6 +16,7 @@ type ButtonProps = {
 export function Button({
   children,
   variant = 'primary',
+  className,
   fullWidth = false,
   type = 'button',
   icon,
@@ -22,13 +24,13 @@ export function Button({
   to,
   disabled = false,
 }: ButtonProps) {
-  const className = ['button', `button-${variant}`, fullWidth ? 'button-full' : '']
+  const resolvedClassName = ['button', `button-${variant}`, fullWidth ? 'button-full' : '', className]
     .filter(Boolean)
     .join(' ')
 
   if (to) {
     return (
-      <Link className={className} to={to}>
+      <Link className={resolvedClassName} to={to}>
         {children}
         {icon}
       </Link>
@@ -36,7 +38,7 @@ export function Button({
   }
 
   return (
-    <button className={className} disabled={disabled} onClick={onClick} type={type}>
+    <button className={resolvedClassName} disabled={disabled} onClick={onClick} type={type}>
       {children}
       {icon}
     </button>

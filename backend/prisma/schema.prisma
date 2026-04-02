@@ -432,21 +432,29 @@ model HousingNeed {
 }
 
 model ListingInquiry {
-  id             String               @id @default(cuid())
-  listingId      String
-  requesterUserId String
-  listingOwnerUserId String
-  message        String?              @db.Text
-  status         ListingInquiryStatus @default(NEW)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  listing        Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  requester      User                 @relation("InquiryRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
-  listingOwner   User                 @relation("InquiryListingOwner", fields: [listingOwnerUserId], references: [id], onDelete: Cascade)
-  conversation   Conversation?
+  id                  String               @id @default(cuid())
+  listingId           String
+  requesterUserId     String
+  listingOwnerUserId  String
+  message             String?              @db.Text
+  budgetAmount        Int?
+  preferredMoveInDate DateTime?
+  preferredOccupancy  OccupancyType?
+  preferredVisitAt    DateTime?
+  preferredVisitNote  String?              @db.Text
+  scheduledVisitAt    DateTime?
+  scheduledVisitNote  String?              @db.Text
+  status              ListingInquiryStatus @default(NEW)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  listing             Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  requester           User                 @relation("InquiryRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  listingOwner        User                 @relation("InquiryListingOwner", fields: [listingOwnerUserId], references: [id], onDelete: Cascade)
+  conversation        Conversation?
 
   @@index([listingId, status])
   @@index([requesterUserId, createdAt])
+  @@index([listingOwnerUserId, status, createdAt])
 }
 
 model TravelerRoute {

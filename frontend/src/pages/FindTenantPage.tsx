@@ -7,13 +7,22 @@ import {
   LoaderCircle,
   MapPin,
   PencilLine,
-  Plus,
   ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type DragEvent,
+  type ReactNode,
+  type SetStateAction,
+} from 'react'
+import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
@@ -49,6 +58,14 @@ type NearbyPlace = {
 
 type ListingStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED' | 'FILLED'
 type HostListingFilter = 'ACTIVE' | 'PUBLISHED' | 'DRAFT' | 'FILLED' | 'ARCHIVED' | 'ALL'
+type ListingInquiryStatus = 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'CLOSED' | 'DECLINED'
+type ListingInquiryFilter = 'ACTIVE' | ListingInquiryStatus | 'ALL'
+type PublicListingBudgetFilter =
+  | 'ANY'
+  | 'UNDER_20000'
+  | 'BETWEEN_20000_AND_30000'
+  | 'BETWEEN_30000_AND_45000'
+  | 'ABOVE_45000'
 
 type Listing = {
   id: string
@@ -84,6 +101,59 @@ type Listing = {
     companyName: string | null
     isVerified: boolean
   }
+}
+
+type ListingInquiryPerson = {
+  id: string
+  fullName: string
+  email: string
+  homeCity: string | null
+  isVerified: boolean
+  companyName: string | null
+  verificationType: string | null
+  verificationStatus: string | null
+}
+
+type ListingInquiryMessage = {
+  id: string
+  body: string
+  messageType: 'TEXT' | 'SYSTEM'
+  createdAt: string
+  sender: ListingInquiryPerson | null
+}
+
+type ListingInquiry = {
+  id: string
+  listingId: string
+  requesterUserId: string
+  listingOwnerUserId: string
+  message: string | null
+  budgetAmount: number | null
+  preferredMoveInDate: string | null
+  preferredOccupancy: string | null
+  preferredVisitAt: string | null
+  preferredVisitNote: string | null
+  scheduledVisitAt: string | null
+  scheduledVisitNote: string | null
+  status: ListingInquiryStatus
+  createdAt: string
+  updatedAt: string
+  listing: Listing
+  requester: ListingInquiryPerson
+  listingOwner: ListingInquiryPerson
+  conversation?: {
+    id: string
+    messages: ListingInquiryMessage[]
+  } | null
+}
+
+type InquiryForm = {
+  message: string
+  budgetAmount: string
+  preferredMoveInDate: string
+  preferredOccupancy: string
+  preferredVisitAt: string
+  preferredVisitNote: string
 }
 
 type ReplaceTenantForm = {
@@ -128,6 +198,29 @@ type ListingDetailsRouteState = {
   sourceIntent?: HousingIntent
 }
 
+type ListingComposerRouteState = {
+  listing?: Listing
+}
+
+type LocalFeedbackState = {
+  tone: 'success' | 'error' | 'info'
+  message: string
+}
+
+type HousingPageMode = 'root' | 'host-dashboard' | 'host-compose' | 'host-inquiries'
+type PublicListingFilters = {
+  city: string
+  propertyType: string
+  occupancyType: string
+  amenity: string
+  budget: PublicListingBudgetFilter
+  verifiedOnly: boolean
+}
+type ListingActionConfirmation = {
+  listing: Listing
+  nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED'>
+}
+
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
 const occupancyTypes = ['SINGLE', 'DOUBLE', 'SHARED']
 const standardAmenities = [
@@ -170,6 +263,22 @@ const hostListingFilters: Array<{ label: string; value: HostListingFilter }> = [
   { label: 'Rented', value: 'FILLED' },
   { label: 'Archived', value: 'ARCHIVED' },
   { label: 'All', value: 'ALL' },
+]
+const listingInquiryFilters: Array<{ label: string; value: ListingInquiryFilter }> = [
+  { label: 'Active', value: 'ACTIVE' },
+  { label: 'New', value: 'NEW' },
+  { label: 'Contacted', value: 'CONTACTED' },
+  { label: 'Scheduled', value: 'SCHEDULED' },
+  { label: 'Closed', value: 'CLOSED' },
+  { label: 'Declined', value: 'DECLINED' },
+  { label: 'All', value: 'ALL' },
+]
+const publicListingBudgetFilters: Array<{ label: string; value: PublicListingBudgetFilter }> = [
+  { label: 'Any budget', value: 'ANY' },
+  { label: 'Under 20k', value: 'UNDER_20000' },
+  { label: '20k - 30k', value: 'BETWEEN_20000_AND_30000' },
+  { label: '30k - 45k', value: 'BETWEEN_30000_AND_45000' },
+  { label: '45k+', value: 'ABOVE_45000' },
 ]
 
 function SearchListingCard({ listing }: { listing: Listing }) {
@@ -372,13 +481,14 @@ function HostListingCard({
       </div>
 
       <div className="host-listing-actions">
-        <Button onClick={() => onViewDetails(listing)} variant="secondary">
+        <Button className="listing-action-button listing-action-details" onClick={() => onViewDetails(listing)} variant="secondary">
           Show details
         </Button>
-        <Button onClick={() => onEdit(listing)} variant="secondary">
+        <Button className="listing-action-button listing-action-edit" onClick={() => onEdit(listing)} variant="secondary">
           Edit
         </Button>
         <Button
+          className="listing-action-button listing-action-rented"
           disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
           onClick={() => onMarkAsRented(listing)}
           variant="ghost"
@@ -386,6 +496,7 @@ function HostListingCard({
           {busyAction === `FILLED-${listing.id}` ? 'Updating...' : listing.status === 'FILLED' ? 'Marked as rented' : 'Mark as rented'}
         </Button>
         <Button
+          className="listing-action-button listing-action-delete"
           disabled={busyAction === `ARCHIVED-${listing.id}`}
           onClick={() => onArchive(listing)}
           variant="ghost"
@@ -394,6 +505,69 @@ function HostListingCard({
         </Button>
       </div>
     </Card>
+  )
+}
+
+function ListingActionDialog({
+  action,
+  busyAction,
+  onCancel,
+  onConfirm,
+}: {
+  action: ListingActionConfirmation
+  busyAction: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const isArchiveAction = action.nextStatus === 'ARCHIVED'
+  const actionKey = `${action.nextStatus}-${action.listing.id}`
+  const isBusy = busyAction === actionKey
+
+  return (
+    <div
+      aria-modal="true"
+      className="action-dialog-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !isBusy) {
+          onCancel()
+        }
+      }}
+      role="dialog"
+    >
+      <div className="action-dialog">
+        <div className="action-dialog-header">
+          <Badge tone={isArchiveAction ? 'red' : 'green'}>
+            {isArchiveAction ? 'Delete listing' : 'Mark as rented'}
+          </Badge>
+          <strong>{isArchiveAction ? 'Delete this listing from your active view?' : 'Mark this listing as rented?'}</strong>
+          <p>
+            {isArchiveAction
+              ? 'This post will move out of the default listings view and remain available under archived filters whenever you need it.'
+              : 'This post will be removed from active listings and remain visible under rented filters for future reference.'}
+          </p>
+        </div>
+
+        <div className="action-dialog-summary">
+          <strong>{action.listing.title}</strong>
+          <span>{formatListingLocation(action.listing)}</span>
+          <span>{formatPriceLine(action.listing)}</span>
+        </div>
+
+        <div className="action-dialog-footer">
+          <Button disabled={isBusy} onClick={onCancel} variant="secondary">
+            Cancel
+          </Button>
+          <Button
+            className={isArchiveAction ? 'listing-action-button listing-action-delete' : 'listing-action-button listing-action-rented'}
+            disabled={isBusy}
+            onClick={onConfirm}
+            variant="ghost"
+          >
+            {isBusy ? (isArchiveAction ? 'Deleting...' : 'Updating...') : isArchiveAction ? 'Yes, delete listing' : 'Yes, mark as rented'}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -476,11 +650,445 @@ function ListingImageCarousel({ listing }: { listing: Listing }) {
   )
 }
 
+function ListingInquiryPanel({
+  feedback,
+  inquiry,
+  isLoading,
+  isSubmitting,
+  listing,
+  onChange,
+  onSubmit,
+  onViewProfile,
+  sessionUserId,
+  values,
+}: {
+  feedback: LocalFeedbackState | null
+  inquiry: ListingInquiry | null
+  isLoading: boolean
+  isSubmitting: boolean
+  listing: Listing
+  onChange: Dispatch<SetStateAction<InquiryForm>>
+  onSubmit: () => void
+  onViewProfile: () => void
+  sessionUserId: string | null
+  values: InquiryForm
+}) {
+  const [isComposerOpen, setIsComposerOpen] = useState(false)
+
+  if (!sessionUserId) {
+    return (
+      <Card className="listing-inquiry-card">
+        <strong>Interested in this listing?</strong>
+        <p className="feed-copy">
+          Sign in first to unlock the inquiry flow. Once logged in, you can click `Interested` and share your move-in preference, budget, and visit availability with the owner.
+        </p>
+        <div className="feed-card-actions">
+          <Button disabled variant="secondary">
+            Interested
+          </Button>
+          <Button onClick={onViewProfile} variant="ghost">
+            Sign in to continue
+          </Button>
+        </div>
+      </Card>
+    )
+  }
+
+  if (sessionUserId === listing.owner.id) {
+    return (
+      <Card className="listing-inquiry-card">
+        <strong>This is your listing</strong>
+        <p className="feed-copy">
+          Incoming inquiries for this apartment will appear in your tenant replacement dashboard.
+        </p>
+      </Card>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="listing-inquiry-card">
+        <strong>Checking your inquiry status</strong>
+        <p className="feed-copy">We’re looking for any active inquiry you may already have for this listing.</p>
+      </Card>
+    )
+  }
+
+  if (inquiry) {
+    return (
+      <Card className="listing-inquiry-card">
+        <div className="inquiry-card-top">
+          <div>
+            <strong>Inquiry already sent</strong>
+            <p>Submitted {formatDateTime(inquiry.createdAt)}</p>
+          </div>
+          <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+            {formatListingInquiryStatus(inquiry.status)}
+          </Badge>
+        </div>
+
+        <div className="inquiry-fact-grid">
+          {inquiry.budgetAmount ? (
+            <div className="listing-details-fact">
+              <span className="muted">Budget</span>
+              <strong>{formatMoney(inquiry.budgetAmount)}</strong>
+            </div>
+          ) : null}
+          {inquiry.preferredMoveInDate ? (
+            <div className="listing-details-fact">
+              <span className="muted">Preferred move-in</span>
+              <strong>{formatShortDate(inquiry.preferredMoveInDate)}</strong>
+            </div>
+          ) : null}
+          {inquiry.preferredOccupancy ? (
+            <div className="listing-details-fact">
+              <span className="muted">Occupancy</span>
+              <strong>{formatEnum(inquiry.preferredOccupancy)}</strong>
+            </div>
+          ) : null}
+          {inquiry.scheduledVisitAt ? (
+            <div className="listing-details-fact">
+              <span className="muted">Scheduled visit</span>
+              <strong>{formatDateTime(inquiry.scheduledVisitAt)}</strong>
+            </div>
+          ) : inquiry.preferredVisitAt ? (
+            <div className="listing-details-fact">
+              <span className="muted">Preferred visit</span>
+              <strong>{formatDateTime(inquiry.preferredVisitAt)}</strong>
+            </div>
+          ) : null}
+        </div>
+
+        {inquiry.message ? (
+          <div className="listing-details-section">
+            <strong>Your note</strong>
+            <p className="feed-copy">{inquiry.message}</p>
+          </div>
+        ) : null}
+
+        {inquiry.scheduledVisitNote || inquiry.preferredVisitNote ? (
+          <p className="feed-copy feed-copy-compact">
+            {inquiry.scheduledVisitAt ? 'Visit notes' : 'Visit preference'}:{' '}
+            {inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote}
+          </p>
+        ) : null}
+      </Card>
+    )
+  }
+
+  if (!isComposerOpen) {
+    return (
+      <Card className="listing-inquiry-card">
+        <div className="inquiry-card-top">
+          <div>
+            <strong>Interested in this listing?</strong>
+            <p>Start a structured inquiry so the owner can review your move-in timing, budget, and visit preference quickly.</p>
+          </div>
+          <Badge tone="purple">Structured lead</Badge>
+        </div>
+
+        {feedback ? <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div> : null}
+
+        <div className="feed-card-actions">
+          <Button onClick={() => setIsComposerOpen(true)}>
+            Interested
+          </Button>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="listing-inquiry-card">
+      <div className="inquiry-card-top">
+        <div>
+          <strong>Send inquiry</strong>
+          <p>Share your move-in timing, budget, and visit preference so the owner can respond faster.</p>
+        </div>
+        <Badge tone="purple">Structured lead</Badge>
+      </div>
+
+      {feedback ? <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div> : null}
+
+      <div className="field">
+        <label htmlFor="listing-inquiry-message">Message</label>
+        <textarea
+          id="listing-inquiry-message"
+          onChange={(event) => onChange((current) => ({ ...current, message: event.target.value }))}
+          placeholder="Tell the owner why this listing fits your requirement."
+          rows={4}
+          value={values.message}
+        />
+      </div>
+
+      <div className="form-grid two-column">
+        <div className="field">
+          <label htmlFor="listing-inquiry-move-in">Preferred move-in date</label>
+          <input
+            id="listing-inquiry-move-in"
+            min={getTodayDateInputValue()}
+            onChange={(event) => onChange((current) => ({ ...current, preferredMoveInDate: event.target.value }))}
+            type="date"
+            value={values.preferredMoveInDate}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="listing-inquiry-budget">Budget</label>
+          <input
+            id="listing-inquiry-budget"
+            inputMode="numeric"
+            onChange={(event) => onChange((current) => ({ ...current, budgetAmount: event.target.value }))}
+            placeholder="22000"
+            value={values.budgetAmount}
+          />
+        </div>
+      </div>
+
+      <div className="form-grid two-column">
+        <div className="field">
+          <label htmlFor="listing-inquiry-occupancy">Preferred occupancy</label>
+          <select
+            id="listing-inquiry-occupancy"
+            onChange={(event) => onChange((current) => ({ ...current, preferredOccupancy: event.target.value }))}
+            value={values.preferredOccupancy}
+          >
+            <option value="">Select occupancy</option>
+            {occupancyTypes.map((type) => (
+              <option key={type} value={type}>
+                {formatEnum(type)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="listing-inquiry-visit-at">Preferred visit time</label>
+          <input
+            id="listing-inquiry-visit-at"
+            min={getTodayDateTimeInputValue()}
+            onChange={(event) => onChange((current) => ({ ...current, preferredVisitAt: event.target.value }))}
+            type="datetime-local"
+            value={values.preferredVisitAt}
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="listing-inquiry-visit-note">Visit note</label>
+        <input
+          id="listing-inquiry-visit-note"
+          onChange={(event) => onChange((current) => ({ ...current, preferredVisitNote: event.target.value }))}
+          placeholder="Example: Available after 7 PM on weekdays."
+          value={values.preferredVisitNote}
+        />
+      </div>
+
+      <div className="feed-card-actions">
+        <Button disabled={isSubmitting} onClick={onSubmit}>
+          {isSubmitting ? 'Sending inquiry...' : 'Send inquiry'}
+        </Button>
+        <Button
+          disabled={isSubmitting}
+          onClick={() => setIsComposerOpen(false)}
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
+function OwnerInquiryCard({
+  busyAction,
+  inquiry,
+  isScheduleOpen,
+  onClose,
+  onDecline,
+  onMarkContacted,
+  onOpenListing,
+  onOpenSchedule,
+  onSaveSchedule,
+  onScheduleVisitAtChange,
+  onScheduleVisitNoteChange,
+  onStopScheduling,
+  scheduleVisitAt,
+  scheduleVisitNote,
+}: {
+  busyAction: string | null
+  inquiry: ListingInquiry
+  isScheduleOpen: boolean
+  onClose: () => void
+  onDecline: () => void
+  onMarkContacted: () => void
+  onOpenListing: (listing: Listing) => void
+  onOpenSchedule: () => void
+  onSaveSchedule: () => void
+  onScheduleVisitAtChange: (value: string) => void
+  onScheduleVisitNoteChange: (value: string) => void
+  onStopScheduling: () => void
+  scheduleVisitAt: string
+  scheduleVisitNote: string
+}) {
+  const canManage = inquiry.status !== 'CLOSED' && inquiry.status !== 'DECLINED'
+
+  return (
+    <Card className="listing-inquiry-card owner-inquiry-card">
+      <div className="inquiry-card-top">
+        <div>
+          <strong>{inquiry.requester.fullName}</strong>
+          <p>
+            Interested in {inquiry.listing.title}
+            {inquiry.requester.companyName ? ` · ${inquiry.requester.companyName}` : ''}
+          </p>
+        </div>
+        <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+          {formatListingInquiryStatus(inquiry.status)}
+        </Badge>
+      </div>
+
+      <div className="inquiry-meta-row">
+        <span>Sent {formatDateTime(inquiry.createdAt)}</span>
+        {inquiry.requester.homeCity ? <span>{inquiry.requester.homeCity}</span> : null}
+      </div>
+
+      <div className="inquiry-fact-grid">
+        {inquiry.budgetAmount ? (
+          <div className="listing-details-fact">
+            <span className="muted">Budget</span>
+            <strong>{formatMoney(inquiry.budgetAmount)}</strong>
+          </div>
+        ) : null}
+        {inquiry.preferredMoveInDate ? (
+          <div className="listing-details-fact">
+            <span className="muted">Move-in</span>
+            <strong>{formatShortDate(inquiry.preferredMoveInDate)}</strong>
+          </div>
+        ) : null}
+        {inquiry.preferredOccupancy ? (
+          <div className="listing-details-fact">
+            <span className="muted">Occupancy</span>
+            <strong>{formatEnum(inquiry.preferredOccupancy)}</strong>
+          </div>
+        ) : null}
+        {inquiry.scheduledVisitAt ? (
+          <div className="listing-details-fact">
+            <span className="muted">Scheduled visit</span>
+            <strong>{formatDateTime(inquiry.scheduledVisitAt)}</strong>
+          </div>
+        ) : inquiry.preferredVisitAt ? (
+          <div className="listing-details-fact">
+            <span className="muted">Preferred visit</span>
+            <strong>{formatDateTime(inquiry.preferredVisitAt)}</strong>
+          </div>
+        ) : null}
+      </div>
+
+      {inquiry.message ? (
+        <div className="listing-details-section">
+          <strong>Message</strong>
+          <p className="feed-copy">{inquiry.message}</p>
+        </div>
+      ) : null}
+
+      {inquiry.preferredVisitNote || inquiry.scheduledVisitNote ? (
+        <p className="feed-copy feed-copy-compact">
+          {inquiry.scheduledVisitAt ? 'Visit notes' : 'Visit preference'}:{' '}
+          {inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote}
+        </p>
+      ) : null}
+
+      <div className="inquiry-actions">
+        <Button onClick={() => onOpenListing(inquiry.listing)} variant="secondary">
+          Open listing
+        </Button>
+
+        {canManage && inquiry.status === 'NEW' ? (
+          <Button
+            disabled={busyAction === `CONTACTED-${inquiry.id}`}
+            onClick={onMarkContacted}
+            variant="ghost"
+          >
+            {busyAction === `CONTACTED-${inquiry.id}` ? 'Updating...' : 'Mark contacted'}
+          </Button>
+        ) : null}
+
+        {canManage ? (
+          <Button
+            disabled={busyAction === `SCHEDULED-${inquiry.id}`}
+            onClick={isScheduleOpen ? onStopScheduling : onOpenSchedule}
+            variant="ghost"
+          >
+            {isScheduleOpen ? 'Cancel schedule' : 'Schedule visit'}
+          </Button>
+        ) : null}
+
+        {canManage ? (
+          <Button
+            disabled={busyAction === `DECLINED-${inquiry.id}`}
+            onClick={onDecline}
+            variant="ghost"
+          >
+            {busyAction === `DECLINED-${inquiry.id}` ? 'Updating...' : 'Decline'}
+          </Button>
+        ) : null}
+
+        {canManage ? (
+          <Button
+            disabled={busyAction === `CLOSED-${inquiry.id}`}
+            onClick={onClose}
+            variant="ghost"
+          >
+            {busyAction === `CLOSED-${inquiry.id}` ? 'Updating...' : 'Close'}
+          </Button>
+        ) : null}
+      </div>
+
+      {isScheduleOpen ? (
+        <div className="inquiry-schedule-form">
+          <div className="field">
+            <label htmlFor={`schedule-visit-${inquiry.id}`}>Visit date and time</label>
+            <input
+              id={`schedule-visit-${inquiry.id}`}
+              min={getTodayDateTimeInputValue()}
+              onChange={(event) => onScheduleVisitAtChange(event.target.value)}
+              type="datetime-local"
+              value={scheduleVisitAt}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor={`schedule-note-${inquiry.id}`}>Visit note</label>
+            <input
+              id={`schedule-note-${inquiry.id}`}
+              onChange={(event) => onScheduleVisitNoteChange(event.target.value)}
+              placeholder="Share instructions, gate details, or preferred arrival buffer."
+              value={scheduleVisitNote}
+            />
+          </div>
+
+          <div className="feed-card-actions">
+            <Button
+              disabled={!scheduleVisitAt || busyAction === `SCHEDULED-${inquiry.id}`}
+              onClick={onSaveSchedule}
+            >
+              {busyAction === `SCHEDULED-${inquiry.id}` ? 'Scheduling...' : 'Save visit'}
+            </Button>
+            <Button onClick={onStopScheduling} variant="ghost">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 export function FindTenantListingDetailsPage() {
   const { listingId } = useParams<{ listingId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const { setIntent } = useHousingIntent()
+  const { sessionToken, user } = useAppAuth()
   const routeState = location.state as ListingDetailsRouteState | null
   const initialListing = useMemo(
     () => (routeState?.listing && routeState.listing.id === listingId ? normalizeListing(routeState.listing) : null),
@@ -489,6 +1097,11 @@ export function FindTenantListingDetailsPage() {
   const [listing, setListing] = useState<Listing | null>(initialListing)
   const [isLoading, setIsLoading] = useState(initialListing === null)
   const [error, setError] = useState<string | null>(null)
+  const [existingInquiry, setExistingInquiry] = useState<ListingInquiry | null>(null)
+  const [isLoadingInquiry, setIsLoadingInquiry] = useState(false)
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false)
+  const [inquiryFeedback, setInquiryFeedback] = useState<LocalFeedbackState | null>(null)
+  const [inquiryForm, setInquiryForm] = useState<InquiryForm>(makeEmptyInquiryForm())
 
   useEffect(() => {
     if (!listingId) {
@@ -530,6 +1143,54 @@ export function FindTenantListingDetailsPage() {
     }
   }, [initialListing, listingId])
 
+  useEffect(() => {
+    if (!listingId || !sessionToken || !user || (listing && listing.owner.id === user.id)) {
+      setExistingInquiry(null)
+      return
+    }
+
+    const currentListingId = listingId
+    let isCancelled = false
+
+    async function loadExistingInquiry() {
+      try {
+        setIsLoadingInquiry(true)
+        const inquiries = await apiRequest<ListingInquiry[]>(
+          `/listing-inquiries?scope=requester&listingId=${encodeURIComponent(currentListingId)}`,
+          {
+            token: sessionToken,
+          },
+        )
+
+        if (!isCancelled) {
+          const currentInquiry = inquiries[0] ? normalizeListingInquiry(inquiries[0]) : null
+          setExistingInquiry(currentInquiry)
+
+          if (currentInquiry) {
+            setInquiryForm(makeEmptyInquiryForm())
+          }
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setInquiryFeedback({
+            tone: 'error',
+            message: loadError instanceof Error ? loadError.message : 'Unable to load your inquiry for this listing.',
+          })
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingInquiry(false)
+        }
+      }
+    }
+
+    void loadExistingInquiry()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [listing, listingId, sessionToken, user])
+
   const badgeTone = listing?.owner.isVerified ? 'green' : 'gray'
   const badgeLabel = listing?.owner.isVerified ? 'Verified owner' : 'Live listing'
 
@@ -539,6 +1200,53 @@ export function FindTenantListingDetailsPage() {
     }
 
     navigate(routeState?.backTo ?? '/find-tenant')
+  }
+
+  async function handleCreateInquiry() {
+    if (!listingId || !sessionToken || !user) {
+      setInquiryFeedback({
+        tone: 'error',
+        message: 'Please sign in before sending an inquiry.',
+      })
+      return
+    }
+
+    try {
+      setIsSubmittingInquiry(true)
+      setInquiryFeedback(null)
+
+      const createdInquiry = await apiRequest<ListingInquiry>('/listing-inquiries', {
+        method: 'POST',
+        token: sessionToken,
+        body: JSON.stringify({
+          listingId,
+          message: inquiryForm.message.trim() || undefined,
+          budgetAmount: inquiryForm.budgetAmount ? Number(inquiryForm.budgetAmount) : undefined,
+          preferredMoveInDate: inquiryForm.preferredMoveInDate
+            ? toIsoDate(inquiryForm.preferredMoveInDate)
+            : undefined,
+          preferredOccupancy: inquiryForm.preferredOccupancy || undefined,
+          preferredVisitAt: inquiryForm.preferredVisitAt
+            ? toIsoDateTime(inquiryForm.preferredVisitAt)
+            : undefined,
+          preferredVisitNote: inquiryForm.preferredVisitNote.trim() || undefined,
+        }),
+      })
+
+      setExistingInquiry(normalizeListingInquiry(createdInquiry))
+      setInquiryForm(makeEmptyInquiryForm())
+      setInquiryFeedback({
+        tone: 'success',
+        message: 'Inquiry sent. The owner can now review your move-in and visit preferences.',
+      })
+    } catch (submitError) {
+      setInquiryFeedback({
+        tone: 'error',
+        message: submitError instanceof Error ? submitError.message : 'Unable to send your inquiry right now.',
+      })
+    } finally {
+      setIsSubmittingInquiry(false)
+    }
   }
 
   return (
@@ -650,6 +1358,19 @@ export function FindTenantListingDetailsPage() {
                         </div>
                       )}
                     </div>
+
+                    <ListingInquiryPanel
+                      feedback={inquiryFeedback}
+                      inquiry={existingInquiry}
+                      isLoading={isLoadingInquiry}
+                      isSubmitting={isSubmittingInquiry}
+                      listing={listing}
+                      onChange={setInquiryForm}
+                      onSubmit={() => void handleCreateInquiry()}
+                      onViewProfile={() => navigate('/profile')}
+                      sessionUserId={user?.id ?? null}
+                      values={inquiryForm}
+                    />
                   </div>
                 </div>
 
@@ -700,14 +1421,36 @@ export function FindTenantListingDetailsPage() {
 }
 
 export function FindTenantPage() {
+  return <HousingExperiencePage mode="root" />
+}
+
+export function FindTenantHostDashboardPage() {
+  return <HousingExperiencePage mode="host-dashboard" />
+}
+
+export function FindTenantHostComposePage() {
+  return <HousingExperiencePage mode="host-compose" />
+}
+
+export function FindTenantHostInquiriesPage() {
+  return <HousingExperiencePage mode="host-inquiries" />
+}
+
+function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const { sessionToken, user } = useAppAuth()
   const { intent, setIntent } = useHousingIntent()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { editListingId } = useParams<{ editListingId?: string }>()
   const [publicListings, setPublicListings] = useState<Listing[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
+  const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [publicListingFilters, setPublicListingFilters] = useState<PublicListingFilters>(
+    makeEmptyPublicListingFilters(),
+  )
   const [hostStep, setHostStep] = useState(0)
   const [editingListingId, setEditingListingId] = useState<string | null>(null)
   const [listingImages, setListingImages] = useState<DraftListingImage[]>([])
@@ -718,7 +1461,14 @@ export function FindTenantPage() {
   const [amenityInput, setAmenityInput] = useState('')
   const [isDragActive, setIsDragActive] = useState(false)
   const [busyListingAction, setBusyListingAction] = useState<string | null>(null)
+  const [busyInquiryAction, setBusyInquiryAction] = useState<string | null>(null)
+  const [listingActionConfirmation, setListingActionConfirmation] =
+    useState<ListingActionConfirmation | null>(null)
   const [myListingFilter, setMyListingFilter] = useState<HostListingFilter>('ACTIVE')
+  const [ownerInquiryFilter, setOwnerInquiryFilter] = useState<ListingInquiryFilter>('ACTIVE')
+  const [schedulingInquiryId, setSchedulingInquiryId] = useState<string | null>(null)
+  const [scheduleVisitAtInput, setScheduleVisitAtInput] = useState('')
+  const [scheduleVisitNoteInput, setScheduleVisitNoteInput] = useState('')
   const [replaceTenantCityOption, setReplaceTenantCityOption] = useState('')
   const [replaceTenantCustomCity, setReplaceTenantCustomCity] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>(makeEmptyReplaceTenantForm())
@@ -733,36 +1483,145 @@ export function FindTenantPage() {
       ),
     [replaceTenantForm.latitude, replaceTenantForm.locationName, replaceTenantForm.longitude],
   )
-  const activeIntent = user ? intent : housingIntentValues.findRoom
+  const isDedicatedHostPage = mode !== 'root'
+  const shouldShowHostDashboard = mode === 'host-dashboard'
+  const shouldShowHostComposer = mode === 'host-compose'
+  const shouldShowHostInquiries = mode === 'host-inquiries'
+  const discoverablePublicListings = useMemo(
+    () => publicListings.filter((listing) => !(user && listing.owner.id === user.id)),
+    [publicListings, user],
+  )
+  const publicCityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          discoverablePublicListings
+            .map((listing) => listing.city?.trim())
+            .filter((city): city is string => Boolean(city)),
+        ),
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .slice(0, 6),
+    [discoverablePublicListings],
+  )
+  const publicAmenityOptions = useMemo(() => {
+    const amenityCounts = new Map<string, number>()
+
+    discoverablePublicListings.forEach((listing) => {
+      listing.amenities.forEach((amenity) => {
+        amenityCounts.set(amenity, (amenityCounts.get(amenity) ?? 0) + 1)
+      })
+    })
+
+    return Array.from(amenityCounts.entries())
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 6)
+      .map(([amenity]) => amenity)
+  }, [discoverablePublicListings])
   const filteredPublicListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
-    return publicListings.filter((listing) => {
-      if (user && listing.owner.id === user.id) {
+    return discoverablePublicListings.filter((listing) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          listing.title,
+          listing.city ?? '',
+          listing.locality ?? '',
+          listing.locationName ?? '',
+          ...(listing.amenities ?? []),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery)
+
+      if (!matchesQuery) {
         return false
       }
 
-      if (!normalizedQuery) {
-        return true
+      if (publicListingFilters.city && listing.city !== publicListingFilters.city) {
+        return false
       }
 
-      return [
-        listing.title,
-        listing.city ?? '',
-        listing.locality ?? '',
-        listing.locationName ?? '',
-        ...(listing.amenities ?? []),
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedQuery)
+      if (
+        publicListingFilters.propertyType &&
+        listing.propertyType !== publicListingFilters.propertyType
+      ) {
+        return false
+      }
+
+      if (
+        publicListingFilters.occupancyType &&
+        listing.occupancyType !== publicListingFilters.occupancyType
+      ) {
+        return false
+      }
+
+      if (
+        publicListingFilters.amenity &&
+        !listing.amenities.includes(publicListingFilters.amenity)
+      ) {
+        return false
+      }
+
+      if (!matchesPublicListingBudget(listing.rentAmount, publicListingFilters.budget)) {
+        return false
+      }
+
+      if (publicListingFilters.verifiedOnly && !listing.owner.isVerified) {
+        return false
+      }
+
+      return true
     })
-  }, [publicListings, searchQuery, user])
+  }, [discoverablePublicListings, publicListingFilters, searchQuery])
+  const activePublicListingFilterTokens = useMemo(() => {
+    const tokens: string[] = []
+
+    if (searchQuery.trim()) {
+      tokens.push(`Search: ${searchQuery.trim()}`)
+    }
+
+    if (publicListingFilters.city) {
+      tokens.push(`City: ${publicListingFilters.city}`)
+    }
+
+    if (publicListingFilters.propertyType) {
+      tokens.push(`Type: ${formatEnum(publicListingFilters.propertyType)}`)
+    }
+
+    if (publicListingFilters.occupancyType) {
+      tokens.push(`Occupancy: ${formatEnum(publicListingFilters.occupancyType)}`)
+    }
+
+    if (publicListingFilters.amenity) {
+      tokens.push(`Amenity: ${publicListingFilters.amenity}`)
+    }
+
+    if (publicListingFilters.budget !== 'ANY') {
+      tokens.push(`Budget: ${formatPublicListingBudget(publicListingFilters.budget)}`)
+    }
+
+    if (publicListingFilters.verifiedOnly) {
+      tokens.push('Verified owners')
+    }
+
+    return tokens
+  }, [publicListingFilters, searchQuery])
+  const hasActivePublicListingFilters = activePublicListingFilterTokens.length > 0
   const filteredMyListings = useMemo(
     () => filterHostListings(myListings, myListingFilter),
     [myListingFilter, myListings],
   )
   const activeMyListingsCount = useMemo(() => filterHostListings(myListings, 'ACTIVE').length, [myListings])
+  const filteredOwnerInquiries = useMemo(
+    () => filterListingInquiries(ownerInquiries, ownerInquiryFilter),
+    [ownerInquiries, ownerInquiryFilter],
+  )
+  const activeOwnerInquiriesCount = useMemo(
+    () => filterListingInquiries(ownerInquiries, 'ACTIVE').length,
+    [ownerInquiries],
+  )
 
   useEffect(() => {
     listingImagesRef.current = listingImages
@@ -782,6 +1641,59 @@ export function FindTenantPage() {
     void loadHousingData()
   }, [sessionToken, user?.id])
 
+  useEffect(() => {
+    if (isDedicatedHostPage && user && intent !== housingIntentValues.tenantReplacement) {
+      setIntent(housingIntentValues.tenantReplacement)
+    }
+  }, [intent, isDedicatedHostPage, setIntent, user])
+
+  useEffect(() => {
+    if (!listingActionConfirmation) {
+      return
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busyListingAction) {
+        setListingActionConfirmation(null)
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [busyListingAction, listingActionConfirmation])
+
+  useEffect(() => {
+    if (!shouldShowHostComposer) {
+      return
+    }
+
+    const routeState = location.state as ListingComposerRouteState | null
+    const routeListing =
+      routeState?.listing && routeState.listing.id === editListingId
+        ? normalizeListing(routeState.listing)
+        : null
+
+    if (routeListing && editingListingId !== routeListing.id) {
+      applyListingForEditing(routeListing)
+      return
+    }
+
+    if (!editListingId) {
+      return
+    }
+
+    const existingListing = myListings.find((listing) => listing.id === editListingId)
+    if (existingListing && editingListingId !== existingListing.id) {
+      applyListingForEditing(existingListing)
+    }
+  }, [editListingId, editingListingId, location.state, myListings, shouldShowHostComposer])
+
   async function loadHousingData() {
     try {
       setIsLoading(true)
@@ -791,15 +1703,22 @@ export function FindTenantPage() {
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
-        const myListingsPayload = await apiRequest<Listing[]>(
-          `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
-          {
+        const [myListingsPayload, ownerInquiriesPayload] = await Promise.all([
+          apiRequest<Listing[]>(
+            `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
+            {
+              token: sessionToken,
+            },
+          ),
+          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
             token: sessionToken,
-          },
-        )
+          }),
+        ])
         setMyListings(normalizeListings(myListingsPayload))
+        setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
         setMyListings([])
+        setOwnerInquiries([])
       }
     } catch (error) {
       setFeedback({
@@ -818,15 +1737,25 @@ export function FindTenantPage() {
     }
 
     setIntent(nextIntent)
+
+    if (nextIntent === housingIntentValues.tenantReplacement) {
+      navigate('/find-tenant/host')
+      return
+    }
+
+    if (nextIntent === housingIntentValues.findRoom && isDedicatedHostPage) {
+      navigate('/find-tenant')
+    }
   }
 
   function startCreateListing() {
     resetListingComposer()
     setHostStep(0)
     handleIntentChange(housingIntentValues.tenantReplacement)
+    navigate('/find-tenant/host/listings/new')
   }
 
-  function startEditingListing(listing: Listing) {
+  function applyListingForEditing(listing: Listing) {
     clearListingImages(false)
     setEditingListingId(listing.id)
     setReplaceTenantForm({
@@ -873,8 +1802,14 @@ export function FindTenantPage() {
       })),
     )
     setHostStep(0)
-    handleIntentChange(housingIntentValues.tenantReplacement)
     setFeedback(null)
+  }
+
+  function startEditingListing(listing: Listing) {
+    handleIntentChange(housingIntentValues.tenantReplacement)
+    navigate(`/find-tenant/host/listings/${listing.id}/edit`, {
+      state: { listing } as ListingComposerRouteState,
+    })
   }
 
   function resetListingComposer() {
@@ -885,6 +1820,11 @@ export function FindTenantPage() {
     setAmenityInput('')
     setUploadSummary(null)
     clearListingImages(false)
+  }
+
+  function clearPublicListingFilters() {
+    setSearchQuery('')
+    setPublicListingFilters(makeEmptyPublicListingFilters())
   }
 
   async function handleSaveListing(targetStatus: 'DRAFT' | 'PUBLISHED') {
@@ -998,13 +1938,37 @@ export function FindTenantPage() {
             ? 'Listing marked as rented.'
             : 'Listing removed from your active dashboard.',
       })
+      return true
     } catch (error) {
       setFeedback({
         tone: 'error',
         message: error instanceof Error ? error.message : 'Unable to update listing status.',
       })
+      return false
     } finally {
       setBusyListingAction(null)
+    }
+  }
+
+  function requestListingStatusChange(
+    listing: Listing,
+    nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED'>,
+  ) {
+    setListingActionConfirmation({ listing, nextStatus })
+  }
+
+  async function confirmListingStatusChange() {
+    if (!listingActionConfirmation) {
+      return
+    }
+
+    const didSucceed = await handleListingStatusChange(
+      listingActionConfirmation.listing,
+      listingActionConfirmation.nextStatus,
+    )
+
+    if (didSucceed) {
+      setListingActionConfirmation(null)
     }
   }
 
@@ -1017,6 +1981,75 @@ export function FindTenantPage() {
         sourceIntent: housingIntentValues.tenantReplacement,
       } as ListingDetailsRouteState,
     })
+  }
+
+  function startSchedulingInquiry(inquiry: ListingInquiry) {
+    setSchedulingInquiryId(inquiry.id)
+    setScheduleVisitAtInput(toDateTimeLocalInput(inquiry.scheduledVisitAt ?? inquiry.preferredVisitAt))
+    setScheduleVisitNoteInput(inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote ?? '')
+  }
+
+  function cancelSchedulingInquiry() {
+    setSchedulingInquiryId(null)
+    setScheduleVisitAtInput('')
+    setScheduleVisitNoteInput('')
+  }
+
+  async function handleInquiryStatusUpdate(
+    inquiry: ListingInquiry,
+    nextStatus: ListingInquiryStatus,
+    options?: {
+      scheduledVisitAt?: string
+      scheduledVisitNote?: string
+    },
+  ) {
+    if (!sessionToken) {
+      setFeedback({
+        tone: 'error',
+        message: 'Please sign in before managing listing inquiries.',
+      })
+      return
+    }
+
+    const actionKey = `${nextStatus}-${inquiry.id}`
+
+    try {
+      setBusyInquiryAction(actionKey)
+      setFeedback(null)
+
+      await apiRequest(`/listing-inquiries/${inquiry.id}/status`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          status: nextStatus,
+          scheduledVisitAt: options?.scheduledVisitAt
+            ? toIsoDateTime(options.scheduledVisitAt)
+            : undefined,
+          scheduledVisitNote: options?.scheduledVisitNote?.trim() || undefined,
+        }),
+      })
+
+      cancelSchedulingInquiry()
+      await loadHousingData()
+      setFeedback({
+        tone: 'success',
+        message:
+          nextStatus === 'CONTACTED'
+            ? 'Inquiry marked as contacted.'
+            : nextStatus === 'SCHEDULED'
+              ? 'Visit scheduled successfully.'
+              : nextStatus === 'DECLINED'
+                ? 'Inquiry declined.'
+                : 'Inquiry closed.',
+      })
+    } catch (updateError) {
+      setFeedback({
+        tone: 'error',
+        message: updateError instanceof Error ? updateError.message : 'Unable to update the inquiry.',
+      })
+    } finally {
+      setBusyInquiryAction(null)
+    }
   }
 
   async function handleListingImageSelection(event: ChangeEvent<HTMLInputElement>) {
@@ -1232,25 +2265,671 @@ export function FindTenantPage() {
       </Card>
     )
 
+  function renderHostListingsPanel() {
+    return (
+      <div className="hub-panel host-dashboard-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Your listings</span>
+            <h2>Replacement listings</h2>
+            <p className="panel-subtitle">
+              Default view hides deleted listings. Use status filters to inspect drafts, rented posts, or archived records when needed.
+            </p>
+          </div>
+          <div className="hub-panel-actions">
+            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}</Badge>
+          </div>
+        </div>
+
+        {user ? (
+          <div className="host-listing-toolbar">
+            <div className="listing-filter-chip-row">
+              {hostListingFilters.map((filterOption) => (
+                <button
+                  aria-pressed={myListingFilter === filterOption.value}
+                  className={`listing-filter-chip${myListingFilter === filterOption.value ? ' active' : ''}`}
+                  key={filterOption.value}
+                  onClick={() => setMyListingFilter(filterOption.value)}
+                  type="button"
+                >
+                  {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!user ? (
+          <Card className="feed-card">
+            <strong>Sign in to host a listing</strong>
+            <p className="feed-copy">
+              Tenant replacement mode is for creating drafts, publishing replacement listings, and managing rented status.
+            </p>
+            <Button to="/profile" variant="secondary">
+              Open profile
+            </Button>
+          </Card>
+        ) : filteredMyListings.length === 0 && !isLoading ? (
+          hostModeEmptyState
+        ) : (
+          <div className="host-listing-grid">
+            {filteredMyListings.map((listing) => (
+              <HostListingCard
+                busyAction={busyListingAction}
+                key={listing.id}
+                listing={listing}
+                onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
+                onEdit={startEditingListing}
+                onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
+                onViewDetails={openListingDetails}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderHostInquiriesPanel() {
+    return (
+      <div className="hub-panel host-dashboard-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Lead management</span>
+            <h2>Incoming inquiries</h2>
+            <p className="panel-subtitle">
+              Review seeker preferences, mark outreach progress, and schedule visits from one queue.
+            </p>
+          </div>
+          <Badge tone="green">
+            {isLoading ? 'Loading' : `${activeOwnerInquiriesCount} active`}
+          </Badge>
+        </div>
+
+        {!user ? (
+          <Card className="feed-card">
+            <strong>Sign in to manage inquiries</strong>
+            <p className="feed-copy">
+              Incoming interest from seekers will appear here once your published listings start receiving inquiries.
+            </p>
+            <Button to="/profile" variant="secondary">
+              Open profile
+            </Button>
+          </Card>
+        ) : (
+          <>
+            <div className="listing-filter-chip-row">
+              {listingInquiryFilters.map((filterOption) => (
+                <button
+                  aria-pressed={ownerInquiryFilter === filterOption.value}
+                  className={`listing-filter-chip${ownerInquiryFilter === filterOption.value ? ' active' : ''}`}
+                  key={filterOption.value}
+                  onClick={() => setOwnerInquiryFilter(filterOption.value)}
+                  type="button"
+                >
+                  {filterOption.label} ({filterListingInquiries(ownerInquiries, filterOption.value).length})
+                </button>
+              ))}
+            </div>
+
+            {filteredOwnerInquiries.length === 0 && !isLoading ? (
+              <Card className="feed-card">
+                <strong>No {formatListingInquiryFilterLabel(ownerInquiryFilter).toLowerCase()} inquiries yet</strong>
+                <p className="feed-copy">
+                  New inquiries will appear here as soon as seekers express interest in your published listings.
+                </p>
+              </Card>
+            ) : (
+              <div className="host-inquiry-grid">
+                {filteredOwnerInquiries.map((inquiry) => (
+                  <OwnerInquiryCard
+                    busyAction={busyInquiryAction}
+                    inquiry={inquiry}
+                    isScheduleOpen={schedulingInquiryId === inquiry.id}
+                    key={inquiry.id}
+                    onClose={() => void handleInquiryStatusUpdate(inquiry, 'CLOSED')}
+                    onDecline={() => void handleInquiryStatusUpdate(inquiry, 'DECLINED')}
+                    onMarkContacted={() => void handleInquiryStatusUpdate(inquiry, 'CONTACTED')}
+                    onOpenListing={(listing) => openListingDetails(listing)}
+                    onOpenSchedule={() => startSchedulingInquiry(inquiry)}
+                    onSaveSchedule={() =>
+                      void handleInquiryStatusUpdate(inquiry, 'SCHEDULED', {
+                        scheduledVisitAt: scheduleVisitAtInput,
+                        scheduledVisitNote: scheduleVisitNoteInput,
+                      })
+                    }
+                    onScheduleVisitAtChange={setScheduleVisitAtInput}
+                    onScheduleVisitNoteChange={setScheduleVisitNoteInput}
+                    onStopScheduling={cancelSchedulingInquiry}
+                    scheduleVisitAt={scheduleVisitAtInput}
+                    scheduleVisitNote={scheduleVisitNoteInput}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  function renderHostComposerPanel() {
+    return (
+      <div className="hub-panel host-composer-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Listing flow</span>
+            <h2>{editingListingId ? 'Edit replacement listing' : 'Create replacement listing'}</h2>
+            <p className="panel-subtitle">
+              Keep the publishing flow focused in its own page so you can move step by step without dashboard clutter.
+            </p>
+          </div>
+          {editingListingId ? (
+            <Button onClick={startCreateListing} variant="ghost">
+              Start fresh
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="host-stepper">
+          {hostSteps.map((step, index) => (
+            <button
+              aria-current={hostStep === index ? 'step' : undefined}
+              className={`host-step-pill${hostStep === index ? ' active' : ''}`}
+              key={step}
+              onClick={() => setHostStep(index)}
+              type="button"
+            >
+              <span>{index + 1}</span>
+              {step}
+            </button>
+          ))}
+        </div>
+
+        <div className="host-step-section">
+          {hostStep === 0 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 1: Basic info</strong>
+                <span className="muted">Start with the listing title, city, exact property location, and move-in date.</span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="listing-title">Listing title</label>
+                <input
+                  id="listing-title"
+                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Private room in a furnished 2 BHK near ITPL"
+                  value={replaceTenantForm.title}
+                />
+              </div>
+
+              <div className="form-grid two-column">
+                <div className="field">
+                  <label htmlFor="listing-city-select">City</label>
+                  <select
+                    id="listing-city-select"
+                    onChange={(event) => {
+                      setReplaceTenantCityOption(event.target.value)
+                      if (event.target.value !== otherCityOptionValue) {
+                        setReplaceTenantCustomCity('')
+                      }
+                    }}
+                    value={replaceTenantCityOption}
+                  >
+                    <option value="">Select city</option>
+                    {majorCities.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                    <option value={otherCityOptionValue}>Other city</option>
+                  </select>
+                </div>
+
+                {replaceTenantCityOption === otherCityOptionValue ? (
+                  <div className="field">
+                    <label htmlFor="listing-city-custom">Enter city</label>
+                    <input
+                      id="listing-city-custom"
+                      onChange={(event) => setReplaceTenantCustomCity(event.target.value)}
+                      placeholder="Enter the city"
+                      value={replaceTenantCustomCity}
+                    />
+                  </div>
+                ) : (
+                  <div className="field">
+                    <label htmlFor="listing-locality">Locality</label>
+                    <input
+                      id="listing-locality"
+                      onChange={(event) => setReplaceTenantForm((current) => ({ ...current, locality: event.target.value }))}
+                      placeholder="Brookefield, Whitefield, Koramangala..."
+                      value={replaceTenantForm.locality}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {replaceTenantCityOption === otherCityOptionValue && (
+                <div className="field">
+                  <label htmlFor="listing-locality-alt">Locality</label>
+                  <input
+                    id="listing-locality-alt"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, locality: event.target.value }))}
+                    placeholder="Apartment, street, or neighborhood"
+                    value={replaceTenantForm.locality}
+                  />
+                </div>
+              )}
+
+              <PlaceAutocompleteField
+                helperText="Pick the exact apartment or building on the map so seekers can understand the location instantly."
+                inputValue={replaceTenantForm.locationName}
+                label="Property location"
+                onClear={() =>
+                  setReplaceTenantForm((current) => ({
+                    ...current,
+                    locationName: '',
+                    latitude: null,
+                    longitude: null,
+                  }))
+                }
+                onInputValueChange={(value) =>
+                  setReplaceTenantForm((current) => ({
+                    ...current,
+                    locationName: value,
+                  }))
+                }
+                onSelect={(location) =>
+                  setReplaceTenantForm((current) => ({
+                    ...current,
+                    locationName: location.locationName,
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }))
+                }
+                value={selectedListingLocation}
+              />
+
+              <div className="field">
+                <label htmlFor="listing-move-in-date">Move-in date</label>
+                <input
+                  id="listing-move-in-date"
+                  min={getTodayDateInputValue()}
+                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, moveInDate: event.target.value }))}
+                  type="date"
+                  value={replaceTenantForm.moveInDate}
+                />
+              </div>
+            </>
+          )}
+
+          {hostStep === 1 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 2: Pricing</strong>
+                <span className="muted">Rent is required for publishing. Deposit and maintenance stay optional.</span>
+              </div>
+
+              <div className="form-grid three-column">
+                <div className="field">
+                  <label htmlFor="listing-rent">Rent amount</label>
+                  <input
+                    id="listing-rent"
+                    inputMode="numeric"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, rentAmount: event.target.value }))}
+                    placeholder="20000"
+                    value={replaceTenantForm.rentAmount}
+                  />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="listing-deposit">Deposit amount</label>
+                  <input
+                    id="listing-deposit"
+                    inputMode="numeric"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, depositAmount: event.target.value }))}
+                    placeholder="75000"
+                    value={replaceTenantForm.depositAmount}
+                  />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="listing-maintenance">Maintenance amount</label>
+                  <input
+                    id="listing-maintenance"
+                    inputMode="numeric"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, maintenanceAmount: event.target.value }))}
+                    placeholder="2000"
+                    value={replaceTenantForm.maintenanceAmount}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {hostStep === 2 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 3: Amenities</strong>
+                <span className="muted">Choose the key amenities seekers use to compare rooms quickly.</span>
+              </div>
+
+              <div className="amenity-chip-grid">
+                {standardAmenities.map((amenity) => (
+                  <button
+                    aria-pressed={replaceTenantForm.amenities.includes(amenity)}
+                    className={`listing-filter-chip${replaceTenantForm.amenities.includes(amenity) ? ' active' : ''}`}
+                    key={amenity}
+                    onClick={() => toggleAmenity(amenity)}
+                    type="button"
+                  >
+                    {amenity}
+                  </button>
+                ))}
+              </div>
+
+              <div className="amenity-input-row">
+                <input
+                  onChange={(event) => setAmenityInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      addCustomAmenity()
+                    }
+                  }}
+                  placeholder="Add a custom amenity"
+                  value={amenityInput}
+                />
+                <Button onClick={addCustomAmenity} variant="secondary">
+                  Add amenity
+                </Button>
+              </div>
+            </>
+          )}
+
+          {hostStep === 3 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 4: Room details</strong>
+                <span className="muted">Keep structured room information outside the description so seekers can scan it quickly.</span>
+              </div>
+
+              <div className="form-grid three-column">
+                <div className="field">
+                  <label htmlFor="listing-property-type">Room type</label>
+                  <select
+                    id="listing-property-type"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, propertyType: event.target.value }))}
+                    value={replaceTenantForm.propertyType}
+                  >
+                    {propertyTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {formatEnum(type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="listing-occupancy-type">Occupancy</label>
+                  <select
+                    id="listing-occupancy-type"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, occupancyType: event.target.value }))}
+                    value={replaceTenantForm.occupancyType}
+                  >
+                    {occupancyTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {formatEnum(type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="listing-contact-mode">Contact method</label>
+                  <select
+                    id="listing-contact-mode"
+                    onChange={(event) => setReplaceTenantForm((current) => ({ ...current, contactMode: event.target.value }))}
+                    value={replaceTenantForm.contactMode}
+                  >
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="CALL">Phone call</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="listing-contact-phone">Contact number</label>
+                <input
+                  id="listing-contact-phone"
+                  inputMode="tel"
+                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, contactPhone: event.target.value }))}
+                  placeholder="+91 98765 43210"
+                  value={replaceTenantForm.contactPhone}
+                />
+              </div>
+            </>
+          )}
+
+          {hostStep === 4 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 5: Images</strong>
+                <span className="muted">Upload multiple apartment images so seekers can review the space before contacting you.</span>
+              </div>
+
+              <label
+                className={`listing-upload-dropzone${isDragActive ? ' active' : ''}${isUploadingImages ? ' uploading' : ''}`}
+                htmlFor="listing-images"
+                onDragEnter={() => setIsDragActive(true)}
+                onDragLeave={() => setIsDragActive(false)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleListingImageDrop}
+              >
+                <input
+                  accept="image/*"
+                  id="listing-images"
+                  multiple
+                  onChange={(event) => void handleListingImageSelection(event)}
+                  type="file"
+                />
+                <Upload size={22} />
+                <strong>Upload apartment photos</strong>
+                <span className="muted">Minimum 2 photos for a published listing, maximum 8.</span>
+              </label>
+
+              {uploadSummary ? <p className="helper-copy">{uploadSummary}</p> : null}
+              {isCleaningUpUploads ? <p className="helper-copy">Cleaning up removed uploads...</p> : null}
+
+              <div className="listing-image-grid">
+                {listingImages.map((image, index) => (
+                  <div className="listing-image-card" key={image.id}>
+                    <div className="listing-image-preview">
+                      <img alt={image.fileName} src={image.previewUrl} />
+                    </div>
+                    <div className="listing-image-copy">
+                      <strong>{listingImageSuggestions[index] ?? `Image ${index + 1}`}</strong>
+                      <span className="muted">
+                        {image.status === 'uploading'
+                          ? 'Uploading...'
+                          : image.status === 'error'
+                            ? image.error ?? 'Upload failed'
+                            : index === 0
+                              ? 'Cover image'
+                              : 'Apartment photo'}
+                      </span>
+                    </div>
+                    <div className="listing-image-actions">
+                      <Button
+                        disabled={index === 0}
+                        onClick={() => moveListingImage(index, -1)}
+                        variant="ghost"
+                      >
+                        <ChevronLeft size={16} />
+                      </Button>
+                      <Button
+                        disabled={index === listingImages.length - 1}
+                        onClick={() => moveListingImage(index, 1)}
+                        variant="ghost"
+                      >
+                        <ChevronRight size={16} />
+                      </Button>
+                      <Button onClick={() => void removeListingImage(image.id)} variant="ghost">
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {hostStep === 5 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 6: Description</strong>
+                <span className="muted">Use this only for the extra context that does not already fit into the structured fields.</span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="listing-description">Description</label>
+                <textarea
+                  id="listing-description"
+                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="Share the apartment vibe, house rules, or anything else seekers should know."
+                  rows={6}
+                  value={replaceTenantForm.description}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="listing-misc-charges">Other pricing notes</label>
+                <input
+                  id="listing-misc-charges"
+                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, miscCharges: event.target.value }))}
+                  placeholder="Electricity extra, housekeeping split separately..."
+                  value={replaceTenantForm.miscCharges}
+                />
+              </div>
+            </>
+          )}
+
+          {hostStep === 6 && (
+            <>
+              <div className="post-form-section-head">
+                <strong>Step 7: Review and publish</strong>
+                <span className="muted">Review the essentials, then save as draft or publish the listing live.</span>
+              </div>
+
+              <div className="listing-review-grid">
+                <div className="listing-details-fact">
+                  <span className="muted">Title</span>
+                  <strong>{replaceTenantForm.title || 'Add a listing title'}</strong>
+                </div>
+                <div className="listing-details-fact">
+                  <span className="muted">Location</span>
+                  <strong>
+                    {resolveCityValue(replaceTenantCityOption, replaceTenantCustomCity) || 'City pending'}
+                    {replaceTenantForm.locality ? `, ${replaceTenantForm.locality}` : ''}
+                  </strong>
+                </div>
+                <div className="listing-details-fact">
+                  <span className="muted">Rent</span>
+                  <strong>{replaceTenantForm.rentAmount ? formatMoney(Number(replaceTenantForm.rentAmount)) : 'Pending'}</strong>
+                </div>
+                <div className="listing-details-fact">
+                  <span className="muted">Images</span>
+                  <strong>{listingImages.length} uploaded</strong>
+                </div>
+              </div>
+
+              {selectedListingLocation ? <LocationSummaryCard compact location={selectedListingLocation} /> : null}
+            </>
+          )}
+        </div>
+
+        <div className="host-step-actions">
+          <Button
+            disabled={hostStep === 0}
+            onClick={() => setHostStep((current) => Math.max(0, current - 1))}
+            variant="ghost"
+          >
+            Previous
+          </Button>
+
+          <div className="host-step-actions-right">
+            <Button
+              disabled={isSavingListing}
+              onClick={() => void handleSaveListing('DRAFT')}
+              variant="ghost"
+            >
+              {isSavingListing ? 'Saving...' : 'Save draft'}
+            </Button>
+
+            {hostStep < hostSteps.length - 1 ? (
+              <Button onClick={() => setHostStep((current) => Math.min(hostSteps.length - 1, current + 1))}>
+                Next step
+              </Button>
+            ) : (
+              <Button
+                disabled={isSavingListing}
+                icon={isSavingListing ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}
+                onClick={() => void handleSaveListing('PUBLISHED')}
+              >
+                {editingListingId ? 'Update and publish' : 'Publish listing'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderTenantReplacementPage(
+    title: string,
+    subtitle: string,
+    content: ReactNode,
+  ) {
+    return (
+      <>
+        <div className="section-head reveal tenant-section-head">
+          <div className="eyebrow">Tenant replacement</div>
+          <h1 className="page-title">{title}</h1>
+          <p className="page-subtitle">{subtitle}</p>
+        </div>
+
+        <TenantReplacementSectionChips
+          activeInquiryCount={activeOwnerInquiriesCount}
+          activeListingsCount={activeMyListingsCount}
+          user={user}
+        />
+
+        <div className="tenant-route-stack">{content}</div>
+      </>
+    )
+  }
+
   return (
     <div className="page">
       <section className="section">
         <div className="page-inner">
-          <div className="section-head reveal">
-            <div className="eyebrow">Housing</div>
-            <h1 className="page-title">Choose your housing intent first, then we keep the rest of the UI focused.</h1>
-            <p className="page-subtitle">
-              Find room is for seekers. Tenant replacement is for owners posting or managing replacement listings.
-            </p>
-          </div>
-
           {feedback && (
             <div className={`feedback-banner feedback-${feedback.tone}`}>
               <span>{feedback.message}</span>
             </div>
           )}
 
-          {activeIntent === housingIntentValues.findRoom ? (
+          {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries ? (
+            <>
+              <div className="section-head reveal">
+                <div className="eyebrow">Housing</div>
+                <h1 className="page-title">Choose your housing intent first, then we keep the rest of the UI focused.</h1>
+                <p className="page-subtitle">
+                  Find room is for seekers. Tenant replacement is for owners posting or managing replacement listings.
+                </p>
+              </div>
+
             <div className="hub-panel hub-panel-wide live-feed-panel">
               <div className="hub-panel-head live-feed-head">
                 <div>
@@ -1276,8 +2955,20 @@ export function FindTenantPage() {
 
               <div className="live-feed-toolbar">
                 <div className="live-feed-summary">
-                  <strong>Search published listings</strong>
-                  <span>Use a quick text search for title, city, locality, or key amenities.</span>
+                  <strong>Search and filter published listings</strong>
+                  <span>Use city, property type, occupancy, budget, and amenity filters to narrow the feed quickly.</span>
+                </div>
+                <div className="listing-filter-toolbar-actions">
+                  <span className="listing-filter-status">
+                    {hasActivePublicListingFilters
+                      ? `${activePublicListingFilterTokens.length} filter${activePublicListingFilterTokens.length === 1 ? '' : 's'} active`
+                      : 'Standard filters ready'}
+                  </span>
+                  {hasActivePublicListingFilters ? (
+                    <Button className="listing-toolbar-clear" onClick={clearPublicListingFilters} variant="ghost">
+                      Clear all
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="housing-search-row">
                   <input
@@ -1286,6 +2977,175 @@ export function FindTenantPage() {
                     value={searchQuery}
                   />
                 </div>
+                <div className="listing-filter-grid public-listing-filter-grid">
+                  <div className="listing-filter-group">
+                    <span className="muted">City</span>
+                    <div className="listing-filter-chip-row">
+                      <button
+                        aria-pressed={publicListingFilters.city === ''}
+                        className={`listing-filter-chip${publicListingFilters.city === '' ? ' active' : ''}`}
+                        onClick={() => setPublicListingFilters((current) => ({ ...current, city: '' }))}
+                        type="button"
+                      >
+                        All cities
+                      </button>
+                      {publicCityOptions.map((city) => (
+                        <button
+                          aria-pressed={publicListingFilters.city === city}
+                          className={`listing-filter-chip${publicListingFilters.city === city ? ' active' : ''}`}
+                          key={city}
+                          onClick={() => setPublicListingFilters((current) => ({ ...current, city }))}
+                          type="button"
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Property type</span>
+                    <div className="listing-filter-chip-row">
+                      <button
+                        aria-pressed={publicListingFilters.propertyType === ''}
+                        className={`listing-filter-chip${publicListingFilters.propertyType === '' ? ' active' : ''}`}
+                        onClick={() =>
+                          setPublicListingFilters((current) => ({ ...current, propertyType: '' }))
+                        }
+                        type="button"
+                      >
+                        All types
+                      </button>
+                      {propertyTypes.map((type) => (
+                        <button
+                          aria-pressed={publicListingFilters.propertyType === type}
+                          className={`listing-filter-chip${publicListingFilters.propertyType === type ? ' active' : ''}`}
+                          key={type}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({ ...current, propertyType: type }))
+                          }
+                          type="button"
+                        >
+                          {formatEnum(type)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Occupancy</span>
+                    <div className="listing-filter-chip-row">
+                      <button
+                        aria-pressed={publicListingFilters.occupancyType === ''}
+                        className={`listing-filter-chip${publicListingFilters.occupancyType === '' ? ' active' : ''}`}
+                        onClick={() =>
+                          setPublicListingFilters((current) => ({ ...current, occupancyType: '' }))
+                        }
+                        type="button"
+                      >
+                        Any occupancy
+                      </button>
+                      {occupancyTypes.map((type) => (
+                        <button
+                          aria-pressed={publicListingFilters.occupancyType === type}
+                          className={`listing-filter-chip${publicListingFilters.occupancyType === type ? ' active' : ''}`}
+                          key={type}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({ ...current, occupancyType: type }))
+                          }
+                          type="button"
+                        >
+                          {formatEnum(type)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Budget</span>
+                    <div className="listing-filter-chip-row">
+                      {publicListingBudgetFilters.map((filterOption) => (
+                        <button
+                          aria-pressed={publicListingFilters.budget === filterOption.value}
+                          className={`listing-filter-chip${publicListingFilters.budget === filterOption.value ? ' active' : ''}`}
+                          key={filterOption.value}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({
+                              ...current,
+                              budget: filterOption.value,
+                            }))
+                          }
+                          type="button"
+                        >
+                          {filterOption.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Amenities</span>
+                    <div className="listing-filter-chip-row">
+                      <button
+                        aria-pressed={publicListingFilters.amenity === ''}
+                        className={`listing-filter-chip${publicListingFilters.amenity === '' ? ' active' : ''}`}
+                        onClick={() => setPublicListingFilters((current) => ({ ...current, amenity: '' }))}
+                        type="button"
+                      >
+                        Any amenity
+                      </button>
+                      {publicAmenityOptions.map((amenity) => (
+                        <button
+                          aria-pressed={publicListingFilters.amenity === amenity}
+                          className={`listing-filter-chip${publicListingFilters.amenity === amenity ? ' active' : ''}`}
+                          key={amenity}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({ ...current, amenity }))
+                          }
+                          type="button"
+                        >
+                          {amenity}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="listing-filter-group">
+                    <span className="muted">Owner trust</span>
+                    <div className="listing-filter-chip-row">
+                      <button
+                        aria-pressed={!publicListingFilters.verifiedOnly}
+                        className={`listing-filter-chip${!publicListingFilters.verifiedOnly ? ' active' : ''}`}
+                        onClick={() =>
+                          setPublicListingFilters((current) => ({ ...current, verifiedOnly: false }))
+                        }
+                        type="button"
+                      >
+                        All owners
+                      </button>
+                      <button
+                        aria-pressed={publicListingFilters.verifiedOnly}
+                        className={`listing-filter-chip${publicListingFilters.verifiedOnly ? ' active' : ''}`}
+                        onClick={() =>
+                          setPublicListingFilters((current) => ({ ...current, verifiedOnly: true }))
+                        }
+                        type="button"
+                      >
+                        Verified only
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {hasActivePublicListingFilters ? (
+                  <div className="listing-filter-token-row">
+                    {activePublicListingFilterTokens.map((token) => (
+                      <span className="listing-filter-token" key={token}>
+                        {token}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="feed-grid listing-feed-grid">
@@ -1295,560 +3155,139 @@ export function FindTenantPage() {
 
                 {!isLoading && filteredPublicListings.length === 0 && (
                   <Card className="feed-card">
-                    <strong>No live listings match that search yet</strong>
-                    <p className="feed-copy">Try a broader locality or clear the search input to widen the results.</p>
-                  </Card>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="housing-host-layout">
-              <div className="hub-panel host-dashboard-panel">
-                <div className="hub-panel-head">
-                  <div>
-                    <span className="muted">Intent: Tenant replacement</span>
-                    <h2>Your replacement listings</h2>
-                    <p className="panel-subtitle">
-                      Default view hides deleted listings. Use status filters to inspect drafts, rented posts, or archived records when needed.
-                    </p>
-                  </div>
-                  <div className="hub-panel-actions">
-                    <Badge tone="purple">
-                      {isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}
-                    </Badge>
-                    <Button icon={<Plus size={16} />} onClick={startCreateListing} variant="secondary">
-                      Create new listing
-                    </Button>
-                  </div>
-                </div>
-
-                {user ? (
-                  <div className="host-listing-toolbar">
-                    <div className="listing-filter-chip-row">
-                      {hostListingFilters.map((filterOption) => (
-                        <button
-                          aria-pressed={myListingFilter === filterOption.value}
-                          className={`listing-filter-chip${myListingFilter === filterOption.value ? ' active' : ''}`}
-                          key={filterOption.value}
-                          onClick={() => setMyListingFilter(filterOption.value)}
-                          type="button"
-                        >
-                          {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {!user ? (
-                  <Card className="feed-card">
-                    <strong>Sign in to host a listing</strong>
+                    <strong>No live listings match these filters yet</strong>
                     <p className="feed-copy">
-                      Tenant replacement mode is for creating drafts, publishing replacement listings, and managing rented status.
+                      Try a broader locality, switch off one or two filters, or clear everything to widen the results.
                     </p>
-                    <Button to="/profile" variant="secondary">
-                      Open profile
-                    </Button>
-                  </Card>
-                ) : filteredMyListings.length === 0 && !isLoading ? (
-                  hostModeEmptyState
-                ) : (
-                  <div className="host-listing-grid">
-                    {filteredMyListings.map((listing) => (
-                      <HostListingCard
-                        busyAction={busyListingAction}
-                        key={listing.id}
-                        listing={listing}
-                        onArchive={(current) => void handleListingStatusChange(current, 'ARCHIVED')}
-                        onEdit={startEditingListing}
-                        onMarkAsRented={(current) => void handleListingStatusChange(current, 'FILLED')}
-                        onViewDetails={openListingDetails}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="hub-panel host-composer-panel">
-                <div className="hub-panel-head">
-                  <div>
-                    <span className="muted">Listing flow</span>
-                    <h2>{editingListingId ? 'Edit replacement listing' : 'Create replacement listing'}</h2>
-                  </div>
-                  {editingListingId ? (
-                    <Button onClick={resetListingComposer} variant="ghost">
-                      Start fresh
-                    </Button>
-                  ) : null}
-                </div>
-
-                <div className="host-stepper">
-                  {hostSteps.map((step, index) => (
-                    <button
-                      aria-current={hostStep === index ? 'step' : undefined}
-                      className={`host-step-pill${hostStep === index ? ' active' : ''}`}
-                      key={step}
-                      onClick={() => setHostStep(index)}
-                      type="button"
-                    >
-                      <span>{index + 1}</span>
-                      {step}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="host-step-section">
-                  {hostStep === 0 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 1: Basic info</strong>
-                        <span className="muted">Start with the listing title, city, exact property location, and move-in date.</span>
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor="listing-title">Listing title</label>
-                        <input
-                          id="listing-title"
-                          onChange={(event) => setReplaceTenantForm((current) => ({ ...current, title: event.target.value }))}
-                          placeholder="Private room in a furnished 2 BHK near ITPL"
-                          value={replaceTenantForm.title}
-                        />
-                      </div>
-
-                      <div className="form-grid two-column">
-                        <div className="field">
-                          <label htmlFor="listing-city-select">City</label>
-                          <select
-                            id="listing-city-select"
-                            onChange={(event) => {
-                              setReplaceTenantCityOption(event.target.value)
-                              if (event.target.value !== otherCityOptionValue) {
-                                setReplaceTenantCustomCity('')
-                              }
-                            }}
-                            value={replaceTenantCityOption}
-                          >
-                            <option value="">Select city</option>
-                            {majorCities.map((city) => (
-                              <option key={city} value={city}>
-                                {city}
-                              </option>
-                            ))}
-                            <option value={otherCityOptionValue}>Other city</option>
-                          </select>
-                        </div>
-
-                        {replaceTenantCityOption === otherCityOptionValue ? (
-                          <div className="field">
-                            <label htmlFor="listing-city-custom">Enter city</label>
-                            <input
-                              id="listing-city-custom"
-                              onChange={(event) => setReplaceTenantCustomCity(event.target.value)}
-                              placeholder="Enter the city"
-                              value={replaceTenantCustomCity}
-                            />
-                          </div>
-                        ) : (
-                          <div className="field">
-                            <label htmlFor="listing-locality">Locality</label>
-                            <input
-                              id="listing-locality"
-                              onChange={(event) => setReplaceTenantForm((current) => ({ ...current, locality: event.target.value }))}
-                              placeholder="Brookefield, Whitefield, Koramangala..."
-                              value={replaceTenantForm.locality}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {replaceTenantCityOption === otherCityOptionValue && (
-                        <div className="field">
-                          <label htmlFor="listing-locality-alt">Locality</label>
-                          <input
-                            id="listing-locality-alt"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, locality: event.target.value }))}
-                            placeholder="Apartment, street, or neighborhood"
-                            value={replaceTenantForm.locality}
-                          />
-                        </div>
-                      )}
-
-                      <PlaceAutocompleteField
-                        helperText="Pick the exact apartment or building on the map so seekers can understand the location instantly."
-                        inputValue={replaceTenantForm.locationName}
-                        label="Property location"
-                        onClear={() =>
-                          setReplaceTenantForm((current) => ({
-                            ...current,
-                            locationName: '',
-                            latitude: null,
-                            longitude: null,
-                          }))
-                        }
-                        onInputValueChange={(value) =>
-                          setReplaceTenantForm((current) => ({
-                            ...current,
-                            locationName: value,
-                          }))
-                        }
-                        onSelect={(location) =>
-                          setReplaceTenantForm((current) => ({
-                            ...current,
-                            locationName: location.locationName,
-                            latitude: location.latitude,
-                            longitude: location.longitude,
-                          }))
-                        }
-                        value={selectedListingLocation}
-                      />
-
-                      <div className="field">
-                        <label htmlFor="listing-move-in-date">Move-in date</label>
-                        <input
-                          id="listing-move-in-date"
-                          min={getTodayDateInputValue()}
-                          onChange={(event) => setReplaceTenantForm((current) => ({ ...current, moveInDate: event.target.value }))}
-                          type="date"
-                          value={replaceTenantForm.moveInDate}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {hostStep === 1 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 2: Pricing</strong>
-                        <span className="muted">Rent is required for publishing. Deposit and maintenance stay optional.</span>
-                      </div>
-
-                      <div className="form-grid three-column">
-                        <div className="field">
-                          <label htmlFor="listing-rent">Rent amount</label>
-                          <input
-                            id="listing-rent"
-                            inputMode="numeric"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, rentAmount: event.target.value }))}
-                            placeholder="20000"
-                            value={replaceTenantForm.rentAmount}
-                          />
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor="listing-deposit">Deposit amount</label>
-                          <input
-                            id="listing-deposit"
-                            inputMode="numeric"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, depositAmount: event.target.value }))}
-                            placeholder="75000"
-                            value={replaceTenantForm.depositAmount}
-                          />
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor="listing-maintenance">Maintenance amount</label>
-                          <input
-                            id="listing-maintenance"
-                            inputMode="numeric"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, maintenanceAmount: event.target.value }))}
-                            placeholder="2000"
-                            value={replaceTenantForm.maintenanceAmount}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {hostStep === 2 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 3: Amenities</strong>
-                        <span className="muted">Choose the key amenities seekers use to compare rooms quickly.</span>
-                      </div>
-
-                      <div className="amenity-chip-grid">
-                        {standardAmenities.map((amenity) => (
-                          <button
-                            aria-pressed={replaceTenantForm.amenities.includes(amenity)}
-                            className={`listing-filter-chip${replaceTenantForm.amenities.includes(amenity) ? ' active' : ''}`}
-                            key={amenity}
-                            onClick={() => toggleAmenity(amenity)}
-                            type="button"
-                          >
-                            {amenity}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="amenity-input-row">
-                        <input
-                          onChange={(event) => setAmenityInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault()
-                              addCustomAmenity()
-                            }
-                          }}
-                          placeholder="Add a custom amenity"
-                          value={amenityInput}
-                        />
-                        <Button onClick={addCustomAmenity} variant="secondary">
-                          Add amenity
+                    {hasActivePublicListingFilters ? (
+                      <div className="feed-card-actions">
+                        <Button onClick={clearPublicListingFilters} variant="secondary">
+                          Clear filters
                         </Button>
                       </div>
-                    </>
-                  )}
-
-                  {hostStep === 3 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 4: Room details</strong>
-                        <span className="muted">Keep structured room information outside the description so seekers can scan it quickly.</span>
-                      </div>
-
-                      <div className="form-grid three-column">
-                        <div className="field">
-                          <label htmlFor="listing-property-type">Room type</label>
-                          <select
-                            id="listing-property-type"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, propertyType: event.target.value }))}
-                            value={replaceTenantForm.propertyType}
-                          >
-                            {propertyTypes.map((type) => (
-                              <option key={type} value={type}>
-                                {formatEnum(type)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor="listing-occupancy-type">Occupancy</label>
-                          <select
-                            id="listing-occupancy-type"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, occupancyType: event.target.value }))}
-                            value={replaceTenantForm.occupancyType}
-                          >
-                            {occupancyTypes.map((type) => (
-                              <option key={type} value={type}>
-                                {formatEnum(type)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor="listing-contact-mode">Contact method</label>
-                          <select
-                            id="listing-contact-mode"
-                            onChange={(event) => setReplaceTenantForm((current) => ({ ...current, contactMode: event.target.value }))}
-                            value={replaceTenantForm.contactMode}
-                          >
-                            <option value="WHATSAPP">WhatsApp</option>
-                            <option value="CALL">Phone call</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor="listing-contact-phone">Contact number</label>
-                        <input
-                          id="listing-contact-phone"
-                          inputMode="tel"
-                          onChange={(event) => setReplaceTenantForm((current) => ({ ...current, contactPhone: event.target.value }))}
-                          placeholder="+91 98765 43210"
-                          value={replaceTenantForm.contactPhone}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {hostStep === 4 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 5: Images</strong>
-                        <span className="muted">Upload multiple apartment images so seekers can review the space before contacting you.</span>
-                      </div>
-
-                      <label
-                        className={`listing-upload-dropzone${isDragActive ? ' active' : ''}${isUploadingImages ? ' uploading' : ''}`}
-                        htmlFor="listing-images"
-                        onDragEnter={() => setIsDragActive(true)}
-                        onDragLeave={() => setIsDragActive(false)}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={handleListingImageDrop}
-                      >
-                        <input
-                          accept="image/*"
-                          id="listing-images"
-                          multiple
-                          onChange={(event) => void handleListingImageSelection(event)}
-                          type="file"
-                        />
-                        <Upload size={22} />
-                        <strong>Upload apartment photos</strong>
-                        <span className="muted">Minimum 2 photos for a published listing, maximum 8.</span>
-                      </label>
-
-                      {uploadSummary ? <p className="helper-copy">{uploadSummary}</p> : null}
-                      {isCleaningUpUploads ? <p className="helper-copy">Cleaning up removed uploads...</p> : null}
-
-                      <div className="listing-image-grid">
-                        {listingImages.map((image, index) => (
-                          <div className="listing-image-card" key={image.id}>
-                            <div className="listing-image-preview">
-                              <img alt={image.fileName} src={image.previewUrl} />
-                            </div>
-                            <div className="listing-image-copy">
-                              <strong>{listingImageSuggestions[index] ?? `Image ${index + 1}`}</strong>
-                              <span className="muted">
-                                {image.status === 'uploading'
-                                  ? 'Uploading...'
-                                  : image.status === 'error'
-                                    ? image.error ?? 'Upload failed'
-                                    : index === 0
-                                      ? 'Cover image'
-                                      : 'Apartment photo'}
-                              </span>
-                            </div>
-                            <div className="listing-image-actions">
-                              <Button
-                                disabled={index === 0}
-                                onClick={() => moveListingImage(index, -1)}
-                                variant="ghost"
-                              >
-                                <ChevronLeft size={16} />
-                              </Button>
-                              <Button
-                                disabled={index === listingImages.length - 1}
-                                onClick={() => moveListingImage(index, 1)}
-                                variant="ghost"
-                              >
-                                <ChevronRight size={16} />
-                              </Button>
-                              <Button onClick={() => void removeListingImage(image.id)} variant="ghost">
-                                <Trash2 size={16} />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  {hostStep === 5 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 6: Description</strong>
-                        <span className="muted">Use this only for the extra context that does not already fit into the structured fields.</span>
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor="listing-description">Description</label>
-                        <textarea
-                          id="listing-description"
-                          onChange={(event) => setReplaceTenantForm((current) => ({ ...current, description: event.target.value }))}
-                          placeholder="Share the apartment vibe, house rules, or anything else seekers should know."
-                          rows={6}
-                          value={replaceTenantForm.description}
-                        />
-                      </div>
-
-                      <div className="field">
-                        <label htmlFor="listing-misc-charges">Other pricing notes</label>
-                        <input
-                          id="listing-misc-charges"
-                          onChange={(event) => setReplaceTenantForm((current) => ({ ...current, miscCharges: event.target.value }))}
-                          placeholder="Electricity extra, housekeeping split separately..."
-                          value={replaceTenantForm.miscCharges}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {hostStep === 6 && (
-                    <>
-                      <div className="post-form-section-head">
-                        <strong>Step 7: Review and publish</strong>
-                        <span className="muted">Review the essentials, then save as draft or publish the listing live.</span>
-                      </div>
-
-                      <div className="listing-review-grid">
-                        <div className="listing-details-fact">
-                          <span className="muted">Title</span>
-                          <strong>{replaceTenantForm.title || 'Add a listing title'}</strong>
-                        </div>
-                        <div className="listing-details-fact">
-                          <span className="muted">Location</span>
-                          <strong>
-                            {resolveCityValue(replaceTenantCityOption, replaceTenantCustomCity) || 'City pending'}
-                            {replaceTenantForm.locality ? `, ${replaceTenantForm.locality}` : ''}
-                          </strong>
-                        </div>
-                        <div className="listing-details-fact">
-                          <span className="muted">Rent</span>
-                          <strong>{replaceTenantForm.rentAmount ? formatMoney(Number(replaceTenantForm.rentAmount)) : 'Pending'}</strong>
-                        </div>
-                        <div className="listing-details-fact">
-                          <span className="muted">Images</span>
-                          <strong>{listingImages.length} uploaded</strong>
-                        </div>
-                      </div>
-
-                      {selectedListingLocation ? <LocationSummaryCard compact location={selectedListingLocation} /> : null}
-                    </>
-                  )}
-                </div>
-
-                <div className="host-step-actions">
-                  <Button
-                    disabled={hostStep === 0}
-                    onClick={() => setHostStep((current) => Math.max(0, current - 1))}
-                    variant="ghost"
-                  >
-                    Previous
-                  </Button>
-
-                  <div className="host-step-actions-right">
-                    <Button
-                      disabled={isSavingListing}
-                      onClick={() => void handleSaveListing('DRAFT')}
-                      variant="ghost"
-                    >
-                      {isSavingListing ? 'Saving...' : 'Save draft'}
-                    </Button>
-
-                    {hostStep < hostSteps.length - 1 ? (
-                      <Button onClick={() => setHostStep((current) => Math.min(hostSteps.length - 1, current + 1))}>
-                        Next step
-                      </Button>
-                    ) : (
-                      <Button
-                        disabled={isSavingListing}
-                        icon={isSavingListing ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}
-                        onClick={() => void handleSaveListing('PUBLISHED')}
-                      >
-                        {editingListingId ? 'Update and publish' : 'Publish listing'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                    ) : null}
+                  </Card>
+                )}
               </div>
             </div>
-          )}
+            </>
+          ) : shouldShowHostComposer ? (
+            renderTenantReplacementPage(
+              editingListingId ? 'Edit your replacement listing in a focused flow.' : 'Create a replacement listing in a dedicated workspace.',
+              'Jump between sections from the colored chips on top, then complete the publishing flow without mixing it with dashboard cards.',
+              renderHostComposerPanel(),
+            )
+          ) : shouldShowHostInquiries ? (
+            renderTenantReplacementPage(
+              'Manage incoming inquiries in their own queue.',
+              'Keep seeker conversations, visit planning, and status updates separate from listing management for a cleaner workflow.',
+              renderHostInquiriesPanel(),
+            )
+          ) : (
+            <>
+              {renderTenantReplacementPage(
+                'Keep tenant replacement focused with separate workspaces.',
+                'Use the colored section chips to switch between listings, create flow, and inquiries without stacking everything on one page.',
+                renderHostListingsPanel(),
+              )}
 
-          <div className="housing-bottom-note">
-            <p>
-              Delivery has been intentionally removed from the active MVP flow. The parked routes and APIs are documented so we can restore them later without losing the earlier work.
-            </p>
-            <Button icon={<PencilLine size={16} />} onClick={() => navigate('/profile')} variant="ghost">
-              Open profile and verification
-            </Button>
-          </div>
+              <div className="housing-bottom-note">
+                <p>
+                  Delivery has been intentionally removed from the active MVP flow. The parked routes and APIs are documented so we can restore them later without losing the earlier work.
+                </p>
+                <Button icon={<PencilLine size={16} />} onClick={() => navigate('/profile')} variant="ghost">
+                  Open profile and verification
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </section>
+
+      {listingActionConfirmation ? (
+        <ListingActionDialog
+          action={listingActionConfirmation}
+          busyAction={busyListingAction}
+          onCancel={() => setListingActionConfirmation(null)}
+          onConfirm={() => void confirmListingStatusChange()}
+        />
+      ) : null}
     </div>
   )
+}
+
+function TenantReplacementSectionChips({
+  activeInquiryCount,
+  activeListingsCount,
+  user,
+}: {
+  activeInquiryCount: number
+  activeListingsCount: number
+  user: ReturnType<typeof useAppAuth>['user']
+}) {
+  const location = useLocation()
+  const sectionLinks = [
+    {
+      key: 'listings',
+      label: 'Listings',
+      meta: `${activeListingsCount} active`,
+      to: user ? '/find-tenant/host' : '/profile',
+      tone: 'mint',
+    },
+    {
+      key: 'composer',
+      label: 'Create listing',
+      meta: 'New post',
+      to: user ? '/find-tenant/host/listings/new' : '/profile',
+      tone: 'violet',
+    },
+    {
+      key: 'inquiries',
+      label: 'Inquiries',
+      meta: `${activeInquiryCount} active`,
+      to: user ? '/find-tenant/host/inquiries' : '/profile',
+      tone: 'amber',
+    },
+  ] as const
+
+  return (
+    <div className="tenant-section-chip-row" aria-label="Tenant replacement sections">
+      {sectionLinks.map((link) => {
+        const isActive =
+          user &&
+          (link.key === 'listings'
+            ? location.pathname === '/find-tenant/host'
+            : link.key === 'composer'
+              ? location.pathname.startsWith('/find-tenant/host/listings')
+              : location.pathname.startsWith('/find-tenant/host/inquiries'))
+
+        return (
+          <NavLink
+            className={`tenant-section-chip tenant-section-chip-${link.tone}${isActive ? ' active' : ''}`}
+            key={link.label}
+            to={link.to}
+          >
+            <div className="tenant-section-chip-copy">
+              <strong>{link.label}</strong>
+              <span>{link.meta}</span>
+            </div>
+            {isActive ? <span className="tenant-section-chip-current">Current</span> : null}
+          </NavLink>
+        )
+      })}
+    </div>
+  )
+}
+
+function makeEmptyPublicListingFilters(): PublicListingFilters {
+  return {
+    city: '',
+    propertyType: '',
+    occupancyType: '',
+    amenity: '',
+    budget: 'ANY',
+    verifiedOnly: false,
+  }
 }
 
 function makeEmptyReplaceTenantForm(): ReplaceTenantForm {
@@ -1870,6 +3309,17 @@ function makeEmptyReplaceTenantForm(): ReplaceTenantForm {
     contactPhone: '',
     description: '',
     miscCharges: '',
+  }
+}
+
+function makeEmptyInquiryForm(): InquiryForm {
+  return {
+    message: '',
+    budgetAmount: '',
+    preferredMoveInDate: '',
+    preferredOccupancy: '',
+    preferredVisitAt: '',
+    preferredVisitNote: '',
   }
 }
 
@@ -1936,6 +3386,10 @@ function normalizeListings(listingsPayload: Listing[]) {
   return listingsPayload.map((listing) => normalizeListing(listing))
 }
 
+function normalizeListingInquiries(inquiriesPayload: ListingInquiry[]) {
+  return inquiriesPayload.map((inquiry) => normalizeListingInquiry(inquiry))
+}
+
 function normalizeListing(listing: Listing) {
   return {
     ...listing,
@@ -1981,6 +3435,41 @@ function normalizeListing(listing: Listing) {
   }
 }
 
+function normalizeListingInquiry(inquiry: ListingInquiry) {
+  return {
+    ...inquiry,
+    message: typeof inquiry.message === 'string' ? inquiry.message : null,
+    budgetAmount:
+      typeof inquiry.budgetAmount === 'number'
+        ? inquiry.budgetAmount
+        : typeof inquiry.budgetAmount === 'string'
+          ? Number(inquiry.budgetAmount)
+          : null,
+    preferredMoveInDate:
+      typeof inquiry.preferredMoveInDate === 'string' ? inquiry.preferredMoveInDate : null,
+    preferredOccupancy:
+      typeof inquiry.preferredOccupancy === 'string' ? inquiry.preferredOccupancy : null,
+    preferredVisitAt: typeof inquiry.preferredVisitAt === 'string' ? inquiry.preferredVisitAt : null,
+    preferredVisitNote:
+      typeof inquiry.preferredVisitNote === 'string' ? inquiry.preferredVisitNote : null,
+    scheduledVisitAt: typeof inquiry.scheduledVisitAt === 'string' ? inquiry.scheduledVisitAt : null,
+    scheduledVisitNote:
+      typeof inquiry.scheduledVisitNote === 'string' ? inquiry.scheduledVisitNote : null,
+    listing: normalizeListing(inquiry.listing),
+    conversation: inquiry.conversation
+      ? {
+          ...inquiry.conversation,
+          messages: Array.isArray(inquiry.conversation.messages)
+            ? inquiry.conversation.messages.map((message) => ({
+                ...message,
+                sender: message.sender ?? null,
+              }))
+            : [],
+        }
+      : null,
+  }
+}
+
 function formatListingLocation(listing: Listing) {
   return [listing.city, listing.locality].filter(Boolean).join(', ') || listing.locationName || 'Location pending'
 }
@@ -1991,6 +3480,40 @@ function formatPriceLine(listing: Listing) {
 
 function formatMoveInLabel(moveInDate: string | null) {
   return moveInDate ? `Move in ${formatShortDate(moveInDate)}` : 'Move-in pending'
+}
+
+function getListingInquiryStatusTone(status: ListingInquiryStatus) {
+  switch (status) {
+    case 'NEW':
+      return 'purple'
+    case 'CONTACTED':
+      return 'green'
+    case 'SCHEDULED':
+      return 'green'
+    case 'DECLINED':
+      return 'red'
+    case 'CLOSED':
+      return 'gray'
+    default:
+      return 'gray'
+  }
+}
+
+function formatListingInquiryStatus(status: ListingInquiryStatus) {
+  switch (status) {
+    case 'NEW':
+      return 'New'
+    case 'CONTACTED':
+      return 'Contacted'
+    case 'SCHEDULED':
+      return 'Visit scheduled'
+    case 'DECLINED':
+      return 'Declined'
+    case 'CLOSED':
+      return 'Closed'
+    default:
+      return status
+  }
 }
 
 function getListingStatusTone(status: ListingStatus) {
@@ -2033,6 +3556,47 @@ function formatMoney(amount: number) {
   }).format(amount)
 }
 
+function formatPublicListingBudget(filter: PublicListingBudgetFilter) {
+  switch (filter) {
+    case 'UNDER_20000':
+      return 'Under 20k'
+    case 'BETWEEN_20000_AND_30000':
+      return '20k - 30k'
+    case 'BETWEEN_30000_AND_45000':
+      return '30k - 45k'
+    case 'ABOVE_45000':
+      return '45k+'
+    default:
+      return 'Any budget'
+  }
+}
+
+function matchesPublicListingBudget(
+  rentAmount: number | null,
+  filter: PublicListingBudgetFilter,
+) {
+  if (filter === 'ANY') {
+    return true
+  }
+
+  if (rentAmount === null) {
+    return false
+  }
+
+  switch (filter) {
+    case 'UNDER_20000':
+      return rentAmount < 20000
+    case 'BETWEEN_20000_AND_30000':
+      return rentAmount >= 20000 && rentAmount <= 30000
+    case 'BETWEEN_30000_AND_45000':
+      return rentAmount > 30000 && rentAmount <= 45000
+    case 'ABOVE_45000':
+      return rentAmount > 45000
+    default:
+      return true
+  }
+}
+
 function formatShortDate(value: string) {
   const date = new Date(value)
 
@@ -2043,6 +3607,25 @@ function formatShortDate(value: string) {
   return new Intl.DateTimeFormat('en-IN', {
     day: 'numeric',
     month: 'short',
+  }).format(date)
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return 'time pending'
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'time pending'
+  }
+
+  return new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
   }).format(date)
 }
 
@@ -2068,6 +3651,19 @@ function filterHostListings(listings: Listing[], filter: HostListingFilter) {
   }
 }
 
+function filterListingInquiries(inquiries: ListingInquiry[], filter: ListingInquiryFilter) {
+  switch (filter) {
+    case 'ACTIVE':
+      return inquiries.filter(
+        (inquiry) => inquiry.status !== 'CLOSED' && inquiry.status !== 'DECLINED',
+      )
+    case 'ALL':
+      return inquiries
+    default:
+      return inquiries.filter((inquiry) => inquiry.status === filter)
+  }
+}
+
 function formatHostListingFilterLabel(filter: HostListingFilter) {
   switch (filter) {
     case 'ACTIVE':
@@ -2082,6 +3678,17 @@ function formatHostListingFilterLabel(filter: HostListingFilter) {
       return 'All'
     default:
       return formatEnum(filter)
+  }
+}
+
+function formatListingInquiryFilterLabel(filter: ListingInquiryFilter) {
+  switch (filter) {
+    case 'ACTIVE':
+      return 'Active'
+    case 'ALL':
+      return 'All'
+    default:
+      return formatListingInquiryStatus(filter)
   }
 }
 
@@ -2101,6 +3708,10 @@ function toIsoDate(value: string) {
   return new Date(`${value}T00:00:00.000Z`).toISOString()
 }
 
+function toIsoDateTime(value: string) {
+  return new Date(value).toISOString()
+}
+
 function toInputDate(value: string | null) {
   if (!value) {
     return ''
@@ -2115,8 +3726,27 @@ function toInputDate(value: string | null) {
   return date.toISOString().slice(0, 10)
 }
 
+function toDateTimeLocalInput(value: string | null) {
+  if (!value) {
+    return ''
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16)
+}
+
 function getTodayDateInputValue() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function getTodayDateTimeInputValue() {
+  return toDateTimeLocalInput(new Date().toISOString())
 }
 
 function toSelectedPlaceLocation(

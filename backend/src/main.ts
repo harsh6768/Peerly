@@ -30,6 +30,7 @@ async function bootstrap() {
     .addTag('auth')
     .addTag('verification')
     .addTag('listings')
+    .addTag('listing-inquiries')
     .build();
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);

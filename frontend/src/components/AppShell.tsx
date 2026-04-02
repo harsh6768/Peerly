@@ -1,5 +1,5 @@
 import { House, Search, ShieldCheck, UserRound } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 import { useAppAuth } from '../context/AppAuthContext'
@@ -19,7 +19,13 @@ const mobileLinks = [
 
 export function AppShell() {
   const { configured, isLoading, isSyncing, signInWithGoogle, user } = useAppAuth()
-  const { intent, setIntent } = useHousingIntent()
+  const { setIntent } = useHousingIntent()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const activeHeaderIntent =
+    location.pathname.startsWith('/find-tenant/host')
+      ? housingIntentValues.tenantReplacement
+      : housingIntentValues.findRoom
 
   return (
     <div className="app-shell">
@@ -55,18 +61,24 @@ export function AppShell() {
                 <div
                   aria-label="Housing intent"
                   className="toggle-wrap header-intent-toggle"
-                  data-intent={intent}
+                  data-intent={activeHeaderIntent}
                 >
                   <button
-                    className={`toggle-pill${intent === housingIntentValues.findRoom ? ' active' : ''}`}
-                    onClick={() => setIntent(housingIntentValues.findRoom)}
+                    className={`toggle-pill${activeHeaderIntent === housingIntentValues.findRoom ? ' active' : ''}`}
+                    onClick={() => {
+                      setIntent(housingIntentValues.findRoom)
+                      navigate('/find-tenant')
+                    }}
                     type="button"
                   >
                     Find room
                   </button>
                   <button
-                    className={`toggle-pill${intent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
-                    onClick={() => setIntent(housingIntentValues.tenantReplacement)}
+                    className={`toggle-pill${activeHeaderIntent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
+                    onClick={() => {
+                      setIntent(housingIntentValues.tenantReplacement)
+                      navigate('/find-tenant/host')
+                    }}
                     type="button"
                   >
                     Tenant replacement

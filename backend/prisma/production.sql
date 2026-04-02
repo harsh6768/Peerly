@@ -281,6 +281,13 @@ CREATE TABLE "ListingInquiry" (
     "requesterUserId" TEXT NOT NULL,
     "listingOwnerUserId" TEXT NOT NULL,
     "message" TEXT,
+    "budgetAmount" INTEGER,
+    "preferredMoveInDate" TIMESTAMP(3),
+    "preferredOccupancy" "OccupancyType",
+    "preferredVisitAt" TIMESTAMP(3),
+    "preferredVisitNote" TEXT,
+    "scheduledVisitAt" TIMESTAMP(3),
+    "scheduledVisitNote" TEXT,
     "status" "ListingInquiryStatus" NOT NULL DEFAULT 'NEW',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -488,6 +495,9 @@ CREATE INDEX "ListingInquiry_listingId_status_idx" ON "ListingInquiry"("listingI
 
 -- CreateIndex
 CREATE INDEX "ListingInquiry_requesterUserId_createdAt_idx" ON "ListingInquiry"("requesterUserId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ListingInquiry_listingOwnerUserId_status_createdAt_idx" ON "ListingInquiry"("listingOwnerUserId", "status", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "TravelerRoute_organizationId_status_idx" ON "TravelerRoute"("organizationId", "status");
