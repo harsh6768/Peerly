@@ -107,6 +107,7 @@ type ListingInquiryPerson = {
   id: string
   fullName: string
   email: string
+  phone: string | null
   homeCity: string | null
   isVerified: boolean
   companyName: string | null
@@ -207,7 +208,7 @@ type LocalFeedbackState = {
   message: string
 }
 
-type HousingPageMode = 'root' | 'host-dashboard' | 'host-compose' | 'host-inquiries'
+type HousingPageMode = 'root' | 'seeker-inquiries' | 'host-dashboard' | 'host-compose' | 'host-inquiries'
 type PublicListingFilters = {
   city: string
   propertyType: string
@@ -659,6 +660,7 @@ function ListingInquiryPanel({
   onChange,
   onSubmit,
   onViewProfile,
+  sessionUserPhone,
   sessionUserId,
   values,
 }: {
@@ -670,6 +672,7 @@ function ListingInquiryPanel({
   onChange: Dispatch<SetStateAction<InquiryForm>>
   onSubmit: () => void
   onViewProfile: () => void
+  sessionUserPhone: string | null
   sessionUserId: string | null
   values: InquiryForm
 }) {
@@ -701,6 +704,25 @@ function ListingInquiryPanel({
         <p className="feed-copy">
           Incoming inquiries for this apartment will appear in your tenant replacement dashboard.
         </p>
+      </Card>
+    )
+  }
+
+  if (!sessionUserPhone?.trim()) {
+    return (
+      <Card className="listing-inquiry-card">
+        <strong>Add your phone number before sending an inquiry</strong>
+        <p className="feed-copy">
+          Owners need a working phone or WhatsApp number to contact you after you click `Interested`.
+        </p>
+        <div className="feed-card-actions">
+          <Button disabled variant="secondary">
+            Interested
+          </Button>
+          <Button onClick={onViewProfile} variant="ghost">
+            Add phone in profile
+          </Button>
+        </div>
       </Card>
     )
   }
@@ -930,6 +952,10 @@ function OwnerInquiryCard({
   scheduleVisitNote: string
 }) {
   const canManage = inquiry.status !== 'CLOSED' && inquiry.status !== 'DECLINED'
+  const contactSeekerLabel = inquiry.requester.phone ? 'Contact seeker on WhatsApp' : 'Contact seeker by email'
+  const contactSeekerSummary = inquiry.requester.phone
+    ? 'Use the saved phone number to message the interested seeker directly.'
+    : 'No phone number was added yet, so email is the best available contact method.'
 
   return (
     <Card className="listing-inquiry-card owner-inquiry-card">
@@ -996,6 +1022,63 @@ function OwnerInquiryCard({
           {inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote}
         </p>
       ) : null}
+
+      <div className="inquiry-contact-card">
+        <div className="inquiry-contact-head">
+          <div>
+            <strong>Seeker contact</strong>
+            <p>{contactSeekerSummary}</p>
+          </div>
+          <Badge tone={inquiry.requester.phone ? 'green' : 'gray'}>
+            {inquiry.requester.phone ? 'Phone available' : 'Email only'}
+          </Badge>
+        </div>
+
+        <div className="inquiry-contact-grid">
+          <div className="listing-details-fact">
+            <span className="muted">Email</span>
+            <strong>{inquiry.requester.email}</strong>
+          </div>
+          <div className="listing-details-fact">
+            <span className="muted">Phone</span>
+            <strong>{formatContactPhone(inquiry.requester.phone)}</strong>
+          </div>
+        </div>
+
+        <div className="feed-card-actions">
+          <Button
+            className="listing-action-button listing-action-contact"
+            onClick={() =>
+              window.open(
+                inquiry.requester.phone
+                  ? buildWhatsappLink(inquiry.requester.phone)
+                  : buildMailtoLink(inquiry.requester.email, inquiry.listing.title),
+                '_blank',
+                'noopener,noreferrer',
+              )
+            }
+            variant="secondary"
+          >
+            {contactSeekerLabel}
+          </Button>
+          <Button
+            className="listing-action-button listing-action-details"
+            onClick={() => window.open(buildMailtoLink(inquiry.requester.email, inquiry.listing.title), '_blank', 'noopener,noreferrer')}
+            variant="ghost"
+          >
+            Email seeker
+          </Button>
+          {inquiry.requester.phone ? (
+            <Button
+              className="listing-action-button listing-action-edit"
+              onClick={() => window.open(buildCallLink(inquiry.requester.phone), '_self')}
+              variant="ghost"
+            >
+              Call seeker
+            </Button>
+          ) : null}
+        </div>
+      </div>
 
       <div className="inquiry-actions">
         <Button onClick={() => onOpenListing(inquiry.listing)} variant="secondary">
@@ -1211,6 +1294,14 @@ export function FindTenantListingDetailsPage() {
       return
     }
 
+    if (!user.phone?.trim()) {
+      setInquiryFeedback({
+        tone: 'error',
+        message: 'Add your phone number in profile before sending an inquiry.',
+      })
+      return
+    }
+
     try {
       setIsSubmittingInquiry(true)
       setInquiryFeedback(null)
@@ -1368,6 +1459,7 @@ export function FindTenantListingDetailsPage() {
                       onChange={setInquiryForm}
                       onSubmit={() => void handleCreateInquiry()}
                       onViewProfile={() => navigate('/profile')}
+                      sessionUserPhone={user?.phone ?? null}
                       sessionUserId={user?.id ?? null}
                       values={inquiryForm}
                     />
@@ -1428,6 +1520,10 @@ export function FindTenantHostDashboardPage() {
   return <HousingExperiencePage mode="host-dashboard" />
 }
 
+export function FindTenantRequesterInquiriesPage() {
+  return <HousingExperiencePage mode="seeker-inquiries" />
+}
+
 export function FindTenantHostComposePage() {
   return <HousingExperiencePage mode="host-compose" />
 }
@@ -1444,6 +1540,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const { editListingId } = useParams<{ editListingId?: string }>()
   const [publicListings, setPublicListings] = useState<Listing[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
+  const [requesterInquiries, setRequesterInquiries] = useState<ListingInquiry[]>([])
   const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
@@ -1465,6 +1562,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [listingActionConfirmation, setListingActionConfirmation] =
     useState<ListingActionConfirmation | null>(null)
   const [myListingFilter, setMyListingFilter] = useState<HostListingFilter>('ACTIVE')
+  const [requesterInquiryFilter, setRequesterInquiryFilter] = useState<ListingInquiryFilter>('ALL')
   const [ownerInquiryFilter, setOwnerInquiryFilter] = useState<ListingInquiryFilter>('ACTIVE')
   const [schedulingInquiryId, setSchedulingInquiryId] = useState<string | null>(null)
   const [scheduleVisitAtInput, setScheduleVisitAtInput] = useState('')
@@ -1485,6 +1583,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   )
   const isDedicatedHostPage = mode !== 'root'
   const shouldShowHostDashboard = mode === 'host-dashboard'
+  const shouldShowRequesterInquiries = mode === 'seeker-inquiries'
   const shouldShowHostComposer = mode === 'host-compose'
   const shouldShowHostInquiries = mode === 'host-inquiries'
   const discoverablePublicListings = useMemo(
@@ -1614,6 +1713,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     [myListingFilter, myListings],
   )
   const activeMyListingsCount = useMemo(() => filterHostListings(myListings, 'ACTIVE').length, [myListings])
+  const activeRequesterInquiriesCount = useMemo(
+    () => filterListingInquiries(requesterInquiries, 'ACTIVE').length,
+    [requesterInquiries],
+  )
+  const filteredRequesterInquiries = useMemo(
+    () => filterListingInquiries(requesterInquiries, requesterInquiryFilter),
+    [requesterInquiries, requesterInquiryFilter],
+  )
   const filteredOwnerInquiries = useMemo(
     () => filterListingInquiries(ownerInquiries, ownerInquiryFilter),
     [ownerInquiries, ownerInquiryFilter],
@@ -1703,21 +1810,26 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
-        const [myListingsPayload, ownerInquiriesPayload] = await Promise.all([
+        const [myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] = await Promise.all([
           apiRequest<Listing[]>(
             `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
             {
               token: sessionToken,
             },
           ),
+          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=requester', {
+            token: sessionToken,
+          }),
           apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
             token: sessionToken,
           }),
         ])
         setMyListings(normalizeListings(myListingsPayload))
+        setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
         setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
         setMyListings([])
+        setRequesterInquiries([])
         setOwnerInquiries([])
       }
     } catch (error) {
@@ -1977,7 +2089,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       state: {
         listing,
         backLabel: 'Back to your listings',
-        backTo: '/find-tenant',
+        backTo: '/find-tenant/host',
         sourceIntent: housingIntentValues.tenantReplacement,
       } as ListingDetailsRouteState,
     })
@@ -2886,6 +2998,181 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     )
   }
 
+  function openRequesterInquiryListing(inquiry: ListingInquiry) {
+    navigate(`/find-tenant/listings/${inquiry.listing.id}`, {
+      state: {
+        listing: inquiry.listing,
+        backLabel: 'Back to sent inquiries',
+        backTo: '/find-tenant/inquiries',
+        sourceIntent: housingIntentValues.findRoom,
+      } as ListingDetailsRouteState,
+    })
+  }
+
+  function renderRequesterInquiriesPanel() {
+    return (
+      <div className="hub-panel host-dashboard-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Your inquiries</span>
+            <h2>Sent inquiries</h2>
+            <p className="panel-subtitle">
+              Track the listings you expressed interest in, check their status, and contact the owner again when needed.
+            </p>
+          </div>
+          <Badge tone="green">{isLoading ? 'Loading' : `${activeRequesterInquiriesCount} active`}</Badge>
+        </div>
+
+        {!user ? (
+          <Card className="feed-card">
+            <strong>Sign in to view your inquiries</strong>
+            <p className="feed-copy">
+              Any listing you mark as interested will appear here with its latest status and owner contact access.
+            </p>
+            <Button to="/profile" variant="secondary">
+              Open profile
+            </Button>
+          </Card>
+        ) : (
+          <>
+            <div className="listing-filter-chip-row">
+              {listingInquiryFilters.map((filterOption) => (
+                <button
+                  aria-pressed={requesterInquiryFilter === filterOption.value}
+                  className={`listing-filter-chip${requesterInquiryFilter === filterOption.value ? ' active' : ''}`}
+                  key={filterOption.value}
+                  onClick={() => setRequesterInquiryFilter(filterOption.value)}
+                  type="button"
+                >
+                  {filterOption.label} ({filterListingInquiries(requesterInquiries, filterOption.value).length})
+                </button>
+              ))}
+            </div>
+
+            {requesterInquiries.length === 0 && !isLoading ? (
+              <Card className="feed-card">
+                <strong>No inquiries sent yet</strong>
+                <p className="feed-copy">
+                  Browse live room listings, click `Interested`, and your sent inquiries will start showing up here.
+                </p>
+              </Card>
+            ) : filteredRequesterInquiries.length === 0 && !isLoading ? (
+              <Card className="feed-card">
+                <strong>No {formatListingInquiryFilterLabel(requesterInquiryFilter).toLowerCase()} inquiries right now</strong>
+                <p className="feed-copy">
+                  Switch the status filter to review declined, closed, or active inquiries whenever you need.
+                </p>
+              </Card>
+            ) : (
+              <div className="host-inquiry-grid">
+                {filteredRequesterInquiries.map((inquiry) => (
+                  <Card className="listing-inquiry-card requester-inquiry-card" key={inquiry.id}>
+                    <div className="inquiry-card-top">
+                      <div>
+                        <strong>{inquiry.listing.title}</strong>
+                        <p>
+                          Owner: {inquiry.listing.owner.fullName}
+                          {inquiry.listing.owner.companyName ? ` · ${inquiry.listing.owner.companyName}` : ''}
+                        </p>
+                      </div>
+                      <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+                        {formatListingInquiryStatus(inquiry.status)}
+                      </Badge>
+                    </div>
+
+                    <div className="inquiry-meta-row">
+                      <span>Sent {formatDateTime(inquiry.createdAt)}</span>
+                      <span>{formatListingLocation(inquiry.listing)}</span>
+                    </div>
+
+                    <div className="inquiry-fact-grid">
+                      <div className="listing-details-fact">
+                        <span className="muted">Rent</span>
+                        <strong>{formatPriceLine(inquiry.listing)}</strong>
+                      </div>
+                      {inquiry.preferredMoveInDate ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">Preferred move-in</span>
+                          <strong>{formatShortDate(inquiry.preferredMoveInDate)}</strong>
+                        </div>
+                      ) : null}
+                      {inquiry.preferredVisitAt ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">Preferred visit</span>
+                          <strong>{formatDateTime(inquiry.preferredVisitAt)}</strong>
+                        </div>
+                      ) : null}
+                      {inquiry.scheduledVisitAt ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">Scheduled visit</span>
+                          <strong>{formatDateTime(inquiry.scheduledVisitAt)}</strong>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {inquiry.message ? (
+                      <div className="listing-details-section">
+                        <strong>Your note</strong>
+                        <p className="feed-copy">{inquiry.message}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="inquiry-actions">
+                      <Button onClick={() => openRequesterInquiryListing(inquiry)} variant="secondary">
+                        Open listing
+                      </Button>
+                      {inquiry.listing.contactPhone ? (
+                        <Button
+                          className="listing-action-button listing-action-contact"
+                          onClick={() =>
+                            window.open(
+                              inquiry.listing.contactMode === 'CALL'
+                                ? buildCallLink(inquiry.listing.contactPhone)
+                                : buildWhatsappLink(inquiry.listing.contactPhone),
+                              '_blank',
+                              'noopener,noreferrer',
+                            )
+                          }
+                          variant="ghost"
+                        >
+                          {inquiry.listing.contactMode === 'CALL' ? 'Call owner' : 'Contact owner'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  function renderFindRoomPage(
+    title: string,
+    subtitle: string,
+    content: ReactNode,
+  ) {
+    return (
+      <>
+        <div className="section-head reveal tenant-section-head">
+          <div className="eyebrow">Find room</div>
+          <h1 className="page-title">{title}</h1>
+          <p className="page-subtitle">{subtitle}</p>
+        </div>
+
+        <FindRoomSectionChips
+          activeInquiryCount={activeRequesterInquiriesCount}
+          liveListingCount={filteredPublicListings.length}
+          user={user}
+        />
+
+        <div className="tenant-route-stack">{content}</div>
+      </>
+    )
+  }
+
   function renderTenantReplacementPage(
     title: string,
     subtitle: string,
@@ -2920,17 +3207,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             </div>
           )}
 
-          {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries ? (
-            <>
-              <div className="section-head reveal">
-                <div className="eyebrow">Housing</div>
-                <h1 className="page-title">Choose your housing intent first, then we keep the rest of the UI focused.</h1>
-                <p className="page-subtitle">
-                  Find room is for seekers. Tenant replacement is for owners posting or managing replacement listings.
-                </p>
-              </div>
-
-            <div className="hub-panel hub-panel-wide live-feed-panel">
+          {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries && !shouldShowRequesterInquiries ? (
+            renderFindRoomPage(
+              'Browse live rooms with a dedicated seeker workspace.',
+              'Use the chips to move between live listings and the inquiries you have already sent.',
+              <div className="hub-panel hub-panel-wide live-feed-panel">
               <div className="hub-panel-head live-feed-head">
                 <div>
                   <span className="muted">Intent: Find room</span>
@@ -3169,8 +3450,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   </Card>
                 )}
               </div>
-            </div>
-            </>
+            </div>,
+            )
+          ) : shouldShowRequesterInquiries ? (
+            renderFindRoomPage(
+              'Keep your room search and sent inquiries separate.',
+              'Review the listings you have already contacted without losing the main discovery feed.',
+              renderRequesterInquiriesPanel(),
+            )
           ) : shouldShowHostComposer ? (
             renderTenantReplacementPage(
               editingListingId ? 'Edit your replacement listing in a focused flow.' : 'Create a replacement listing in a dedicated workspace.',
@@ -3260,6 +3547,59 @@ function TenantReplacementSectionChips({
             : link.key === 'composer'
               ? location.pathname.startsWith('/find-tenant/host/listings')
               : location.pathname.startsWith('/find-tenant/host/inquiries'))
+
+        return (
+          <NavLink
+            className={`tenant-section-chip tenant-section-chip-${link.tone}${isActive ? ' active' : ''}`}
+            key={link.label}
+            to={link.to}
+          >
+            <div className="tenant-section-chip-copy">
+              <strong>{link.label}</strong>
+              <span>{link.meta}</span>
+            </div>
+            {isActive ? <span className="tenant-section-chip-current">Current</span> : null}
+          </NavLink>
+        )
+      })}
+    </div>
+  )
+}
+
+function FindRoomSectionChips({
+  activeInquiryCount,
+  liveListingCount,
+  user,
+}: {
+  activeInquiryCount: number
+  liveListingCount: number
+  user: ReturnType<typeof useAppAuth>['user']
+}) {
+  const location = useLocation()
+  const sectionLinks = [
+    {
+      key: 'listings',
+      label: 'Listings',
+      meta: `${liveListingCount} live`,
+      to: '/find-tenant',
+      tone: 'mint',
+    },
+    {
+      key: 'inquiries',
+      label: 'Sent inquiries',
+      meta: `${activeInquiryCount} active`,
+      to: user ? '/find-tenant/inquiries' : '/profile',
+      tone: 'violet',
+    },
+  ] as const
+
+  return (
+    <div className="tenant-section-chip-row" aria-label="Find room sections">
+      {sectionLinks.map((link) => {
+        const isActive =
+          link.key === 'listings'
+            ? location.pathname === '/find-tenant'
+            : location.pathname.startsWith('/find-tenant/inquiries')
 
         return (
           <NavLink
@@ -3780,6 +4120,11 @@ function normalizePhoneForLink(phone: string | null) {
 
 function formatContactPhone(phone: string | null) {
   return phone ?? 'Phone number not shared'
+}
+
+function buildMailtoLink(email: string, listingTitle?: string) {
+  const subject = listingTitle ? `Regarding your interest in ${listingTitle}` : 'Regarding your housing inquiry'
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}`
 }
 
 function isDesktopViewport() {

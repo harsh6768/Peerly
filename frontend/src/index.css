@@ -2220,6 +2220,31 @@ input:focus {
   margin: 0;
 }
 
+.trust-phone-panel,
+.trust-phone-panel-head {
+  display: grid;
+  gap: 12px;
+}
+
+.trust-phone-panel {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(161, 148, 255, 0.16);
+  background:
+    linear-gradient(135deg, rgba(238, 244, 255, 0.8), rgba(244, 239, 255, 0.76)),
+    rgba(255, 255, 255, 0.9);
+}
+
+.trust-phone-panel-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.trust-phone-panel-head strong {
+  display: block;
+  margin-top: 6px;
+}
+
 .status-detail-grid div {
   flex-direction: column;
   align-items: flex-start;
@@ -2628,6 +2653,12 @@ input:focus {
   border-color: rgba(34, 197, 94, 0.22);
 }
 
+.listing-action-contact {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.1);
+  border-color: rgba(20, 184, 166, 0.24);
+}
+
 .listing-action-delete {
   color: #c2410c;
   background: rgba(248, 113, 113, 0.1);
@@ -2635,6 +2666,7 @@ input:focus {
 }
 
 .listing-action-details:hover,
+.listing-action-contact:hover,
 .listing-action-edit:hover,
 .listing-action-rented:hover,
 .listing-action-delete:hover {
@@ -2721,7 +2753,8 @@ input:focus {
   }
 
   .host-inquiry-head,
-  .inquiry-card-top {
+  .inquiry-card-top,
+  .inquiry-contact-head {
     grid-template-columns: 1fr;
   }
 
@@ -2751,6 +2784,10 @@ input:focus {
   }
 
   .host-listing-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inquiry-contact-grid {
     grid-template-columns: 1fr;
   }
 
@@ -4518,7 +4555,10 @@ input:focus {
 .listing-inquiry-card,
 .inquiry-schedule-form,
 .inquiry-card-top,
-.inquiry-fact-grid {
+.inquiry-fact-grid,
+.inquiry-contact-card,
+.inquiry-contact-head,
+.inquiry-contact-grid {
   display: grid;
   gap: 12px;
 }
@@ -4558,6 +4598,29 @@ input:focus {
 
 .inquiry-actions {
   align-items: center;
+}
+
+.inquiry-contact-card {
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(208, 226, 225, 0.9);
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(248, 255, 254, 0.98), rgba(241, 252, 250, 0.94));
+}
+
+.inquiry-contact-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.inquiry-contact-head p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+
+.inquiry-contact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .action-dialog-backdrop {

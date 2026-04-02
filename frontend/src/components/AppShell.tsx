@@ -22,8 +22,10 @@ export function AppShell() {
   const { setIntent } = useHousingIntent()
   const location = useLocation()
   const navigate = useNavigate()
+  const locationState = location.state as { sourceIntent?: string } | null
   const activeHeaderIntent =
-    location.pathname.startsWith('/find-tenant/host')
+    location.pathname.startsWith('/find-tenant/host') ||
+    locationState?.sourceIntent === housingIntentValues.tenantReplacement
       ? housingIntentValues.tenantReplacement
       : housingIntentValues.findRoom
 

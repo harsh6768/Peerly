@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseGoogleLoginDto } from './dto/supabase-google-login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { AuthenticatedSession, AuthenticatedUser } from './auth.types';
 
 type SupabaseUserResponse = {
@@ -28,6 +29,7 @@ const userSelect = {
   id: true,
   fullName: true,
   email: true,
+  phone: true,
   avatarUrl: true,
   authProvider: true,
   isVerified: true,
@@ -170,6 +172,20 @@ export class AuthService {
     return { success: true };
   }
 
+  async updateProfile(session: AuthenticatedSession, dto: UpdateProfileDto) {
+    const phone = dto.phone?.trim();
+
+    const user = await this.prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        phone: phone ? phone : null,
+      },
+      select: userSelect,
+    });
+
+    return this.serializeUser(user);
+  }
+
   private async fetchSupabaseUser(accessToken: string) {
     const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -203,6 +219,7 @@ export class AuthService {
       id: user.id,
       name: user.fullName,
       email: user.email,
+      phone: user.phone,
       avatarUrl: user.avatarUrl,
       authProvider: user.authProvider,
       isVerified: user.isVerified,

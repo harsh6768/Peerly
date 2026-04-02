@@ -16,13 +16,14 @@ import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { apiRequest } from '../lib/api'
-import { useAppAuth } from '../context/AppAuthContext'
+import { useAppAuth, type AppUser } from '../context/AppAuthContext'
 
 type VerificationResponse = {
   user: {
     id: string
     name: string
     email: string
+    phone?: string | null
     isVerified: boolean
     verificationType: 'WORK_EMAIL' | 'LINKEDIN' | null
     verificationStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
@@ -101,12 +102,15 @@ export function TrustCenterPage() {
     sessionToken,
     signInWithGoogle,
     signOut,
+    setUser,
     user,
   } = useAppAuth()
   const [verification, setVerification] = useState<VerificationResponse | null>(null)
   const [metrics, setMetrics] = useState<VerificationMetrics | null>(null)
   const [listings, setListings] = useState<ListingPreview[]>([])
   const [workEmail, setWorkEmail] = useState(user?.workEmail ?? '')
+  const [phone, setPhone] = useState(user?.phone ?? '')
+  const [isEditingPhone, setIsEditingPhone] = useState(false)
   const [otp, setOtp] = useState('')
   const [linkedinUrl, setLinkedinUrl] = useState(user?.linkedinUrl ?? '')
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
@@ -126,7 +130,9 @@ export function TrustCenterPage() {
 
   useEffect(() => {
     setWorkEmail(user?.workEmail ?? '')
+    setPhone(user?.phone ?? '')
     setLinkedinUrl(user?.linkedinUrl ?? '')
+    setIsEditingPhone(false)
   }, [user])
 
   useEffect(() => {
@@ -308,6 +314,41 @@ export function TrustCenterPage() {
     }
   }
 
+  async function handleProfileSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction('profile-save')
+      setFeedback(null)
+
+      const updatedUser = await apiRequest<AppUser>('/auth/profile', {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          phone,
+        }),
+      })
+
+      setUser(updatedUser)
+      setIsEditingPhone(false)
+      setFeedback({
+        tone: 'success',
+        message: 'Profile phone number saved. This will now be shared when you send inquiries.',
+      })
+      await loadProtectedData()
+    } catch (saveError) {
+      setFeedback({
+        tone: 'error',
+        message: saveError instanceof Error ? saveError.message : 'Unable to save your profile right now.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   if (!user) {
     return (
       <div className="page">
@@ -448,9 +489,64 @@ export function TrustCenterPage() {
                   <strong>{verification?.user.companyName ?? 'Pending verification'}</strong>
                 </div>
                 <div>
+                  <span className="muted">Phone</span>
+                  <strong>{user.phone ?? 'Add in profile below'}</strong>
+                </div>
+                <div>
                   <span className="muted">App session</span>
                   <strong>{isSyncing ? 'Refreshing' : 'Active'}</strong>
                 </div>
+              </div>
+
+              <div className="trust-phone-panel">
+                <div className="trust-phone-panel-head">
+                  <div>
+                    <span className="muted">Phone for housing</span>
+                    <strong>{user.phone ?? 'Not added yet'}</strong>
+                  </div>
+                  {!isEditingPhone ? (
+                    <Button onClick={() => setIsEditingPhone(true)} variant="secondary">
+                      {user.phone ? 'Edit phone' : 'Add phone'}
+                    </Button>
+                  ) : null}
+                </div>
+
+                <p className="helper-copy">
+                  Required before you can send a housing inquiry. Owners will use this to contact you.
+                </p>
+
+                {isEditingPhone ? (
+                  <form className="stack-form trust-contact-form" onSubmit={handleProfileSave}>
+                    <label className="field">
+                      <span>Phone or WhatsApp number</span>
+                      <input
+                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="+91 98765 43210"
+                        type="tel"
+                        value={phone}
+                      />
+                    </label>
+                    <div className="feed-card-actions">
+                      <Button
+                        disabled={busyAction === 'profile-save' || phone.trim().length === 0}
+                        type="submit"
+                        variant="secondary"
+                      >
+                        {busyAction === 'profile-save' ? 'Saving phone...' : 'Save phone number'}
+                      </Button>
+                      <Button
+                        disabled={busyAction === 'profile-save'}
+                        onClick={() => {
+                          setPhone(user.phone ?? '')
+                          setIsEditingPhone(false)
+                        }}
+                        variant="ghost"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
               </div>
 
               <Button icon={<TimerReset size={16} />} onClick={() => void signOut()} variant="ghost">

@@ -4,17 +4,20 @@ import {
   useEffect,
   useRef,
   useState,
+  type Dispatch,
   type PropsWithChildren,
+  type SetStateAction,
 } from 'react'
 import { apiRequest } from '../lib/api'
 import { supabase, supabaseConfigReady } from '../lib/supabase'
 
 const appSessionStorageKey = 'trusted-network.app-session'
 
-type AppUser = {
+export type AppUser = {
   id: string
   name: string
   email: string
+  phone: string | null
   avatarUrl: string | null
   authProvider: 'GOOGLE'
   isVerified: boolean
@@ -53,6 +56,7 @@ type AppAuthContextValue = {
   sessionExpiresAt: string | null
   user: AppUser | null
   onboardingPrompt: string
+  setUser: Dispatch<SetStateAction<AppUser | null>>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
@@ -248,6 +252,7 @@ export function AppAuthProvider({ children }: PropsWithChildren) {
         sessionExpiresAt,
         user,
         onboardingPrompt,
+        setUser,
         signInWithGoogle,
         signOut,
         refreshSession,

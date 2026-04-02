@@ -4,6 +4,7 @@ export type AuthenticatedUser = {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   avatarUrl: string | null;
   authProvider: AuthProvider;
   isVerified: boolean;
@@ -20,4 +21,3 @@ export type AuthenticatedSession = {
   expiresAt: Date;
   user: AuthenticatedUser;
 };
-

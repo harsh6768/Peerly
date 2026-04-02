@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { AppSessionGuard } from './app-session.guard';
 import { AuthService } from './auth.service';
 import { CurrentSession } from './current-session.decorator';
 import { SupabaseGoogleLoginDto } from './dto/supabase-google-login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { AuthenticatedSession } from './auth.types';
 
 @ApiTags('auth')
@@ -34,5 +35,28 @@ export class AuthController {
   logout(@CurrentSession() session: AuthenticatedSession) {
     return this.authService.logout(session.token);
   }
-}
 
+  @ApiOperation({ summary: 'Update profile details for the current authenticated user' })
+  @ApiBearerAuth()
+  @ApiBody({ type: UpdateProfileDto })
+  @UseGuards(AppSessionGuard)
+  @Post('profile')
+  updateProfile(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(session, dto);
+  }
+
+  @ApiOperation({ summary: 'Patch profile details for the current authenticated user' })
+  @ApiBearerAuth()
+  @ApiBody({ type: UpdateProfileDto })
+  @UseGuards(AppSessionGuard)
+  @Patch('profile')
+  patchProfile(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(session, dto);
+  }
+}

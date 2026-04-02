@@ -24,6 +24,7 @@ const inquiryUserSelect = {
   id: true,
   fullName: true,
   email: true,
+  phone: true,
   homeCity: true,
   isVerified: true,
   verificationType: true,
@@ -141,6 +142,17 @@ export class ListingInquiriesService {
 
     if (listing.ownerUserId === session.user.id) {
       throw new BadRequestException('You cannot send an inquiry to your own listing.');
+    }
+
+    const requester = await this.prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        phone: true,
+      },
+    });
+
+    if (!requester?.phone?.trim()) {
+      throw new BadRequestException('Add your phone number in profile before sending an inquiry.');
     }
 
     const existingInquiry = await this.prisma.listingInquiry.findFirst({

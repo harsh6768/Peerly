@@ -7,6 +7,7 @@ import {
   FindTenantHostInquiriesPage,
   FindTenantListingDetailsPage,
   FindTenantPage,
+  FindTenantRequesterInquiriesPage,
 } from './pages/FindTenantPage'
 import { HomePage } from './pages/HomePage'
 
@@ -18,6 +19,7 @@ function App() {
         <Route path="/auth" element={<TrustCenterPage />} />
         <Route path="/profile" element={<TrustCenterPage />} />
         <Route path="/find-tenant" element={<FindTenantPage />} />
+        <Route path="/find-tenant/inquiries" element={<FindTenantRequesterInquiriesPage />} />
         <Route path="/find-tenant/host" element={<FindTenantHostDashboardPage />} />
         <Route path="/find-tenant/host/listings/new" element={<FindTenantHostComposePage />} />
         <Route path="/find-tenant/host/listings/:editListingId/edit" element={<FindTenantHostComposePage />} />
