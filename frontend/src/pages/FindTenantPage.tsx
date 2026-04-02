@@ -7,9 +7,12 @@ import {
   LoaderCircle,
   MapPin,
   PencilLine,
+  Search,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react'
 import {
   useEffect,
@@ -221,6 +224,14 @@ type ListingActionConfirmation = {
   listing: Listing
   nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED'>
 }
+type PublicListingFilterKey =
+  | 'search'
+  | 'city'
+  | 'propertyType'
+  | 'occupancyType'
+  | 'amenity'
+  | 'budget'
+  | 'verifiedOnly'
 
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
 const occupancyTypes = ['SINGLE', 'DOUBLE', 'SHARED']
@@ -1548,6 +1559,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [publicListingFilters, setPublicListingFilters] = useState<PublicListingFilters>(
     makeEmptyPublicListingFilters(),
   )
+  const [showAdvancedPublicFilters, setShowAdvancedPublicFilters] = useState(false)
   const [hostStep, setHostStep] = useState(0)
   const [editingListingId, setEditingListingId] = useState<string | null>(null)
   const [listingImages, setListingImages] = useState<DraftListingImage[]>([])
@@ -1617,6 +1629,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       .slice(0, 6)
       .map(([amenity]) => amenity)
   }, [discoverablePublicListings])
+  const quickPublicCityOptions = useMemo(() => publicCityOptions.slice(0, 4), [publicCityOptions])
   const filteredPublicListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
@@ -1675,39 +1688,57 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     })
   }, [discoverablePublicListings, publicListingFilters, searchQuery])
   const activePublicListingFilterTokens = useMemo(() => {
-    const tokens: string[] = []
+    const tokens: Array<{ key: PublicListingFilterKey; label: string }> = []
 
     if (searchQuery.trim()) {
-      tokens.push(`Search: ${searchQuery.trim()}`)
+      tokens.push({ key: 'search', label: `Search: ${searchQuery.trim()}` })
     }
 
     if (publicListingFilters.city) {
-      tokens.push(`City: ${publicListingFilters.city}`)
+      tokens.push({ key: 'city', label: `City: ${publicListingFilters.city}` })
     }
 
     if (publicListingFilters.propertyType) {
-      tokens.push(`Type: ${formatEnum(publicListingFilters.propertyType)}`)
+      tokens.push({
+        key: 'propertyType',
+        label: `Type: ${formatEnum(publicListingFilters.propertyType)}`,
+      })
     }
 
     if (publicListingFilters.occupancyType) {
-      tokens.push(`Occupancy: ${formatEnum(publicListingFilters.occupancyType)}`)
+      tokens.push({
+        key: 'occupancyType',
+        label: `Occupancy: ${formatEnum(publicListingFilters.occupancyType)}`,
+      })
     }
 
     if (publicListingFilters.amenity) {
-      tokens.push(`Amenity: ${publicListingFilters.amenity}`)
+      tokens.push({ key: 'amenity', label: `Amenity: ${publicListingFilters.amenity}` })
     }
 
     if (publicListingFilters.budget !== 'ANY') {
-      tokens.push(`Budget: ${formatPublicListingBudget(publicListingFilters.budget)}`)
+      tokens.push({
+        key: 'budget',
+        label: `Budget: ${formatPublicListingBudget(publicListingFilters.budget)}`,
+      })
     }
 
     if (publicListingFilters.verifiedOnly) {
-      tokens.push('Verified owners')
+      tokens.push({ key: 'verifiedOnly', label: 'Verified owners' })
     }
 
     return tokens
   }, [publicListingFilters, searchQuery])
   const hasActivePublicListingFilters = activePublicListingFilterTokens.length > 0
+  const activeAdvancedPublicFiltersCount = useMemo(
+    () =>
+      [
+        publicListingFilters.propertyType,
+        publicListingFilters.occupancyType,
+        publicListingFilters.amenity,
+      ].filter(Boolean).length,
+    [publicListingFilters.amenity, publicListingFilters.occupancyType, publicListingFilters.propertyType],
+  )
   const filteredMyListings = useMemo(
     () => filterHostListings(myListings, myListingFilter),
     [myListingFilter, myListings],
@@ -1753,6 +1784,20 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setIntent(housingIntentValues.tenantReplacement)
     }
   }, [intent, isDedicatedHostPage, setIntent, user])
+
+  useEffect(() => {
+    if (
+      publicListingFilters.propertyType ||
+      publicListingFilters.occupancyType ||
+      publicListingFilters.amenity
+    ) {
+      setShowAdvancedPublicFilters(true)
+    }
+  }, [
+    publicListingFilters.amenity,
+    publicListingFilters.occupancyType,
+    publicListingFilters.propertyType,
+  ])
 
   useEffect(() => {
     if (!listingActionConfirmation) {
@@ -1937,6 +1982,33 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   function clearPublicListingFilters() {
     setSearchQuery('')
     setPublicListingFilters(makeEmptyPublicListingFilters())
+    setShowAdvancedPublicFilters(false)
+  }
+
+  function clearSinglePublicListingFilter(key: PublicListingFilterKey) {
+    if (key === 'search') {
+      setSearchQuery('')
+      return
+    }
+
+    setPublicListingFilters((current) => {
+      switch (key) {
+        case 'city':
+          return { ...current, city: '' }
+        case 'propertyType':
+          return { ...current, propertyType: '' }
+        case 'occupancyType':
+          return { ...current, occupancyType: '' }
+        case 'amenity':
+          return { ...current, amenity: '' }
+        case 'budget':
+          return { ...current, budget: 'ANY' }
+        case 'verifiedOnly':
+          return { ...current, verifiedOnly: false }
+        default:
+          return current
+      }
+    })
   }
 
   async function handleSaveListing(targetStatus: 'DRAFT' | 'PUBLISHED') {
@@ -3237,29 +3309,46 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               <div className="live-feed-toolbar">
                 <div className="live-feed-summary">
                   <strong>Search and filter published listings</strong>
-                  <span>Use city, property type, occupancy, budget, and amenity filters to narrow the feed quickly.</span>
+                  <span>Keep the common filters visible, then open advanced filters only when you need more precision.</span>
                 </div>
                 <div className="listing-filter-toolbar-actions">
                   <span className="listing-filter-status">
-                    {hasActivePublicListingFilters
-                      ? `${activePublicListingFilterTokens.length} filter${activePublicListingFilterTokens.length === 1 ? '' : 's'} active`
-                      : 'Standard filters ready'}
+                    {filteredPublicListings.length} result{filteredPublicListings.length === 1 ? '' : 's'}
                   </span>
-                  {hasActivePublicListingFilters ? (
-                    <Button className="listing-toolbar-clear" onClick={clearPublicListingFilters} variant="ghost">
-                      Clear all
+                  <div className="listing-toolbar-actions">
+                    <Button
+                      className="listing-toolbar-clear"
+                      icon={<SlidersHorizontal size={16} />}
+                      onClick={() => setShowAdvancedPublicFilters((current) => !current)}
+                      variant="ghost"
+                    >
+                      {showAdvancedPublicFilters
+                        ? 'Hide advanced'
+                        : activeAdvancedPublicFiltersCount > 0
+                          ? `Advanced (${activeAdvancedPublicFiltersCount})`
+                          : 'Advanced'}
                     </Button>
-                  ) : null}
+                    {hasActivePublicListingFilters ? (
+                      <Button className="listing-toolbar-clear" onClick={clearPublicListingFilters} variant="ghost">
+                        Clear all
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="housing-search-row">
-                  <input
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search by locality, city, title, or amenity"
-                    value={searchQuery}
-                  />
+                <div className="housing-search-row listing-search-shell">
+                  <label className="listing-search-field" htmlFor="find-room-search">
+                    <Search size={18} />
+                    <input
+                      id="find-room-search"
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder="Search by locality, city, title, or amenity"
+                      value={searchQuery}
+                    />
+                  </label>
                 </div>
-                <div className="listing-filter-grid public-listing-filter-grid">
-                  <div className="listing-filter-group">
+
+                <div className="listing-filter-quick-grid">
+                  <div className="listing-filter-group listing-filter-group-compact">
                     <span className="muted">City</span>
                     <div className="listing-filter-chip-row">
                       <button
@@ -3270,7 +3359,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                       >
                         All cities
                       </button>
-                      {publicCityOptions.map((city) => (
+                      {quickPublicCityOptions.map((city) => (
                         <button
                           aria-pressed={publicListingFilters.city === city}
                           className={`listing-filter-chip${publicListingFilters.city === city ? ' active' : ''}`}
@@ -3284,65 +3373,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     </div>
                   </div>
 
-                  <div className="listing-filter-group">
-                    <span className="muted">Property type</span>
-                    <div className="listing-filter-chip-row">
-                      <button
-                        aria-pressed={publicListingFilters.propertyType === ''}
-                        className={`listing-filter-chip${publicListingFilters.propertyType === '' ? ' active' : ''}`}
-                        onClick={() =>
-                          setPublicListingFilters((current) => ({ ...current, propertyType: '' }))
-                        }
-                        type="button"
-                      >
-                        All types
-                      </button>
-                      {propertyTypes.map((type) => (
-                        <button
-                          aria-pressed={publicListingFilters.propertyType === type}
-                          className={`listing-filter-chip${publicListingFilters.propertyType === type ? ' active' : ''}`}
-                          key={type}
-                          onClick={() =>
-                            setPublicListingFilters((current) => ({ ...current, propertyType: type }))
-                          }
-                          type="button"
-                        >
-                          {formatEnum(type)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="listing-filter-group">
-                    <span className="muted">Occupancy</span>
-                    <div className="listing-filter-chip-row">
-                      <button
-                        aria-pressed={publicListingFilters.occupancyType === ''}
-                        className={`listing-filter-chip${publicListingFilters.occupancyType === '' ? ' active' : ''}`}
-                        onClick={() =>
-                          setPublicListingFilters((current) => ({ ...current, occupancyType: '' }))
-                        }
-                        type="button"
-                      >
-                        Any occupancy
-                      </button>
-                      {occupancyTypes.map((type) => (
-                        <button
-                          aria-pressed={publicListingFilters.occupancyType === type}
-                          className={`listing-filter-chip${publicListingFilters.occupancyType === type ? ' active' : ''}`}
-                          key={type}
-                          onClick={() =>
-                            setPublicListingFilters((current) => ({ ...current, occupancyType: type }))
-                          }
-                          type="button"
-                        >
-                          {formatEnum(type)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="listing-filter-group">
+                  <div className="listing-filter-group listing-filter-group-compact">
                     <span className="muted">Budget</span>
                     <div className="listing-filter-chip-row">
                       {publicListingBudgetFilters.map((filterOption) => (
@@ -3364,34 +3395,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     </div>
                   </div>
 
-                  <div className="listing-filter-group">
-                    <span className="muted">Amenities</span>
-                    <div className="listing-filter-chip-row">
-                      <button
-                        aria-pressed={publicListingFilters.amenity === ''}
-                        className={`listing-filter-chip${publicListingFilters.amenity === '' ? ' active' : ''}`}
-                        onClick={() => setPublicListingFilters((current) => ({ ...current, amenity: '' }))}
-                        type="button"
-                      >
-                        Any amenity
-                      </button>
-                      {publicAmenityOptions.map((amenity) => (
-                        <button
-                          aria-pressed={publicListingFilters.amenity === amenity}
-                          className={`listing-filter-chip${publicListingFilters.amenity === amenity ? ' active' : ''}`}
-                          key={amenity}
-                          onClick={() =>
-                            setPublicListingFilters((current) => ({ ...current, amenity }))
-                          }
-                          type="button"
-                        >
-                          {amenity}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="listing-filter-group">
+                  <div className="listing-filter-group listing-filter-group-compact">
                     <span className="muted">Owner trust</span>
                     <div className="listing-filter-chip-row">
                       <button
@@ -3418,12 +3422,114 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   </div>
                 </div>
 
+                {showAdvancedPublicFilters ? (
+                  <div className="listing-filter-grid public-listing-filter-grid listing-filter-grid-advanced">
+                    <div className="listing-filter-grid-head">
+                      <div>
+                        <strong>Advanced filters</strong>
+                        <span className="muted">Refine by property type, occupancy, and a must-have amenity.</span>
+                      </div>
+                    </div>
+
+                    <div className="listing-filter-group">
+                      <span className="muted">Property type</span>
+                      <div className="listing-filter-chip-row">
+                        <button
+                          aria-pressed={publicListingFilters.propertyType === ''}
+                          className={`listing-filter-chip${publicListingFilters.propertyType === '' ? ' active' : ''}`}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({ ...current, propertyType: '' }))
+                          }
+                          type="button"
+                        >
+                          All types
+                        </button>
+                        {propertyTypes.map((type) => (
+                          <button
+                            aria-pressed={publicListingFilters.propertyType === type}
+                            className={`listing-filter-chip${publicListingFilters.propertyType === type ? ' active' : ''}`}
+                            key={type}
+                            onClick={() =>
+                              setPublicListingFilters((current) => ({ ...current, propertyType: type }))
+                            }
+                            type="button"
+                          >
+                            {formatEnum(type)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="listing-filter-group">
+                      <span className="muted">Occupancy</span>
+                      <div className="listing-filter-chip-row">
+                        <button
+                          aria-pressed={publicListingFilters.occupancyType === ''}
+                          className={`listing-filter-chip${publicListingFilters.occupancyType === '' ? ' active' : ''}`}
+                          onClick={() =>
+                            setPublicListingFilters((current) => ({ ...current, occupancyType: '' }))
+                          }
+                          type="button"
+                        >
+                          Any occupancy
+                        </button>
+                        {occupancyTypes.map((type) => (
+                          <button
+                            aria-pressed={publicListingFilters.occupancyType === type}
+                            className={`listing-filter-chip${publicListingFilters.occupancyType === type ? ' active' : ''}`}
+                            key={type}
+                            onClick={() =>
+                              setPublicListingFilters((current) => ({ ...current, occupancyType: type }))
+                            }
+                            type="button"
+                          >
+                            {formatEnum(type)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="listing-filter-group">
+                      <span className="muted">Must-have amenity</span>
+                      <div className="listing-filter-chip-row">
+                        <button
+                          aria-pressed={publicListingFilters.amenity === ''}
+                          className={`listing-filter-chip${publicListingFilters.amenity === '' ? ' active' : ''}`}
+                          onClick={() => setPublicListingFilters((current) => ({ ...current, amenity: '' }))}
+                          type="button"
+                        >
+                          Any amenity
+                        </button>
+                        {publicAmenityOptions.map((amenity) => (
+                          <button
+                            aria-pressed={publicListingFilters.amenity === amenity}
+                            className={`listing-filter-chip${publicListingFilters.amenity === amenity ? ' active' : ''}`}
+                            key={amenity}
+                            onClick={() =>
+                              setPublicListingFilters((current) => ({ ...current, amenity }))
+                            }
+                            type="button"
+                          >
+                            {amenity}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {hasActivePublicListingFilters ? (
                   <div className="listing-filter-token-row">
                     {activePublicListingFilterTokens.map((token) => (
-                      <span className="listing-filter-token" key={token}>
-                        {token}
-                      </span>
+                      <button
+                        className="listing-filter-token"
+                        key={`${token.key}-${token.label}`}
+                        onClick={() => clearSinglePublicListingFilter(token.key)}
+                        type="button"
+                      >
+                        <span>{token.label}</span>
+                        <X size={14} />
+                      </button>
                     ))}
                   </div>
                 ) : null}
