@@ -48,6 +48,7 @@ type NearbyPlace = {
 }
 
 type ListingStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED' | 'FILLED'
+type HostListingFilter = 'ACTIVE' | 'PUBLISHED' | 'DRAFT' | 'FILLED' | 'ARCHIVED' | 'ALL'
 
 type Listing = {
   id: string
@@ -122,6 +123,9 @@ type FeedbackState = {
 
 type ListingDetailsRouteState = {
   listing?: Listing
+  backLabel?: string
+  backTo?: string
+  sourceIntent?: HousingIntent
 }
 
 const propertyTypes = ['ROOM', 'STUDIO', 'APARTMENT', 'PG', 'HOUSE']
@@ -159,6 +163,14 @@ const hostSteps = [
   'Description',
   'Review',
 ] as const
+const hostListingFilters: Array<{ label: string; value: HostListingFilter }> = [
+  { label: 'Active', value: 'ACTIVE' },
+  { label: 'Published', value: 'PUBLISHED' },
+  { label: 'Drafts', value: 'DRAFT' },
+  { label: 'Rented', value: 'FILLED' },
+  { label: 'Archived', value: 'ARCHIVED' },
+  { label: 'All', value: 'ALL' },
+]
 
 function SearchListingCard({ listing }: { listing: Listing }) {
   const navigate = useNavigate()
@@ -168,7 +180,12 @@ function SearchListingCard({ listing }: { listing: Listing }) {
   function handleViewDetails() {
     if (isDesktopViewport()) {
       navigate(`/find-tenant/listings/${listing.id}`, {
-        state: { listing } as ListingDetailsRouteState,
+        state: {
+          listing,
+          backLabel: 'Back to live listings',
+          backTo: '/find-tenant',
+          sourceIntent: housingIntentValues.findRoom,
+        } as ListingDetailsRouteState,
       })
       return
     }
@@ -315,15 +332,22 @@ function HostListingCard({
   onArchive,
   onEdit,
   onMarkAsRented,
+  onViewDetails,
 }: {
   listing: Listing
   busyAction: string | null
   onArchive: (listing: Listing) => void
   onEdit: (listing: Listing) => void
   onMarkAsRented: (listing: Listing) => void
+  onViewDetails: (listing: Listing) => void
 }) {
   return (
-    <Card className="host-listing-card" key={listing.id}>
+    <Card className="host-listing-card">
+      {renderListingCoverImage(listing, {
+        className: 'feed-media host-listing-cover',
+        emptyLabel: 'Add a cover image to help this listing look complete in the dashboard.',
+      })}
+
       <div className="feed-card-top">
         <div>
           <strong>{listing.title}</strong>
@@ -332,12 +356,25 @@ function HostListingCard({
         <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
       </div>
 
+      <div className="nearby-place-chip-row compact">
+        {listing.propertyType ? <span className="nearby-place-chip static">{formatEnum(listing.propertyType)}</span> : null}
+        {listing.occupancyType ? <span className="nearby-place-chip static">{formatEnum(listing.occupancyType)}</span> : null}
+        {getVisibleAmenities(listing.amenities).map((amenity) => (
+          <span className="nearby-place-chip static" key={`${listing.id}-${amenity}`}>
+            {amenity}
+          </span>
+        ))}
+      </div>
+
       <div className="host-listing-meta">
         <span>{formatPriceLine(listing)}</span>
         <span>Created {formatShortDate(listing.createdAt)}</span>
       </div>
 
       <div className="host-listing-actions">
+        <Button onClick={() => onViewDetails(listing)} variant="secondary">
+          Show details
+        </Button>
         <Button onClick={() => onEdit(listing)} variant="secondary">
           Edit
         </Button>
@@ -443,6 +480,7 @@ export function FindTenantListingDetailsPage() {
   const { listingId } = useParams<{ listingId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const { setIntent } = useHousingIntent()
   const routeState = location.state as ListingDetailsRouteState | null
   const initialListing = useMemo(
     () => (routeState?.listing && routeState.listing.id === listingId ? normalizeListing(routeState.listing) : null),
@@ -495,16 +533,29 @@ export function FindTenantListingDetailsPage() {
   const badgeTone = listing?.owner.isVerified ? 'green' : 'gray'
   const badgeLabel = listing?.owner.isVerified ? 'Verified owner' : 'Live listing'
 
+  function handleBack() {
+    if (routeState?.sourceIntent) {
+      setIntent(routeState.sourceIntent)
+    }
+
+    navigate(routeState?.backTo ?? '/find-tenant')
+  }
+
   return (
     <div className="page">
       <section className="section">
         <div className="page-inner">
           <div className="hub-panel hub-panel-wide listing-details-screen">
             <div className="listing-details-topbar">
-              <Button onClick={() => navigate('/find-tenant')} variant="ghost">
-                Back to search
+              <Button onClick={handleBack} variant="ghost">
+                {routeState?.backLabel ?? 'Back to listings'}
               </Button>
-              {listing ? <Badge tone={badgeTone}>{badgeLabel}</Badge> : null}
+              {listing ? (
+                <div className="listing-details-badges">
+                  <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
+                  <Badge tone={badgeTone}>{badgeLabel}</Badge>
+                </div>
+              ) : null}
             </div>
 
             {isLoading ? (
@@ -667,6 +718,7 @@ export function FindTenantPage() {
   const [amenityInput, setAmenityInput] = useState('')
   const [isDragActive, setIsDragActive] = useState(false)
   const [busyListingAction, setBusyListingAction] = useState<string | null>(null)
+  const [myListingFilter, setMyListingFilter] = useState<HostListingFilter>('ACTIVE')
   const [replaceTenantCityOption, setReplaceTenantCityOption] = useState('')
   const [replaceTenantCustomCity, setReplaceTenantCustomCity] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>(makeEmptyReplaceTenantForm())
@@ -706,6 +758,11 @@ export function FindTenantPage() {
         .includes(normalizedQuery)
     })
   }, [publicListings, searchQuery, user])
+  const filteredMyListings = useMemo(
+    () => filterHostListings(myListings, myListingFilter),
+    [myListingFilter, myListings],
+  )
+  const activeMyListingsCount = useMemo(() => filterHostListings(myListings, 'ACTIVE').length, [myListings])
 
   useEffect(() => {
     listingImagesRef.current = listingImages
@@ -735,7 +792,7 @@ export function FindTenantPage() {
 
       if (sessionToken && user) {
         const myListingsPayload = await apiRequest<Listing[]>(
-          `/listings?ownerUserId=${encodeURIComponent(user.id)}`,
+          `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
           {
             token: sessionToken,
           },
@@ -951,6 +1008,17 @@ export function FindTenantPage() {
     }
   }
 
+  function openListingDetails(listing: Listing) {
+    navigate(`/find-tenant/listings/${listing.id}`, {
+      state: {
+        listing,
+        backLabel: 'Back to your listings',
+        backTo: '/find-tenant',
+        sourceIntent: housingIntentValues.tenantReplacement,
+      } as ListingDetailsRouteState,
+    })
+  }
+
   async function handleListingImageSelection(event: ChangeEvent<HTMLInputElement>) {
     await uploadSelectedListingImages(event.target.files)
     event.target.value = ''
@@ -1147,14 +1215,22 @@ export function FindTenantPage() {
     setAmenityInput('')
   }
 
-  const hostModeEmptyState = (
-    <Card className="feed-card">
-      <strong>You have no active listings yet</strong>
-      <p className="feed-copy">
-        Create your first replacement post from tenant replacement mode and keep future edits, draft saves, and rented updates in one place.
-      </p>
-    </Card>
-  )
+  const hostModeEmptyState =
+    myListings.length === 0 ? (
+      <Card className="feed-card">
+        <strong>You have no active listings yet</strong>
+        <p className="feed-copy">
+          Create your first replacement post from tenant replacement mode and keep future edits, draft saves, and rented updates in one place.
+        </p>
+      </Card>
+    ) : (
+      <Card className="feed-card">
+        <strong>No {formatHostListingFilterLabel(myListingFilter).toLowerCase()} listings right now</strong>
+        <p className="feed-copy">
+          Switch the status filter to review a different group of listings, including archived posts when needed.
+        </p>
+      </Card>
+    )
 
   return (
     <div className="page">
@@ -1232,16 +1308,37 @@ export function FindTenantPage() {
                   <div>
                     <span className="muted">Intent: Tenant replacement</span>
                     <h2>Your replacement listings</h2>
+                    <p className="panel-subtitle">
+                      Default view hides deleted listings. Use status filters to inspect drafts, rented posts, or archived records when needed.
+                    </p>
                   </div>
                   <div className="hub-panel-actions">
                     <Badge tone="purple">
-                      {isLoading || !user ? 'Loading' : `${myListings.length} active`}
+                      {isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}
                     </Badge>
                     <Button icon={<Plus size={16} />} onClick={startCreateListing} variant="secondary">
                       Create new listing
                     </Button>
                   </div>
                 </div>
+
+                {user ? (
+                  <div className="host-listing-toolbar">
+                    <div className="listing-filter-chip-row">
+                      {hostListingFilters.map((filterOption) => (
+                        <button
+                          aria-pressed={myListingFilter === filterOption.value}
+                          className={`listing-filter-chip${myListingFilter === filterOption.value ? ' active' : ''}`}
+                          key={filterOption.value}
+                          onClick={() => setMyListingFilter(filterOption.value)}
+                          type="button"
+                        >
+                          {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {!user ? (
                   <Card className="feed-card">
@@ -1253,11 +1350,11 @@ export function FindTenantPage() {
                       Open profile
                     </Button>
                   </Card>
-                ) : myListings.length === 0 && !isLoading ? (
+                ) : filteredMyListings.length === 0 && !isLoading ? (
                   hostModeEmptyState
                 ) : (
                   <div className="host-listing-grid">
-                    {myListings.map((listing) => (
+                    {filteredMyListings.map((listing) => (
                       <HostListingCard
                         busyAction={busyListingAction}
                         key={listing.id}
@@ -1265,6 +1362,7 @@ export function FindTenantPage() {
                         onArchive={(current) => void handleListingStatusChange(current, 'ARCHIVED')}
                         onEdit={startEditingListing}
                         onMarkAsRented={(current) => void handleListingStatusChange(current, 'FILLED')}
+                        onViewDetails={openListingDetails}
                       />
                     ))}
                   </div>
@@ -1779,15 +1877,29 @@ function getVisibleAmenities(amenities: string[]) {
   return amenities.slice(0, 3)
 }
 
-function renderListingCoverImage(listing: Listing) {
+function renderListingCoverImage(
+  listing: Listing,
+  options?: {
+    className?: string
+    emptyLabel?: string
+  },
+) {
   const coverImage = listing.images.find((image) => image.isCover) ?? listing.images[0]
+  const className = options?.className ?? 'feed-media'
 
   if (!coverImage) {
-    return null
+    return (
+      <div className={`${className} feed-media-empty`}>
+        <div className="feed-media-empty-copy">
+          <strong>No cover image yet</strong>
+          <span>{options?.emptyLabel ?? 'Upload a photo to make this listing stand out in the feed.'}</span>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="feed-media">
+    <div className={className}>
       {listing.images.length > 1 ? <span className="feed-media-count">{listing.images.length} photos</span> : null}
       <div className="feed-media-slide">
         <img alt={`${listing.title} cover photo`} loading="lazy" src={coverImage.thumbnailUrl || coverImage.imageUrl} />
@@ -1889,6 +2001,8 @@ function getListingStatusTone(status: ListingStatus) {
       return 'green'
     case 'FILLED':
       return 'purple'
+    case 'ARCHIVED':
+      return 'red'
     default:
       return 'gray'
   }
@@ -1938,6 +2052,37 @@ function formatEnum(value: string) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function filterHostListings(listings: Listing[], filter: HostListingFilter) {
+  switch (filter) {
+    case 'ACTIVE':
+      return listings.filter(
+        (listing) =>
+          listing.status === 'DRAFT' || listing.status === 'PUBLISHED' || listing.status === 'PAUSED',
+      )
+    case 'ALL':
+      return listings
+    default:
+      return listings.filter((listing) => listing.status === filter)
+  }
+}
+
+function formatHostListingFilterLabel(filter: HostListingFilter) {
+  switch (filter) {
+    case 'ACTIVE':
+      return 'Active'
+    case 'DRAFT':
+      return 'Draft'
+    case 'FILLED':
+      return 'Rented'
+    case 'ARCHIVED':
+      return 'Archived'
+    case 'ALL':
+      return 'All'
+    default:
+      return formatEnum(filter)
+  }
 }
 
 function normalizeAmenityName(value: string) {

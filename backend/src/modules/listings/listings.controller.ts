@@ -20,14 +20,22 @@ export class ListingsController {
   @ApiQuery({ name: 'status', required: false, enum: ListingStatus })
   @ApiQuery({ name: 'nearby', required: false })
   @ApiQuery({ name: 'ownerUserId', required: false })
+  @ApiQuery({ name: 'includeArchived', required: false, type: Boolean })
   @Get()
   findAll(
     @Query('city') city?: string,
     @Query('status') status?: ListingStatus,
     @Query('nearby') nearby?: string,
     @Query('ownerUserId') ownerUserId?: string,
+    @Query('includeArchived') includeArchived?: string,
   ) {
-    return this.listingsService.findAll(city, status, nearby, ownerUserId);
+    return this.listingsService.findAll(
+      city,
+      status,
+      nearby,
+      ownerUserId,
+      includeArchived === 'true',
+    );
   }
 
   @ApiOperation({ summary: 'Get a replacement tenant listing by id' })

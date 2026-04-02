@@ -16,7 +16,13 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 export class ListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(city?: string, status?: ListingStatus, nearby?: string, ownerUserId?: string) {
+  async findAll(
+    city?: string,
+    status?: ListingStatus,
+    nearby?: string,
+    ownerUserId?: string,
+    includeArchived = false,
+  ) {
     const trimmedNearby = nearby?.trim();
     const listings = await this.prisma.listing.findMany({
       where: {
@@ -27,11 +33,15 @@ export class ListingsService {
           ownerUserId,
         }),
         ...(ownerUserId
-          ? {
-              status: status ?? {
-                not: ListingStatus.ARCHIVED,
-              },
-            }
+          ? status
+            ? { status }
+            : includeArchived
+              ? {}
+              : {
+                  status: {
+                    not: ListingStatus.ARCHIVED,
+                  },
+                }
           : {}),
         ...(trimmedNearby
           ? {
@@ -48,6 +58,10 @@ export class ListingsService {
         ...(ownerUserId ? { updatedAt: 'desc' } : { createdAt: 'desc' }),
       },
     });
+
+    if (ownerUserId) {
+      return listings;
+    }
 
     return listings.sort((left, right) => {
       if (left.isBoosted !== right.isBoosted) {
