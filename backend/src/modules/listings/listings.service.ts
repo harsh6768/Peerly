@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { ListingStatus, ListingType } from '@prisma/client';
+import { ListingInquiryStatus, ListingStatus, ListingType, MessageType } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import {
@@ -183,56 +183,118 @@ export class ListingsService {
         })),
     });
 
-    return this.prisma.listing.update({
-      where: { id },
-      data: {
-        ownerUserId: dto.ownerUserId,
-        organizationId: dto.organizationId,
-        type: dto.type,
-        title: dto.title,
-        description: dto.description?.trim(),
-        city: dto.city?.trim() ?? (dto.city === null ? null : undefined),
-        locality: dto.locality?.trim() ?? (dto.locality === null ? null : undefined),
-        locationName: dto.locationName,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
-        contactPhone: dto.contactPhone,
-        rentAmount: dto.rentAmount,
-        depositAmount: dto.depositAmount,
-        maintenanceAmount: dto.maintenanceAmount,
-        miscCharges: dto.miscCharges?.trim(),
-        amenities: dto.amenities ? this.normalizeAmenities(dto.amenities) : undefined,
-        propertyType: dto.propertyType,
-        occupancyType: dto.occupancyType,
-        ...(dto.moveInDate ? { moveInDate: toRequiredDate(dto.moveInDate) } : {}),
-        ...(dto.moveOutDate !== undefined ? { moveOutDate: toOptionalDate(dto.moveOutDate) } : {}),
-        urgencyLevel: dto.urgencyLevel,
-        contactMode: dto.contactMode,
-        status: listingStatus,
-        isBoosted: dto.isBoosted,
-        brokerAllowed: dto.brokerAllowed,
-        ...(dto.nearbyPlaces !== undefined
-          ? {
-              nearbyPlaces: {
-                deleteMany: {},
-                ...(dto.nearbyPlaces.length
-                  ? {
-                      create: this.normalizeNearbyPlaces(dto.nearbyPlaces),
-                    }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(dto.images
-          ? {
-              images: {
-                deleteMany: {},
-                create: this.normalizeListingImages(dto.images, listingType, listingStatus),
-              },
-            }
-          : {}),
-      },
-      include: listingInclude,
+    const listingData = {
+      ownerUserId: dto.ownerUserId,
+      organizationId: dto.organizationId,
+      type: dto.type,
+      title: dto.title,
+      description: dto.description?.trim(),
+      city: dto.city?.trim() ?? (dto.city === null ? null : undefined),
+      locality: dto.locality?.trim() ?? (dto.locality === null ? null : undefined),
+      locationName: dto.locationName,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      contactPhone: dto.contactPhone,
+      rentAmount: dto.rentAmount,
+      depositAmount: dto.depositAmount,
+      maintenanceAmount: dto.maintenanceAmount,
+      miscCharges: dto.miscCharges?.trim(),
+      amenities: dto.amenities ? this.normalizeAmenities(dto.amenities) : undefined,
+      propertyType: dto.propertyType,
+      occupancyType: dto.occupancyType,
+      ...(dto.moveInDate ? { moveInDate: toRequiredDate(dto.moveInDate) } : {}),
+      ...(dto.moveOutDate !== undefined ? { moveOutDate: toOptionalDate(dto.moveOutDate) } : {}),
+      urgencyLevel: dto.urgencyLevel,
+      contactMode: dto.contactMode,
+      status: listingStatus,
+      isBoosted: dto.isBoosted,
+      brokerAllowed: dto.brokerAllowed,
+      ...(dto.nearbyPlaces !== undefined
+        ? {
+            nearbyPlaces: {
+              deleteMany: {},
+              ...(dto.nearbyPlaces.length
+                ? {
+                    create: this.normalizeNearbyPlaces(dto.nearbyPlaces),
+                  }
+                : {}),
+            },
+          }
+        : {}),
+      ...(dto.images
+        ? {
+            images: {
+              deleteMany: {},
+              create: this.normalizeListingImages(dto.images, listingType, listingStatus),
+            },
+          }
+        : {}),
+    } satisfies Parameters<typeof this.prisma.listing.update>[0]['data'];
+
+    if (listingStatus !== ListingStatus.FILLED || existingListing.status === ListingStatus.FILLED) {
+      return this.prisma.listing.update({
+        where: { id },
+        data: listingData,
+        include: listingInclude,
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedListing = await tx.listing.update({
+        where: { id },
+        data: listingData,
+        include: listingInclude,
+      });
+
+      const activeInquiries = await tx.listingInquiry.findMany({
+        where: {
+          listingId: id,
+          status: {
+            in: [
+              ListingInquiryStatus.NEW,
+              ListingInquiryStatus.CONTACTED,
+              ListingInquiryStatus.SCHEDULED,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          conversation: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (activeInquiries.length > 0) {
+        await tx.listingInquiry.updateMany({
+          where: {
+            id: {
+              in: activeInquiries.map((inquiry) => inquiry.id),
+            },
+          },
+          data: {
+            status: ListingInquiryStatus.CLOSED,
+          },
+        });
+
+        await Promise.all(
+          activeInquiries
+            .filter((inquiry) => inquiry.conversation?.id)
+            .map((inquiry) =>
+              tx.message.create({
+                data: {
+                  conversationId: inquiry.conversation!.id,
+                  body: 'The listing was marked as rented, so this inquiry was closed automatically.',
+                  messageType: MessageType.SYSTEM,
+                },
+              }),
+            ),
+        );
+      }
+
+      return updatedListing;
     });
   }
 

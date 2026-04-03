@@ -18,7 +18,9 @@ import { listingInclude, toOptionalDate } from '../../common/query-helpers';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateListingInquiryDto } from './dto/create-listing-inquiry.dto';
+import { UpdateListingInquiryOwnerNotesDto } from './dto/update-listing-inquiry-owner-notes.dto';
 import { UpdateListingInquiryStatusDto } from './dto/update-listing-inquiry-status.dto';
+import { UpdateListingInquiryVisitDto } from './dto/update-listing-inquiry-visit.dto';
 
 const inquiryUserSelect = {
   id: true,
@@ -80,7 +82,8 @@ export class ListingInquiriesService {
     status?: ListingInquiryStatus,
     listingId?: string,
   ) {
-    return this.prisma.listingInquiry.findMany({
+    return this.prisma.listingInquiry
+      .findMany({
       where: {
         ...(scope === 'owner'
           ? { listingOwnerUserId: session.user.id }
@@ -97,7 +100,10 @@ export class ListingInquiriesService {
           createdAt: 'desc',
         },
       ],
-    });
+      })
+      .then((inquiries) =>
+        inquiries.map((inquiry) => this.sanitizeInquiryForSession(inquiry, session)),
+      );
   }
 
   async findByIdForSession(id: string, session: AuthenticatedSession) {
@@ -117,7 +123,7 @@ export class ListingInquiriesService {
       throw new ForbiddenException('You cannot access this listing inquiry.');
     }
 
-    return inquiry;
+    return this.sanitizeInquiryForSession(inquiry, session);
   }
 
   async create(session: AuthenticatedSession, dto: CreateListingInquiryDto) {
@@ -238,6 +244,24 @@ export class ListingInquiriesService {
         ...(dto.scheduledVisitNote !== undefined
           ? { scheduledVisitNote: trimToNullable(dto.scheduledVisitNote) }
           : {}),
+        ...(dto.status === ListingInquiryStatus.SCHEDULED
+          ? {
+              visitStatus: 'PROPOSED',
+              visitConfirmedAt: null,
+              visitCancelledAt: null,
+              visitCompletedAt: null,
+            }
+          : dto.status === ListingInquiryStatus.CLOSED || dto.status === ListingInquiryStatus.DECLINED
+            ? {
+                ...(inquiry.visitStatus === 'PROPOSED' ||
+                inquiry.visitStatus === 'CONFIRMED'
+                  ? {
+                      visitStatus: 'CANCELLED',
+                      visitCancelledAt: new Date(),
+                    }
+                  : {}),
+              }
+            : {}),
         ...(statusMessage && inquiry.conversation
           ? {
               conversation: {
@@ -252,6 +276,124 @@ export class ListingInquiriesService {
               },
             }
           : {}),
+      },
+    });
+
+    return this.findByIdForSession(id, session);
+  }
+
+  async updateVisit(
+    id: string,
+    session: AuthenticatedSession,
+    dto: UpdateListingInquiryVisitDto,
+  ) {
+    const inquiry = await this.findByIdForSession(id, session);
+    const now = new Date();
+    const actorRole =
+      inquiry.listingOwnerUserId === session.user.id
+        ? 'owner'
+        : inquiry.requesterUserId === session.user.id
+          ? 'requester'
+          : null;
+
+    if (!actorRole) {
+      throw new ForbiddenException('You cannot update this visit.');
+    }
+
+    if (!inquiry.scheduledVisitAt || inquiry.status !== ListingInquiryStatus.SCHEDULED) {
+      throw new BadRequestException('There is no scheduled visit to update yet.');
+    }
+
+    const note = trimToOptional(dto.note);
+    let visitStatusUpdate: Prisma.ListingInquiryUpdateInput = {};
+    let statusMessage: string | undefined;
+
+    switch (dto.action) {
+      case 'CONFIRM':
+        if (actorRole !== 'requester') {
+          throw new ForbiddenException('Only the seeker can confirm a proposed visit.');
+        }
+        if (inquiry.visitStatus !== 'PROPOSED') {
+          throw new BadRequestException('Only proposed visits can be confirmed.');
+        }
+        visitStatusUpdate = {
+          visitStatus: 'CONFIRMED',
+          visitConfirmedAt: now,
+          visitCancelledAt: null,
+          visitCompletedAt: null,
+        };
+        statusMessage = `The seeker confirmed the visit for ${formatSystemDate(new Date(inquiry.scheduledVisitAt))}${note ? `. ${note}` : ''}`;
+        break;
+      case 'CANCEL':
+        if (
+          inquiry.visitStatus !== 'PROPOSED' &&
+          inquiry.visitStatus !== 'CONFIRMED'
+        ) {
+          throw new BadRequestException('Only proposed or confirmed visits can be cancelled.');
+        }
+        visitStatusUpdate = {
+          visitStatus: 'CANCELLED',
+          visitCancelledAt: now,
+          visitCompletedAt: null,
+        };
+        statusMessage = `The ${actorRole === 'owner' ? 'owner' : 'seeker'} cancelled the visit${note ? `. ${note}` : ''}`;
+        break;
+      case 'COMPLETE':
+        if (actorRole !== 'owner') {
+          throw new ForbiddenException('Only the listing owner can mark a visit as completed.');
+        }
+        if (inquiry.visitStatus !== 'CONFIRMED') {
+          throw new BadRequestException('Only confirmed visits can be marked as completed.');
+        }
+        visitStatusUpdate = {
+          visitStatus: 'COMPLETED',
+          visitCompletedAt: now,
+        };
+        statusMessage = `The owner marked the visit as completed${note ? `. ${note}` : ''}`;
+        break;
+      default:
+        throw new BadRequestException('Unsupported visit action.');
+    }
+
+    await this.prisma.listingInquiry.update({
+      where: { id },
+      data: {
+        ...visitStatusUpdate,
+        ...(statusMessage && inquiry.conversation
+          ? {
+              conversation: {
+                update: {
+                  messages: {
+                    create: {
+                      body: statusMessage,
+                      messageType: MessageType.SYSTEM,
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+    });
+
+    return this.findByIdForSession(id, session);
+  }
+
+  async updateOwnerNotes(
+    id: string,
+    session: AuthenticatedSession,
+    dto: UpdateListingInquiryOwnerNotesDto,
+  ) {
+    const inquiry = await this.findByIdForSession(id, session);
+
+    if (inquiry.listingOwnerUserId !== session.user.id) {
+      throw new ForbiddenException('Only the listing owner can update inquiry notes.');
+    }
+
+    await this.prisma.listingInquiry.update({
+      where: { id },
+      data: {
+        ownerNotes: trimToNullable(dto.ownerNotes),
       },
     });
 
@@ -293,7 +435,7 @@ export class ListingInquiriesService {
       case ListingInquiryStatus.CONTACTED:
         return 'The owner marked this inquiry as contacted.';
       case ListingInquiryStatus.SCHEDULED:
-        return `Visit scheduled for ${formatSystemDate(scheduledVisitAt)}${scheduledVisitNote ? `. ${scheduledVisitNote}` : ''}`;
+        return `Visit proposed for ${formatSystemDate(scheduledVisitAt)}${scheduledVisitNote ? `. ${scheduledVisitNote}` : ''}`;
       case ListingInquiryStatus.DECLINED:
         return 'The owner declined this inquiry.';
       case ListingInquiryStatus.CLOSED:
@@ -301,6 +443,27 @@ export class ListingInquiriesService {
       default:
         return undefined;
     }
+  }
+
+  private sanitizeInquiryForSession<
+    T extends {
+      requesterUserId: string;
+      listingOwnerUserId: string;
+      ownerNotes?: string | null;
+      visitStatus?: string | null;
+      visitConfirmedAt?: Date | null;
+      visitCancelledAt?: Date | null;
+      visitCompletedAt?: Date | null;
+    },
+  >(inquiry: T, session: AuthenticatedSession) {
+    if (inquiry.listingOwnerUserId === session.user.id) {
+      return inquiry;
+    }
+
+    return {
+      ...inquiry,
+      ownerNotes: null,
+    };
   }
 }
 

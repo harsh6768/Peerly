@@ -108,6 +108,14 @@ enum ListingInquiryStatus {
   DECLINED
 }
 
+enum ListingVisitStatus {
+  NONE
+  PROPOSED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
 enum HousingNeedStatus {
   OPEN
   MATCHED
@@ -437,6 +445,7 @@ model ListingInquiry {
   requesterUserId     String
   listingOwnerUserId  String
   message             String?              @db.Text
+  ownerNotes          String?              @db.Text
   budgetAmount        Int?
   preferredMoveInDate DateTime?
   preferredOccupancy  OccupancyType?
@@ -444,6 +453,10 @@ model ListingInquiry {
   preferredVisitNote  String?              @db.Text
   scheduledVisitAt    DateTime?
   scheduledVisitNote  String?              @db.Text
+  visitStatus         ListingVisitStatus   @default(NONE)
+  visitConfirmedAt    DateTime?
+  visitCancelledAt    DateTime?
+  visitCompletedAt    DateTime?
   status              ListingInquiryStatus @default(NEW)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt

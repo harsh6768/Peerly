@@ -13,7 +13,9 @@ import { CurrentSession } from '../auth/current-session.decorator';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { AppSessionGuard } from '../auth/app-session.guard';
 import { CreateListingInquiryDto } from './dto/create-listing-inquiry.dto';
+import { UpdateListingInquiryOwnerNotesDto } from './dto/update-listing-inquiry-owner-notes.dto';
 import { UpdateListingInquiryStatusDto } from './dto/update-listing-inquiry-status.dto';
+import { UpdateListingInquiryVisitDto } from './dto/update-listing-inquiry-visit.dto';
 import { ListingInquiriesService } from './listing-inquiries.service';
 
 @ApiTags('listing-inquiries')
@@ -72,5 +74,29 @@ export class ListingInquiriesController {
     @Body() dto: UpdateListingInquiryStatusDto,
   ) {
     return this.listingInquiriesService.updateStatus(id, session, dto);
+  }
+
+  @ApiOperation({ summary: 'Confirm, cancel, or complete a scheduled listing visit' })
+  @ApiParam({ name: 'id' })
+  @ApiBody({ type: UpdateListingInquiryVisitDto })
+  @Patch(':id/visit')
+  updateVisit(
+    @Param('id') id: string,
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: UpdateListingInquiryVisitDto,
+  ) {
+    return this.listingInquiriesService.updateVisit(id, session, dto);
+  }
+
+  @ApiOperation({ summary: 'Update private owner notes for a listing inquiry' })
+  @ApiParam({ name: 'id' })
+  @ApiBody({ type: UpdateListingInquiryOwnerNotesDto })
+  @Patch(':id/owner-notes')
+  updateOwnerNotes(
+    @Param('id') id: string,
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: UpdateListingInquiryOwnerNotesDto,
+  ) {
+    return this.listingInquiriesService.updateOwnerNotes(id, session, dto);
   }
 }

@@ -50,6 +50,9 @@ CREATE TYPE "NearbyPlaceType" AS ENUM ('tech_park', 'company');
 CREATE TYPE "ListingInquiryStatus" AS ENUM ('NEW', 'CONTACTED', 'SCHEDULED', 'CLOSED', 'DECLINED');
 
 -- CreateEnum
+CREATE TYPE "ListingVisitStatus" AS ENUM ('NONE', 'PROPOSED', 'CONFIRMED', 'COMPLETED', 'CANCELLED');
+
+-- CreateEnum
 CREATE TYPE "HousingNeedStatus" AS ENUM ('OPEN', 'MATCHED', 'CLOSED', 'ARCHIVED');
 
 -- CreateEnum
@@ -281,6 +284,7 @@ CREATE TABLE "ListingInquiry" (
     "requesterUserId" TEXT NOT NULL,
     "listingOwnerUserId" TEXT NOT NULL,
     "message" TEXT,
+    "ownerNotes" TEXT,
     "budgetAmount" INTEGER,
     "preferredMoveInDate" TIMESTAMP(3),
     "preferredOccupancy" "OccupancyType",
@@ -288,6 +292,10 @@ CREATE TABLE "ListingInquiry" (
     "preferredVisitNote" TEXT,
     "scheduledVisitAt" TIMESTAMP(3),
     "scheduledVisitNote" TEXT,
+    "visitStatus" "ListingVisitStatus" NOT NULL DEFAULT 'NONE',
+    "visitConfirmedAt" TIMESTAMP(3),
+    "visitCancelledAt" TIMESTAMP(3),
+    "visitCompletedAt" TIMESTAMP(3),
     "status" "ListingInquiryStatus" NOT NULL DEFAULT 'NEW',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

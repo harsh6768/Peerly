@@ -1,0 +1,2 @@
+ALTER TABLE "ListingInquiry"
+ADD COLUMN IF NOT EXISTS "ownerNotes" TEXT;

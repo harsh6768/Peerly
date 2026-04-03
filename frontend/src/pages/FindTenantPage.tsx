@@ -60,9 +60,11 @@ type NearbyPlace = {
 }
 
 type ListingStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED' | 'FILLED'
-type HostListingFilter = 'ACTIVE' | 'PUBLISHED' | 'DRAFT' | 'FILLED' | 'ARCHIVED' | 'ALL'
+type HostListingFilter = 'ACTIVE' | 'PUBLISHED' | 'DRAFT' | 'PAUSED' | 'FILLED' | 'ARCHIVED' | 'ALL'
 type ListingInquiryStatus = 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'CLOSED' | 'DECLINED'
+type ListingVisitStatus = 'NONE' | 'PROPOSED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
 type ListingInquiryFilter = 'ACTIVE' | ListingInquiryStatus | 'ALL'
+type ListingInquirySort = 'RECENT' | 'OLDEST' | 'NEW_FIRST'
 type PublicListingBudgetFilter =
   | 'ANY'
   | 'UNDER_20000'
@@ -132,6 +134,7 @@ type ListingInquiry = {
   requesterUserId: string
   listingOwnerUserId: string
   message: string | null
+  ownerNotes: string | null
   budgetAmount: number | null
   preferredMoveInDate: string | null
   preferredOccupancy: string | null
@@ -139,6 +142,10 @@ type ListingInquiry = {
   preferredVisitNote: string | null
   scheduledVisitAt: string | null
   scheduledVisitNote: string | null
+  visitStatus: ListingVisitStatus
+  visitConfirmedAt: string | null
+  visitCancelledAt: string | null
+  visitCompletedAt: string | null
   status: ListingInquiryStatus
   createdAt: string
   updatedAt: string
@@ -206,6 +213,13 @@ type ListingComposerRouteState = {
   listing?: Listing
 }
 
+type InquiryDetailsRouteState = {
+  inquiry?: ListingInquiry
+  backLabel?: string
+  backTo?: string
+  sourceIntent?: HousingIntent
+}
+
 type LocalFeedbackState = {
   tone: 'success' | 'error' | 'info'
   message: string
@@ -222,7 +236,7 @@ type PublicListingFilters = {
 }
 type ListingActionConfirmation = {
   listing: Listing
-  nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED'>
+  nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED' | 'PAUSED' | 'PUBLISHED'>
 }
 type PublicListingFilterKey =
   | 'search'
@@ -272,6 +286,7 @@ const hostListingFilters: Array<{ label: string; value: HostListingFilter }> = [
   { label: 'Active', value: 'ACTIVE' },
   { label: 'Published', value: 'PUBLISHED' },
   { label: 'Drafts', value: 'DRAFT' },
+  { label: 'On hold', value: 'PAUSED' },
   { label: 'Rented', value: 'FILLED' },
   { label: 'Archived', value: 'ARCHIVED' },
   { label: 'All', value: 'ALL' },
@@ -285,6 +300,11 @@ const listingInquiryFilters: Array<{ label: string; value: ListingInquiryFilter 
   { label: 'Declined', value: 'DECLINED' },
   { label: 'All', value: 'ALL' },
 ]
+const listingInquirySortOptions: Array<{ label: string; value: ListingInquirySort }> = [
+  { label: 'Newest first', value: 'RECENT' },
+  { label: 'Needs action first', value: 'NEW_FIRST' },
+  { label: 'Oldest first', value: 'OLDEST' },
+]
 const publicListingBudgetFilters: Array<{ label: string; value: PublicListingBudgetFilter }> = [
   { label: 'Any budget', value: 'ANY' },
   { label: 'Under 20k', value: 'UNDER_20000' },
@@ -293,7 +313,13 @@ const publicListingBudgetFilters: Array<{ label: string; value: PublicListingBud
   { label: '45k+', value: 'ABOVE_45000' },
 ]
 
-function SearchListingCard({ listing }: { listing: Listing }) {
+function SearchListingCard({
+  existingInquiry,
+  listing,
+}: {
+  existingInquiry?: ListingInquiry | null
+  listing: Listing
+}) {
   const navigate = useNavigate()
   const [showInlineDetails, setShowInlineDetails] = useState(false)
   const contactActionLabel = listing.contactMode === 'CALL' ? 'Call owner' : 'WhatsApp owner'
@@ -323,9 +349,12 @@ function SearchListingCard({ listing }: { listing: Listing }) {
           <strong>{listing.title}</strong>
           <p>{formatListingLocation(listing)}</p>
         </div>
-        <Badge tone={listing.owner.isVerified ? 'green' : 'gray'}>
-          {listing.owner.isVerified ? 'Verified' : 'Live'}
-        </Badge>
+        <div className="listing-card-badges">
+          {existingInquiry ? <Badge tone={getListingInquiryStatusTone(existingInquiry.status)}>Inquiry sent</Badge> : null}
+          <Badge tone={listing.owner.isVerified ? 'green' : 'gray'}>
+            {listing.owner.isVerified ? 'Verified' : 'Live'}
+          </Badge>
+        </div>
       </div>
 
       <div className="feed-meta-row">
@@ -353,6 +382,23 @@ function SearchListingCard({ listing }: { listing: Listing }) {
         <Button onClick={handleViewDetails} variant="secondary">
           {showInlineDetails ? 'Hide details' : 'View details'}
         </Button>
+        {existingInquiry ? (
+          <Button
+            onClick={() =>
+              navigate(`/find-tenant/inquiries/${existingInquiry.id}`, {
+                state: {
+                  inquiry: existingInquiry,
+                  backLabel: 'Back to live listings',
+                  backTo: '/find-tenant',
+                  sourceIntent: housingIntentValues.findRoom,
+                } as InquiryDetailsRouteState,
+              })
+            }
+            variant="ghost"
+          >
+            View inquiry
+          </Button>
+        ) : null}
       </div>
 
       {showInlineDetails ? (
@@ -453,6 +499,8 @@ function HostListingCard({
   onArchive,
   onEdit,
   onMarkAsRented,
+  onResume,
+  onToggleHold,
   onViewDetails,
 }: {
   listing: Listing
@@ -460,6 +508,8 @@ function HostListingCard({
   onArchive: (listing: Listing) => void
   onEdit: (listing: Listing) => void
   onMarkAsRented: (listing: Listing) => void
+  onResume: (listing: Listing) => void
+  onToggleHold: (listing: Listing) => void
   onViewDetails: (listing: Listing) => void
 }) {
   return (
@@ -499,6 +549,25 @@ function HostListingCard({
         <Button className="listing-action-button listing-action-edit" onClick={() => onEdit(listing)} variant="secondary">
           Edit
         </Button>
+        {listing.status === 'PAUSED' ? (
+          <Button
+            className="listing-action-button listing-action-resume"
+            disabled={busyAction === `PUBLISHED-${listing.id}`}
+            onClick={() => onResume(listing)}
+            variant="ghost"
+          >
+            {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming...' : 'Resume listing'}
+          </Button>
+        ) : listing.status === 'PUBLISHED' ? (
+          <Button
+            className="listing-action-button listing-action-hold"
+            disabled={busyAction === `PAUSED-${listing.id}`}
+            onClick={() => onToggleHold(listing)}
+            variant="ghost"
+          >
+            {busyAction === `PAUSED-${listing.id}` ? 'Updating...' : 'Put on hold'}
+          </Button>
+        ) : null}
         <Button
           className="listing-action-button listing-action-rented"
           disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
@@ -532,6 +601,8 @@ function ListingActionDialog({
   onConfirm: () => void
 }) {
   const isArchiveAction = action.nextStatus === 'ARCHIVED'
+  const isPauseAction = action.nextStatus === 'PAUSED'
+  const isResumeAction = action.nextStatus === 'PUBLISHED'
   const actionKey = `${action.nextStatus}-${action.listing.id}`
   const isBusy = busyAction === actionKey
 
@@ -548,14 +619,32 @@ function ListingActionDialog({
     >
       <div className="action-dialog">
         <div className="action-dialog-header">
-          <Badge tone={isArchiveAction ? 'red' : 'green'}>
-            {isArchiveAction ? 'Delete listing' : 'Mark as rented'}
+          <Badge tone={isArchiveAction ? 'red' : isPauseAction ? 'purple' : 'green'}>
+            {isArchiveAction
+              ? 'Delete listing'
+              : isPauseAction
+                ? 'Put listing on hold'
+                : isResumeAction
+                  ? 'Resume listing'
+                  : 'Mark as rented'}
           </Badge>
-          <strong>{isArchiveAction ? 'Delete this listing from your active view?' : 'Mark this listing as rented?'}</strong>
+          <strong>
+            {isArchiveAction
+              ? 'Delete this listing from your active view?'
+              : isPauseAction
+                ? 'Put this listing on hold?'
+                : isResumeAction
+                  ? 'Resume this listing publicly?'
+                  : 'Mark this listing as rented?'}
+          </strong>
           <p>
             {isArchiveAction
               ? 'This post will move out of the default listings view and remain available under archived filters whenever you need it.'
-              : 'This post will be removed from active listings and remain visible under rented filters for future reference.'}
+              : isPauseAction
+                ? 'This post will be hidden from the public feed until you resume it, while keeping all existing inquiries intact.'
+                : isResumeAction
+                  ? 'This post will return to the public feed so seekers can discover it again.'
+                  : 'This post will be removed from active listings and remain visible under rented filters for future reference. Active inquiries will be closed automatically.'}
           </p>
         </div>
 
@@ -570,12 +659,32 @@ function ListingActionDialog({
             Cancel
           </Button>
           <Button
-            className={isArchiveAction ? 'listing-action-button listing-action-delete' : 'listing-action-button listing-action-rented'}
+            className={
+              isArchiveAction
+                ? 'listing-action-button listing-action-delete'
+                : isPauseAction
+                  ? 'listing-action-button listing-action-hold'
+                  : isResumeAction
+                    ? 'listing-action-button listing-action-resume'
+                    : 'listing-action-button listing-action-rented'
+            }
             disabled={isBusy}
             onClick={onConfirm}
             variant="ghost"
           >
-            {isBusy ? (isArchiveAction ? 'Deleting...' : 'Updating...') : isArchiveAction ? 'Yes, delete listing' : 'Yes, mark as rented'}
+            {isBusy
+              ? isArchiveAction
+                ? 'Deleting...'
+                : isResumeAction
+                  ? 'Resuming...'
+                  : 'Updating...'
+              : isArchiveAction
+                ? 'Yes, delete listing'
+                : isPauseAction
+                  ? 'Yes, put on hold'
+                  : isResumeAction
+                    ? 'Yes, resume listing'
+                    : 'Yes, mark as rented'}
           </Button>
         </div>
       </div>
@@ -755,9 +864,14 @@ function ListingInquiryPanel({
             <strong>Inquiry already sent</strong>
             <p>Submitted {formatDateTime(inquiry.createdAt)}</p>
           </div>
-          <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
-            {formatListingInquiryStatus(inquiry.status)}
-          </Badge>
+          <div className="listing-card-badges">
+            <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+              {formatListingInquiryStatus(inquiry.status)}
+            </Badge>
+            {inquiry.visitStatus !== 'NONE' ? (
+              <Badge tone={getListingVisitTone(inquiry.visitStatus)}>{formatListingVisitStatus(inquiry.visitStatus)}</Badge>
+            ) : null}
+          </div>
         </div>
 
         <div className="inquiry-fact-grid">
@@ -937,6 +1051,7 @@ function OwnerInquiryCard({
   isScheduleOpen,
   onClose,
   onDecline,
+  onOpenInquiry,
   onMarkContacted,
   onOpenListing,
   onOpenSchedule,
@@ -952,6 +1067,7 @@ function OwnerInquiryCard({
   isScheduleOpen: boolean
   onClose: () => void
   onDecline: () => void
+  onOpenInquiry: () => void
   onMarkContacted: () => void
   onOpenListing: (listing: Listing) => void
   onOpenSchedule: () => void
@@ -978,9 +1094,14 @@ function OwnerInquiryCard({
             {inquiry.requester.companyName ? ` · ${inquiry.requester.companyName}` : ''}
           </p>
         </div>
-        <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
-          {formatListingInquiryStatus(inquiry.status)}
-        </Badge>
+        <div className="listing-card-badges">
+          <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+            {formatListingInquiryStatus(inquiry.status)}
+          </Badge>
+          {inquiry.visitStatus !== 'NONE' ? (
+            <Badge tone={getListingVisitTone(inquiry.visitStatus)}>{formatListingVisitStatus(inquiry.visitStatus)}</Badge>
+          ) : null}
+        </div>
       </div>
 
       <div className="inquiry-meta-row">
@@ -1092,6 +1213,7 @@ function OwnerInquiryCard({
       </div>
 
       <div className="inquiry-actions">
+        <Button onClick={onOpenInquiry}>Review inquiry</Button>
         <Button onClick={() => onOpenListing(inquiry.listing)} variant="secondary">
           Open listing
         </Button>
@@ -1112,7 +1234,13 @@ function OwnerInquiryCard({
             onClick={isScheduleOpen ? onStopScheduling : onOpenSchedule}
             variant="ghost"
           >
-            {isScheduleOpen ? 'Cancel schedule' : 'Schedule visit'}
+            {isScheduleOpen
+              ? 'Cancel schedule'
+              : inquiry.visitStatus === 'CONFIRMED'
+                ? 'Reschedule visit'
+                : inquiry.visitStatus === 'PROPOSED'
+                  ? 'Update proposal'
+                  : 'Schedule visit'}
           </Button>
         ) : null}
 
@@ -1174,6 +1302,682 @@ function OwnerInquiryCard({
         </div>
       ) : null}
     </Card>
+  )
+}
+
+function InquiryActivityTimeline({ inquiry }: { inquiry: ListingInquiry }) {
+  const timelineEntries = useMemo(() => buildInquiryTimelineEntries(inquiry), [inquiry])
+
+  return (
+    <div className="listing-details-section">
+      <strong>Inquiry timeline</strong>
+      <div className="inquiry-timeline">
+        {timelineEntries.map((entry) => (
+          <div className="inquiry-timeline-item" key={entry.id}>
+            <div className={`inquiry-timeline-dot inquiry-timeline-dot-${entry.tone}`} />
+            <div className="inquiry-timeline-copy">
+              <div className="inquiry-timeline-head">
+                <strong>{entry.title}</strong>
+                <span>{formatDateTime(entry.createdAt)}</span>
+              </div>
+              <p className="feed-copy">{entry.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function InquiryDetailsPage({ scope }: { scope: 'owner' | 'requester' }) {
+  const { inquiryId } = useParams<{ inquiryId: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { setIntent } = useHousingIntent()
+  const { sessionToken, user } = useAppAuth()
+  const routeState = location.state as InquiryDetailsRouteState | null
+  const initialInquiry = useMemo(
+    () =>
+      routeState?.inquiry && routeState.inquiry.id === inquiryId
+        ? normalizeListingInquiry(routeState.inquiry)
+        : null,
+    [inquiryId, routeState],
+  )
+  const [inquiry, setInquiry] = useState<ListingInquiry | null>(initialInquiry)
+  const [isLoading, setIsLoading] = useState(initialInquiry === null)
+  const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<LocalFeedbackState | null>(null)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [scheduleVisitAtInput, setScheduleVisitAtInput] = useState('')
+  const [scheduleVisitNoteInput, setScheduleVisitNoteInput] = useState('')
+  const [ownerNotesInput, setOwnerNotesInput] = useState('')
+  const [isSavingOwnerNotes, setIsSavingOwnerNotes] = useState(false)
+
+  const isOwnerView = scope === 'owner'
+  const counterpart = isOwnerView ? inquiry?.requester ?? null : inquiry?.listingOwner ?? null
+  const canManageInquiry = Boolean(
+    isOwnerView && inquiry && inquiry.status !== 'CLOSED' && inquiry.status !== 'DECLINED',
+  )
+
+  useEffect(() => {
+    if (!inquiryId || !sessionToken) {
+      setError('Inquiry not found.')
+      setIsLoading(false)
+      return
+    }
+
+    let isCancelled = false
+
+    async function loadInquiry() {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const inquiryPayload = await apiRequest<ListingInquiry>(`/listing-inquiries/${inquiryId}`, {
+          token: sessionToken,
+        })
+
+        if (!isCancelled) {
+          const normalizedInquiry = normalizeListingInquiry(inquiryPayload)
+          setInquiry(normalizedInquiry)
+          setOwnerNotesInput(normalizedInquiry.ownerNotes ?? '')
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load this inquiry right now.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadInquiry()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [inquiryId, sessionToken])
+
+  useEffect(() => {
+    if (inquiry) {
+      setOwnerNotesInput(inquiry.ownerNotes ?? '')
+    }
+  }, [inquiry])
+
+  function handleBack() {
+    if (routeState?.sourceIntent) {
+      setIntent(routeState.sourceIntent)
+    } else {
+      setIntent(isOwnerView ? housingIntentValues.tenantReplacement : housingIntentValues.findRoom)
+    }
+
+    navigate(routeState?.backTo ?? (isOwnerView ? '/find-tenant/host/inquiries' : '/find-tenant/inquiries'))
+  }
+
+  async function reloadInquiry() {
+    if (!inquiryId || !sessionToken) {
+      return
+    }
+
+    const inquiryPayload = await apiRequest<ListingInquiry>(`/listing-inquiries/${inquiryId}`, {
+      token: sessionToken,
+    })
+    const normalizedInquiry = normalizeListingInquiry(inquiryPayload)
+    setInquiry(normalizedInquiry)
+    setOwnerNotesInput(normalizedInquiry.ownerNotes ?? '')
+  }
+
+  async function handleInquiryStatusUpdate(
+    nextStatus: ListingInquiryStatus,
+    options?: {
+      scheduledVisitAt?: string
+      scheduledVisitNote?: string
+    },
+  ) {
+    if (!sessionToken || !inquiry) {
+      return
+    }
+
+    try {
+      setBusyAction(nextStatus)
+      setFeedback(null)
+
+      await apiRequest(`/listing-inquiries/${inquiry.id}/status`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          status: nextStatus,
+          scheduledVisitAt: options?.scheduledVisitAt ? toIsoDateTime(options.scheduledVisitAt) : undefined,
+          scheduledVisitNote: options?.scheduledVisitNote?.trim() || undefined,
+        }),
+      })
+
+      await reloadInquiry()
+      setIsScheduleOpen(false)
+      setScheduleVisitAtInput('')
+      setScheduleVisitNoteInput('')
+      setFeedback({
+        tone: 'success',
+        message:
+          nextStatus === 'CONTACTED'
+            ? 'Inquiry marked as contacted.'
+            : nextStatus === 'SCHEDULED'
+              ? 'Visit scheduled successfully.'
+              : nextStatus === 'DECLINED'
+                ? 'Inquiry declined.'
+                : 'Inquiry closed.',
+      })
+    } catch (updateError) {
+      setFeedback({
+        tone: 'error',
+        message: updateError instanceof Error ? updateError.message : 'Unable to update this inquiry.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleVisitUpdate(
+    action: 'CONFIRM' | 'CANCEL' | 'COMPLETE',
+    note?: string,
+  ) {
+    if (!sessionToken || !inquiry) {
+      return
+    }
+
+    try {
+      setBusyAction(action)
+      setFeedback(null)
+
+      await apiRequest(`/listing-inquiries/${inquiry.id}/visit`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          action,
+          note: note?.trim() || undefined,
+        }),
+      })
+
+      await reloadInquiry()
+      setFeedback({
+        tone: 'success',
+        message:
+          action === 'CONFIRM'
+            ? 'Visit confirmed.'
+            : action === 'COMPLETE'
+              ? 'Visit marked as completed.'
+              : 'Visit cancelled.',
+      })
+    } catch (updateError) {
+      setFeedback({
+        tone: 'error',
+        message: updateError instanceof Error ? updateError.message : 'Unable to update the visit right now.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleSaveOwnerNotes() {
+    if (!sessionToken || !inquiry || !isOwnerView) {
+      return
+    }
+
+    try {
+      setIsSavingOwnerNotes(true)
+      setFeedback(null)
+
+      const updatedInquiry = await apiRequest<ListingInquiry>(`/listing-inquiries/${inquiry.id}/owner-notes`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          ownerNotes: ownerNotesInput.trim() || undefined,
+        }),
+      })
+
+      setInquiry(normalizeListingInquiry(updatedInquiry))
+      setFeedback({
+        tone: 'success',
+        message: ownerNotesInput.trim() ? 'Owner notes saved.' : 'Owner notes cleared.',
+      })
+    } catch (saveError) {
+      setFeedback({
+        tone: 'error',
+        message: saveError instanceof Error ? saveError.message : 'Unable to save owner notes right now.',
+      })
+    } finally {
+      setIsSavingOwnerNotes(false)
+    }
+  }
+
+  function openListing() {
+    if (!inquiry) {
+      return
+    }
+
+    navigate(`/find-tenant/listings/${inquiry.listing.id}`, {
+      state: {
+        listing: inquiry.listing,
+        backLabel: 'Back to inquiry',
+        backTo: isOwnerView ? `/find-tenant/host/inquiries/${inquiry.id}` : `/find-tenant/inquiries/${inquiry.id}`,
+        sourceIntent: isOwnerView ? housingIntentValues.tenantReplacement : housingIntentValues.findRoom,
+      } as ListingDetailsRouteState,
+    })
+  }
+
+  if (!sessionToken || !user) {
+    return (
+      <div className="page">
+        <section className="section">
+          <div className="page-inner">
+            <Card className="feed-card">
+              <strong>Sign in to view inquiry details</strong>
+              <p className="feed-copy">Inquiry details are available only after signing in.</p>
+              <Button to="/profile" variant="secondary">
+                Open profile
+              </Button>
+            </Card>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  return (
+    <div className="page">
+      <section className="section">
+        <div className="page-inner">
+          <div className="hub-panel hub-panel-wide inquiry-details-screen">
+            <div className="listing-details-topbar">
+              <Button onClick={handleBack} variant="ghost">
+                {routeState?.backLabel ?? (isOwnerView ? 'Back to inquiries' : 'Back to sent inquiries')}
+              </Button>
+              {inquiry ? (
+                <div className="listing-details-badges">
+                  <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+                    {formatListingInquiryStatus(inquiry.status)}
+                  </Badge>
+                  {inquiry.visitStatus !== 'NONE' ? (
+                    <Badge tone={getListingVisitTone(inquiry.visitStatus)}>
+                      {formatListingVisitStatus(inquiry.visitStatus)}
+                    </Badge>
+                  ) : null}
+                  <Badge tone={isOwnerView ? 'purple' : 'green'}>
+                    {isOwnerView ? 'Owner view' : 'Seeker view'}
+                  </Badge>
+                </div>
+              ) : null}
+            </div>
+
+            {feedback ? <div className={`feedback-banner feedback-${feedback.tone}`}>{feedback.message}</div> : null}
+
+            {isLoading ? (
+              <Card className="feed-card">
+                <strong>Loading inquiry details</strong>
+                <p className="feed-copy">Pulling the latest status, contact details, and activity timeline now.</p>
+              </Card>
+            ) : error || !inquiry || !counterpart ? (
+              <Card className="feed-card">
+                <strong>Inquiry unavailable</strong>
+                <p className="feed-copy">{error ?? 'We could not find this inquiry.'}</p>
+              </Card>
+            ) : (
+              <div className="inquiry-details-layout">
+                <div className="inquiry-details-main">
+                  <div className="listing-details-section">
+                    <span className="muted">{isOwnerView ? 'Incoming inquiry' : 'Sent inquiry'}</span>
+                    <h1 className="inquiry-details-title">{inquiry.listing.title}</h1>
+                    <p className="feed-copy">
+                      {isOwnerView ? counterpart.fullName : inquiry.listing.owner.fullName} · {formatListingLocation(inquiry.listing)}
+                    </p>
+                  </div>
+
+                  <div className="inquiry-fact-grid">
+                    <div className="listing-details-fact">
+                      <span className="muted">Sent</span>
+                      <strong>{formatDateTime(inquiry.createdAt)}</strong>
+                    </div>
+                    {inquiry.budgetAmount ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Budget</span>
+                        <strong>{formatMoney(inquiry.budgetAmount)}</strong>
+                      </div>
+                    ) : null}
+                    {inquiry.preferredMoveInDate ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Preferred move-in</span>
+                        <strong>{formatShortDate(inquiry.preferredMoveInDate)}</strong>
+                      </div>
+                    ) : null}
+                    {inquiry.preferredOccupancy ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Occupancy</span>
+                        <strong>{formatEnum(inquiry.preferredOccupancy)}</strong>
+                      </div>
+                    ) : null}
+                    {inquiry.preferredVisitAt ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Preferred visit</span>
+                        <strong>{formatDateTime(inquiry.preferredVisitAt)}</strong>
+                      </div>
+                    ) : null}
+                    {inquiry.scheduledVisitAt ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Scheduled visit</span>
+                        <strong>{formatDateTime(inquiry.scheduledVisitAt)}</strong>
+                      </div>
+                    ) : null}
+                    {inquiry.visitStatus !== 'NONE' ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Visit state</span>
+                        <strong>{formatListingVisitStatus(inquiry.visitStatus)}</strong>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {inquiry.message ? (
+                    <div className="listing-details-section">
+                      <strong>{isOwnerView ? 'Seeker note' : 'Your note'}</strong>
+                      <p className="feed-copy">{inquiry.message}</p>
+                    </div>
+                  ) : null}
+
+                  {inquiry.preferredVisitNote || inquiry.scheduledVisitNote ? (
+                    <div className="listing-details-section">
+                      <strong>{inquiry.scheduledVisitNote ? 'Visit instructions' : 'Visit preference'}</strong>
+                      <p className="feed-copy">{inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote}</p>
+                    </div>
+                  ) : null}
+
+                  {isOwnerView ? (
+                    <div className="listing-details-section inquiry-notes-card">
+                      <div className="inquiry-section-head">
+                        <div>
+                          <strong>Private owner notes</strong>
+                          <p className="feed-copy">Visible only to you. Use this to track fit, next steps, or follow-up reminders.</p>
+                        </div>
+                      </div>
+                      <textarea
+                        onChange={(event) => setOwnerNotesInput(event.target.value)}
+                        placeholder="Example: Good fit for move-in timing. Follow up after evening call."
+                        rows={5}
+                        value={ownerNotesInput}
+                      />
+                      <div className="feed-card-actions">
+                        <Button disabled={isSavingOwnerNotes} onClick={() => void handleSaveOwnerNotes()}>
+                          {isSavingOwnerNotes ? 'Saving...' : 'Save notes'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <InquiryActivityTimeline inquiry={inquiry} />
+                </div>
+
+                <div className="inquiry-details-sidebar">
+                  <Card className="listing-inquiry-card inquiry-counterpart-card">
+                    <div className="inquiry-card-top">
+                      <div>
+                        <strong>{counterpart.fullName}</strong>
+                        <p>{counterpart.companyName ?? (isOwnerView ? 'Interested seeker' : 'Listing owner')}</p>
+                      </div>
+                      <Badge tone={counterpart.isVerified ? 'green' : 'gray'}>
+                        {counterpart.isVerified ? 'Verified' : 'Profile'}
+                      </Badge>
+                    </div>
+
+                    <div className="inquiry-contact-grid">
+                      <div className="listing-details-fact">
+                        <span className="muted">Email</span>
+                        <strong>{counterpart.email}</strong>
+                      </div>
+                      <div className="listing-details-fact">
+                        <span className="muted">Phone</span>
+                        <strong>{formatContactPhone(counterpart.phone)}</strong>
+                      </div>
+                      {counterpart.homeCity ? (
+                        <div className="listing-details-fact">
+                          <span className="muted">City</span>
+                          <strong>{counterpart.homeCity}</strong>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="feed-card-actions">
+                      <Button
+                        className="listing-action-button listing-action-contact"
+                        onClick={() =>
+                          window.open(
+                            counterpart.phone
+                              ? buildWhatsappLink(counterpart.phone)
+                              : buildMailtoLink(counterpart.email, inquiry.listing.title),
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
+                        }
+                        variant="secondary"
+                      >
+                        {counterpart.phone ? 'Contact on WhatsApp' : 'Send email'}
+                      </Button>
+                      <Button className="listing-action-button listing-action-details" onClick={openListing} variant="ghost">
+                        Open listing
+                      </Button>
+                    </div>
+                  </Card>
+
+                  {isOwnerView ? (
+                    <Card className="listing-inquiry-card inquiry-management-card">
+                      <div className="inquiry-card-top">
+                        <div>
+                          <strong>Manage this inquiry</strong>
+                          <p>Update lead progress and keep scheduling decisions in one place.</p>
+                        </div>
+                      </div>
+
+                      <div className="inquiry-actions inquiry-actions-stacked">
+                        {canManageInquiry && inquiry.status === 'NEW' ? (
+                          <Button
+                            disabled={busyAction === 'CONTACTED'}
+                            onClick={() => void handleInquiryStatusUpdate('CONTACTED')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'CONTACTED' ? 'Updating...' : 'Mark contacted'}
+                          </Button>
+                        ) : null}
+
+                        {canManageInquiry ? (
+                          <Button
+                            disabled={busyAction === 'SCHEDULED'}
+                            onClick={() => {
+                              setIsScheduleOpen((current) => !current)
+                              setScheduleVisitAtInput(
+                                toDateTimeLocalInput(inquiry.scheduledVisitAt ?? inquiry.preferredVisitAt),
+                              )
+                              setScheduleVisitNoteInput(
+                                inquiry.scheduledVisitNote ?? inquiry.preferredVisitNote ?? '',
+                              )
+                            }}
+                            variant="ghost"
+                          >
+                            {isScheduleOpen ? 'Cancel scheduling' : 'Schedule visit'}
+                          </Button>
+                        ) : null}
+
+                        {inquiry.visitStatus === 'CONFIRMED' ? (
+                          <Button
+                            disabled={busyAction === 'COMPLETE'}
+                            onClick={() => void handleVisitUpdate('COMPLETE')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'COMPLETE' ? 'Updating...' : 'Mark visit completed'}
+                          </Button>
+                        ) : null}
+
+                        {(inquiry.visitStatus === 'PROPOSED' || inquiry.visitStatus === 'CONFIRMED') ? (
+                          <Button
+                            disabled={busyAction === 'CANCEL'}
+                            onClick={() => void handleVisitUpdate('CANCEL')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'CANCEL' ? 'Updating...' : 'Cancel visit'}
+                          </Button>
+                        ) : null}
+
+                        {canManageInquiry ? (
+                          <Button
+                            disabled={busyAction === 'DECLINED'}
+                            onClick={() => void handleInquiryStatusUpdate('DECLINED')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'DECLINED' ? 'Updating...' : 'Decline inquiry'}
+                          </Button>
+                        ) : null}
+
+                        {canManageInquiry ? (
+                          <Button
+                            disabled={busyAction === 'CLOSED'}
+                            onClick={() => void handleInquiryStatusUpdate('CLOSED')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'CLOSED' ? 'Updating...' : 'Close inquiry'}
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      {isScheduleOpen ? (
+                        <div className="inquiry-schedule-form">
+                          <div className="field">
+                            <label htmlFor="inquiry-detail-schedule-visit">Visit date and time</label>
+                            <input
+                              id="inquiry-detail-schedule-visit"
+                              min={getTodayDateTimeInputValue()}
+                              onChange={(event) => setScheduleVisitAtInput(event.target.value)}
+                              type="datetime-local"
+                              value={scheduleVisitAtInput}
+                            />
+                          </div>
+
+                          <div className="field">
+                            <label htmlFor="inquiry-detail-schedule-note">Visit note</label>
+                            <input
+                              id="inquiry-detail-schedule-note"
+                              onChange={(event) => setScheduleVisitNoteInput(event.target.value)}
+                              placeholder="Share gate details or arrival instructions."
+                              value={scheduleVisitNoteInput}
+                            />
+                          </div>
+
+                          <div className="feed-card-actions">
+                            <Button
+                              disabled={!scheduleVisitAtInput || busyAction === 'SCHEDULED'}
+                              onClick={() =>
+                                void handleInquiryStatusUpdate('SCHEDULED', {
+                                  scheduledVisitAt: scheduleVisitAtInput,
+                                  scheduledVisitNote: scheduleVisitNoteInput,
+                                })
+                              }
+                            >
+                              {busyAction === 'SCHEDULED' ? 'Scheduling...' : 'Save visit'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </Card>
+                  ) : (
+                    <Card className="listing-inquiry-card inquiry-management-card">
+                      <div className="inquiry-card-top">
+                        <div>
+                          <strong>What happens next</strong>
+                          <p>The owner can contact you, propose a visit, or close this inquiry after review.</p>
+                        </div>
+                      </div>
+                      <div className="inquiry-status-summary">
+                        <div className="listing-details-fact">
+                          <span className="muted">Current status</span>
+                          <strong>{formatListingInquiryStatus(inquiry.status)}</strong>
+                        </div>
+                        {inquiry.scheduledVisitAt ? (
+                          <div className="listing-details-fact">
+                            <span className="muted">Visit planned</span>
+                            <strong>{formatDateTime(inquiry.scheduledVisitAt)}</strong>
+                          </div>
+                        ) : null}
+                        {inquiry.visitStatus !== 'NONE' ? (
+                          <div className="listing-details-fact">
+                            <span className="muted">Visit state</span>
+                            <strong>{formatListingVisitStatus(inquiry.visitStatus)}</strong>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {inquiry.visitStatus === 'PROPOSED' ? (
+                        <div className="feed-card-actions">
+                          <Button
+                            disabled={busyAction === 'CONFIRM'}
+                            onClick={() => void handleVisitUpdate('CONFIRM')}
+                          >
+                            {busyAction === 'CONFIRM' ? 'Updating...' : 'Confirm visit'}
+                          </Button>
+                          <Button
+                            className="listing-action-button listing-action-delete"
+                            disabled={busyAction === 'CANCEL'}
+                            onClick={() => void handleVisitUpdate('CANCEL')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'CANCEL' ? 'Updating...' : 'Cannot make it'}
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {inquiry.visitStatus === 'CONFIRMED' ? (
+                        <div className="feed-card-actions">
+                          <Button
+                            className="listing-action-button listing-action-delete"
+                            disabled={busyAction === 'CANCEL'}
+                            onClick={() => void handleVisitUpdate('CANCEL')}
+                            variant="ghost"
+                          >
+                            {busyAction === 'CANCEL' ? 'Updating...' : 'Cancel visit'}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </Card>
+                  )}
+
+                  <Card className="listing-inquiry-card inquiry-listing-card">
+                    {renderListingCoverImage(inquiry.listing, {
+                      className: 'feed-media inquiry-listing-cover',
+                      emptyLabel: 'Add a cover image so seekers and owners can recognize this listing faster.',
+                    })}
+                    <div className="feed-card-top">
+                      <div>
+                        <strong>{inquiry.listing.title}</strong>
+                        <p>{formatListingLocation(inquiry.listing)}</p>
+                      </div>
+                      <Badge tone={getListingStatusTone(inquiry.listing.status)}>
+                        {formatListingStatus(inquiry.listing.status)}
+                      </Badge>
+                    </div>
+                    <div className="inquiry-fact-grid">
+                      <div className="listing-details-fact">
+                        <span className="muted">Rent</span>
+                        <strong>{formatPriceLine(inquiry.listing)}</strong>
+                      </div>
+                      <div className="listing-details-fact">
+                        <span className="muted">Move in</span>
+                        <strong>{formatMoveInLabel(inquiry.listing.moveInDate).replace('Move in ', '')}</strong>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -1535,12 +2339,20 @@ export function FindTenantRequesterInquiriesPage() {
   return <HousingExperiencePage mode="seeker-inquiries" />
 }
 
+export function FindTenantRequesterInquiryDetailsPage() {
+  return <InquiryDetailsPage scope="requester" />
+}
+
 export function FindTenantHostComposePage() {
   return <HousingExperiencePage mode="host-compose" />
 }
 
 export function FindTenantHostInquiriesPage() {
   return <HousingExperiencePage mode="host-inquiries" />
+}
+
+export function FindTenantOwnerInquiryDetailsPage() {
+  return <InquiryDetailsPage scope="owner" />
 }
 
 function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
@@ -1576,6 +2388,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [myListingFilter, setMyListingFilter] = useState<HostListingFilter>('ACTIVE')
   const [requesterInquiryFilter, setRequesterInquiryFilter] = useState<ListingInquiryFilter>('ALL')
   const [ownerInquiryFilter, setOwnerInquiryFilter] = useState<ListingInquiryFilter>('ACTIVE')
+  const [ownerInquirySort, setOwnerInquirySort] = useState<ListingInquirySort>('NEW_FIRST')
   const [schedulingInquiryId, setSchedulingInquiryId] = useState<string | null>(null)
   const [scheduleVisitAtInput, setScheduleVisitAtInput] = useState('')
   const [scheduleVisitNoteInput, setScheduleVisitNoteInput] = useState('')
@@ -1744,6 +2557,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     [myListingFilter, myListings],
   )
   const activeMyListingsCount = useMemo(() => filterHostListings(myListings, 'ACTIVE').length, [myListings])
+  const pausedMyListingsCount = useMemo(() => filterHostListings(myListings, 'PAUSED').length, [myListings])
   const activeRequesterInquiriesCount = useMemo(
     () => filterListingInquiries(requesterInquiries, 'ACTIVE').length,
     [requesterInquiries],
@@ -1752,12 +2566,39 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     () => filterListingInquiries(requesterInquiries, requesterInquiryFilter),
     [requesterInquiries, requesterInquiryFilter],
   )
+  const requesterInquiryByListingId = useMemo(
+    () =>
+      requesterInquiries.reduce<Record<string, ListingInquiry>>((accumulator, inquiry) => {
+        if (
+          inquiry.status !== 'DECLINED' &&
+          inquiry.status !== 'CLOSED' &&
+          !accumulator[inquiry.listingId]
+        ) {
+          accumulator[inquiry.listingId] = inquiry
+        }
+
+        return accumulator
+      }, {}),
+    [requesterInquiries],
+  )
   const filteredOwnerInquiries = useMemo(
-    () => filterListingInquiries(ownerInquiries, ownerInquiryFilter),
-    [ownerInquiries, ownerInquiryFilter],
+    () => sortListingInquiries(filterListingInquiries(ownerInquiries, ownerInquiryFilter), ownerInquirySort),
+    [ownerInquiries, ownerInquiryFilter, ownerInquirySort],
   )
   const activeOwnerInquiriesCount = useMemo(
     () => filterListingInquiries(ownerInquiries, 'ACTIVE').length,
+    [ownerInquiries],
+  )
+  const newOwnerInquiriesCount = useMemo(
+    () => ownerInquiries.filter((inquiry) => inquiry.status === 'NEW').length,
+    [ownerInquiries],
+  )
+  const proposedVisitsCount = useMemo(
+    () => ownerInquiries.filter((inquiry) => inquiry.visitStatus === 'PROPOSED').length,
+    [ownerInquiries],
+  )
+  const confirmedVisitsCount = useMemo(
+    () => ownerInquiries.filter((inquiry) => inquiry.visitStatus === 'CONFIRMED').length,
     [ownerInquiries],
   )
 
@@ -2119,8 +2960,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         tone: 'success',
         message:
           nextStatus === 'FILLED'
-            ? 'Listing marked as rented.'
-            : 'Listing removed from your active dashboard.',
+            ? 'Listing marked as rented and active inquiries were closed.'
+            : nextStatus === 'PAUSED'
+              ? 'Listing moved to on hold and hidden from the public feed.'
+              : nextStatus === 'PUBLISHED'
+                ? 'Listing resumed and is live again.'
+                : 'Listing removed from your active dashboard.',
       })
       return true
     } catch (error) {
@@ -2136,7 +2981,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
   function requestListingStatusChange(
     listing: Listing,
-    nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED'>,
+    nextStatus: Extract<ListingStatus, 'ARCHIVED' | 'FILLED' | 'PAUSED' | 'PUBLISHED'>,
   ) {
     setListingActionConfirmation({ listing, nextStatus })
   }
@@ -2164,6 +3009,28 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         backTo: '/find-tenant/host',
         sourceIntent: housingIntentValues.tenantReplacement,
       } as ListingDetailsRouteState,
+    })
+  }
+
+  function openOwnerInquiryDetails(inquiry: ListingInquiry) {
+    navigate(`/find-tenant/host/inquiries/${inquiry.id}`, {
+      state: {
+        inquiry,
+        backLabel: 'Back to inquiries',
+        backTo: '/find-tenant/host/inquiries',
+        sourceIntent: housingIntentValues.tenantReplacement,
+      } as InquiryDetailsRouteState,
+    })
+  }
+
+  function openRequesterInquiryDetails(inquiry: ListingInquiry) {
+    navigate(`/find-tenant/inquiries/${inquiry.id}`, {
+      state: {
+        inquiry,
+        backLabel: 'Back to sent inquiries',
+        backTo: '/find-tenant/inquiries',
+        sourceIntent: housingIntentValues.findRoom,
+      } as InquiryDetailsRouteState,
     })
   }
 
@@ -2466,6 +3333,31 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         </div>
 
         {user ? (
+          <div className="host-metrics-grid">
+            <Card className="host-metric-card">
+              <span className="muted">Live listings</span>
+              <strong>{myListings.filter((listing) => listing.status === 'PUBLISHED').length}</strong>
+              <p className="feed-copy">Currently visible in the public feed.</p>
+            </Card>
+            <Card className="host-metric-card">
+              <span className="muted">On hold</span>
+              <strong>{pausedMyListingsCount}</strong>
+              <p className="feed-copy">Temporarily hidden until you resume them.</p>
+            </Card>
+            <Card className="host-metric-card">
+              <span className="muted">Proposed visits</span>
+              <strong>{proposedVisitsCount}</strong>
+              <p className="feed-copy">Waiting for seeker confirmation.</p>
+            </Card>
+            <Card className="host-metric-card">
+              <span className="muted">Confirmed visits</span>
+              <strong>{confirmedVisitsCount}</strong>
+              <p className="feed-copy">Ready for in-person follow-up.</p>
+            </Card>
+          </div>
+        ) : null}
+
+        {user ? (
           <div className="host-listing-toolbar">
             <div className="listing-filter-chip-row">
               {hostListingFilters.map((filterOption) => (
@@ -2505,6 +3397,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
                 onEdit={startEditingListing}
                 onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
+                onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
+                onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
                 onViewDetails={openListingDetails}
               />
             ))}
@@ -2525,9 +3419,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               Review seeker preferences, mark outreach progress, and schedule visits from one queue.
             </p>
           </div>
-          <Badge tone="green">
-            {isLoading ? 'Loading' : `${activeOwnerInquiriesCount} active`}
-          </Badge>
+          <div className="hub-panel-actions">
+            <Badge tone="green">
+              {isLoading ? 'Loading' : `${activeOwnerInquiriesCount} active`}
+            </Badge>
+            {!isLoading && newOwnerInquiriesCount > 0 ? (
+              <Badge tone="purple">{newOwnerInquiriesCount} new</Badge>
+            ) : null}
+          </div>
         </div>
 
         {!user ? (
@@ -2556,6 +3455,20 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               ))}
             </div>
 
+            <div className="listing-filter-chip-row listing-filter-chip-row-muted">
+              {listingInquirySortOptions.map((sortOption) => (
+                <button
+                  aria-pressed={ownerInquirySort === sortOption.value}
+                  className={`listing-filter-chip${ownerInquirySort === sortOption.value ? ' active' : ''}`}
+                  key={sortOption.value}
+                  onClick={() => setOwnerInquirySort(sortOption.value)}
+                  type="button"
+                >
+                  {sortOption.label}
+                </button>
+              ))}
+            </div>
+
             {filteredOwnerInquiries.length === 0 && !isLoading ? (
               <Card className="feed-card">
                 <strong>No {formatListingInquiryFilterLabel(ownerInquiryFilter).toLowerCase()} inquiries yet</strong>
@@ -2573,6 +3486,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     key={inquiry.id}
                     onClose={() => void handleInquiryStatusUpdate(inquiry, 'CLOSED')}
                     onDecline={() => void handleInquiryStatusUpdate(inquiry, 'DECLINED')}
+                    onOpenInquiry={() => openOwnerInquiryDetails(inquiry)}
                     onMarkContacted={() => void handleInquiryStatusUpdate(inquiry, 'CONTACTED')}
                     onOpenListing={(listing) => openListingDetails(listing)}
                     onOpenSchedule={() => startSchedulingInquiry(inquiry)}
@@ -3147,9 +4061,16 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                           {inquiry.listing.owner.companyName ? ` · ${inquiry.listing.owner.companyName}` : ''}
                         </p>
                       </div>
-                      <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
-                        {formatListingInquiryStatus(inquiry.status)}
-                      </Badge>
+                      <div className="listing-card-badges">
+                        <Badge tone={getListingInquiryStatusTone(inquiry.status)}>
+                          {formatListingInquiryStatus(inquiry.status)}
+                        </Badge>
+                        {inquiry.visitStatus !== 'NONE' ? (
+                          <Badge tone={getListingVisitTone(inquiry.visitStatus)}>
+                            {formatListingVisitStatus(inquiry.visitStatus)}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="inquiry-meta-row">
@@ -3190,6 +4111,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     ) : null}
 
                     <div className="inquiry-actions">
+                      <Button onClick={() => openRequesterInquiryDetails(inquiry)}>
+                        View inquiry
+                      </Button>
                       <Button onClick={() => openRequesterInquiryListing(inquiry)} variant="secondary">
                         Open listing
                       </Button>
@@ -3261,6 +4185,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         <TenantReplacementSectionChips
           activeInquiryCount={activeOwnerInquiriesCount}
           activeListingsCount={activeMyListingsCount}
+          newInquiryCount={newOwnerInquiriesCount}
           user={user}
         />
 
@@ -3537,7 +4462,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
               <div className="feed-grid listing-feed-grid">
                 {filteredPublicListings.map((listing) => (
-                  <SearchListingCard key={listing.id} listing={listing} />
+                  <SearchListingCard
+                    existingInquiry={requesterInquiryByListingId[listing.id] ?? null}
+                    key={listing.id}
+                    listing={listing}
+                  />
                 ))}
 
                 {!isLoading && filteredPublicListings.length === 0 && (
@@ -3612,10 +4541,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 function TenantReplacementSectionChips({
   activeInquiryCount,
   activeListingsCount,
+  newInquiryCount,
   user,
 }: {
   activeInquiryCount: number
   activeListingsCount: number
+  newInquiryCount: number
   user: ReturnType<typeof useAppAuth>['user']
 }) {
   const location = useLocation()
@@ -3624,6 +4555,7 @@ function TenantReplacementSectionChips({
       key: 'listings',
       label: 'Listings',
       meta: `${activeListingsCount} active`,
+      alert: null,
       to: user ? '/find-tenant/host' : '/profile',
       tone: 'mint',
     },
@@ -3631,6 +4563,7 @@ function TenantReplacementSectionChips({
       key: 'composer',
       label: 'Create listing',
       meta: 'New post',
+      alert: null,
       to: user ? '/find-tenant/host/listings/new' : '/profile',
       tone: 'violet',
     },
@@ -3638,6 +4571,7 @@ function TenantReplacementSectionChips({
       key: 'inquiries',
       label: 'Inquiries',
       meta: `${activeInquiryCount} active`,
+      alert: newInquiryCount > 0 ? `${newInquiryCount} new` : null,
       to: user ? '/find-tenant/host/inquiries' : '/profile',
       tone: 'amber',
     },
@@ -3664,7 +4598,11 @@ function TenantReplacementSectionChips({
               <strong>{link.label}</strong>
               <span>{link.meta}</span>
             </div>
-            {isActive ? <span className="tenant-section-chip-current">Current</span> : null}
+            {isActive ? (
+              <span className="tenant-section-chip-current">Current</span>
+            ) : link.alert ? (
+              <span className="tenant-section-chip-alert">{link.alert}</span>
+            ) : null}
           </NavLink>
         )
       })}
@@ -3885,6 +4823,7 @@ function normalizeListingInquiry(inquiry: ListingInquiry) {
   return {
     ...inquiry,
     message: typeof inquiry.message === 'string' ? inquiry.message : null,
+    ownerNotes: typeof inquiry.ownerNotes === 'string' ? inquiry.ownerNotes : null,
     budgetAmount:
       typeof inquiry.budgetAmount === 'number'
         ? inquiry.budgetAmount
@@ -3901,6 +4840,13 @@ function normalizeListingInquiry(inquiry: ListingInquiry) {
     scheduledVisitAt: typeof inquiry.scheduledVisitAt === 'string' ? inquiry.scheduledVisitAt : null,
     scheduledVisitNote:
       typeof inquiry.scheduledVisitNote === 'string' ? inquiry.scheduledVisitNote : null,
+    visitStatus: inquiry.visitStatus ?? 'NONE',
+    visitConfirmedAt:
+      typeof inquiry.visitConfirmedAt === 'string' ? inquiry.visitConfirmedAt : null,
+    visitCancelledAt:
+      typeof inquiry.visitCancelledAt === 'string' ? inquiry.visitCancelledAt : null,
+    visitCompletedAt:
+      typeof inquiry.visitCompletedAt === 'string' ? inquiry.visitCompletedAt : null,
     listing: normalizeListing(inquiry.listing),
     conversation: inquiry.conversation
       ? {
@@ -3968,9 +4914,26 @@ function getListingStatusTone(status: ListingStatus) {
       return 'gray'
     case 'PUBLISHED':
       return 'green'
+    case 'PAUSED':
+      return 'purple'
     case 'FILLED':
       return 'purple'
     case 'ARCHIVED':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+function getListingVisitTone(status: ListingVisitStatus) {
+  switch (status) {
+    case 'PROPOSED':
+      return 'purple'
+    case 'CONFIRMED':
+      return 'green'
+    case 'COMPLETED':
+      return 'green'
+    case 'CANCELLED':
       return 'red'
     default:
       return 'gray'
@@ -3991,6 +4954,21 @@ function formatListingStatus(status: ListingStatus) {
       return 'Archived'
     default:
       return status
+  }
+}
+
+function formatListingVisitStatus(status: ListingVisitStatus) {
+  switch (status) {
+    case 'PROPOSED':
+      return 'Visit proposed'
+    case 'CONFIRMED':
+      return 'Visit confirmed'
+    case 'COMPLETED':
+      return 'Visit completed'
+    case 'CANCELLED':
+      return 'Visit cancelled'
+    default:
+      return 'No visit planned'
   }
 }
 
@@ -4110,12 +5088,57 @@ function filterListingInquiries(inquiries: ListingInquiry[], filter: ListingInqu
   }
 }
 
+function sortListingInquiries(inquiries: ListingInquiry[], sort: ListingInquirySort) {
+  const next = [...inquiries]
+
+  next.sort((left, right) => {
+    if (sort === 'NEW_FIRST') {
+      const leftPriority = getListingInquiryPriority(left)
+      const rightPriority = getListingInquiryPriority(right)
+
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority
+      }
+    }
+
+    const leftTime = new Date(left.updatedAt || left.createdAt).getTime()
+    const rightTime = new Date(right.updatedAt || right.createdAt).getTime()
+
+    if (sort === 'OLDEST') {
+      return leftTime - rightTime
+    }
+
+    return rightTime - leftTime
+  })
+
+  return next
+}
+
+function getListingInquiryPriority(inquiry: ListingInquiry) {
+  switch (inquiry.status) {
+    case 'NEW':
+      return 0
+    case 'CONTACTED':
+      return 1
+    case 'SCHEDULED':
+      return 2
+    case 'DECLINED':
+      return 3
+    case 'CLOSED':
+      return 4
+    default:
+      return 5
+  }
+}
+
 function formatHostListingFilterLabel(filter: HostListingFilter) {
   switch (filter) {
     case 'ACTIVE':
       return 'Active'
     case 'DRAFT':
       return 'Draft'
+    case 'PAUSED':
+      return 'On hold'
     case 'FILLED':
       return 'Rented'
     case 'ARCHIVED':
@@ -4136,6 +5159,101 @@ function formatListingInquiryFilterLabel(filter: ListingInquiryFilter) {
     default:
       return formatListingInquiryStatus(filter)
   }
+}
+
+function buildInquiryTimelineEntries(inquiry: ListingInquiry) {
+  const systemMessages =
+    inquiry.conversation?.messages.filter((message) => message.messageType === 'SYSTEM') ?? []
+
+  const normalizedEntries = systemMessages
+    .filter((message, index) => {
+      if (index === 0 && message.body.toLowerCase().includes('sent an inquiry')) {
+        return false
+      }
+
+      return true
+    })
+    .map((message) => ({
+      id: message.id,
+      title: inferInquiryTimelineTitle(message.body),
+      body: message.body,
+      createdAt: message.createdAt,
+      tone: inferInquiryTimelineTone(message.body),
+    }))
+
+  return [
+    {
+      id: `submitted-${inquiry.id}`,
+      title: 'Inquiry submitted',
+      body: inquiry.message
+        ? 'The seeker shared a personal note and structured preferences with the owner.'
+        : 'Structured move-in and visit preferences were shared with the owner.',
+      createdAt: inquiry.createdAt,
+      tone: 'purple' as const,
+    },
+    ...normalizedEntries,
+  ]
+}
+
+function inferInquiryTimelineTitle(message: string) {
+  const normalizedMessage = message.toLowerCase()
+
+  if (normalizedMessage.includes('contacted')) {
+    return 'Owner contacted seeker'
+  }
+
+  if (normalizedMessage.includes('visit proposed')) {
+    return 'Visit proposed'
+  }
+
+  if (normalizedMessage.includes('confirmed the visit')) {
+    return 'Visit confirmed'
+  }
+
+  if (normalizedMessage.includes('cancelled the visit')) {
+    return 'Visit cancelled'
+  }
+
+  if (normalizedMessage.includes('visit as completed')) {
+    return 'Visit completed'
+  }
+
+  if (normalizedMessage.includes('declined')) {
+    return 'Inquiry declined'
+  }
+
+  if (normalizedMessage.includes('closed')) {
+    return 'Inquiry closed'
+  }
+
+  return 'Status updated'
+}
+
+function inferInquiryTimelineTone(message: string) {
+  const normalizedMessage = message.toLowerCase()
+
+  if (normalizedMessage.includes('declined')) {
+    return 'red' as const
+  }
+
+  if (normalizedMessage.includes('cancelled')) {
+    return 'red' as const
+  }
+
+  if (normalizedMessage.includes('closed')) {
+    return 'gray' as const
+  }
+
+  if (
+    normalizedMessage.includes('proposed') ||
+    normalizedMessage.includes('confirmed') ||
+    normalizedMessage.includes('completed') ||
+    normalizedMessage.includes('contacted')
+  ) {
+    return 'green' as const
+  }
+
+  return 'purple' as const
 }
 
 function normalizeAmenityName(value: string) {
