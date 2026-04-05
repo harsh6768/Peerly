@@ -1,9 +1,10 @@
-import { House, Search, ShieldCheck, UserRound } from 'lucide-react'
+import { House, Search, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 import { useAppAuth } from '../context/AppAuthContext'
 import { housingIntentValues, useHousingIntent } from '../context/HousingIntentContext'
+import cirvoLogo from '../assets/cirvo_black.png'
 
 const desktopLinks = [
   { to: '/', label: 'Home' },
@@ -27,12 +28,12 @@ export function AppShell() {
       <header className="site-header">
         <div className="header-inner">
           <NavLink className="brand" to="/">
-            <span className="brand-mark">
-              <ShieldCheck size={20} />
+            <span className="brand-mark brand-mark-header">
+              <img alt="Cirvo" className="brand-mark-image" src={cirvoLogo} />
             </span>
             <span className="brand-copy">
-              Trusted Network
-              <small>Housing MVP</small>
+              Cirvo
+              <small>Find room · Replace tenant</small>
             </span>
           </NavLink>
 

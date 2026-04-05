@@ -571,7 +571,7 @@ export function SendItemPage() {
     }
 
     openWhatsappDraft(
-      `Hi ${route.user.fullName}, I saw your travel route from ${route.sourceCity} to ${route.destinationCity} on Trusted Network and wanted to discuss a delivery request.`,
+      `Hi ${route.user.fullName}, I saw your travel route from ${route.sourceCity} to ${route.destinationCity} on Cirvo and wanted to discuss a delivery request.`,
     )
   }
 
@@ -762,13 +762,13 @@ export function SendItemPage() {
                     </div>
 
                     <p className="feed-copy">
-                      {request.description ?? 'Send item request posted on Trusted Network.'}
+                      {request.description ?? 'Send item request posted on Cirvo.'}
                     </p>
 
                     <div className="feed-owner-row">
                       <div>
                         <strong>{request.owner.fullName}</strong>
-                        <span>{request.owner.companyName ?? 'Trusted Network member'}</span>
+                        <span>{request.owner.companyName ?? 'Cirvo member'}</span>
                       </div>
                       <span className="pill">{formatEnum(request.urgencyLevel)}</span>
                     </div>

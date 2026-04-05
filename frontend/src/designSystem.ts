@@ -15,7 +15,7 @@ import {
 
 export const designTokens = {
   project: {
-    name: 'Trusted Network',
+    name: 'Cirvo',
     type: 'saas-web-mobile',
     designPrinciples: [
       'minimal',
@@ -299,7 +299,7 @@ export const supportHighlights = [
 export const testimonials: Testimonial[] = [
   {
     quote:
-      'We started using Trusted Network to manage verified tenant demand in Bengaluru and it cut our back-and-forth screening time in half.',
+      'We started using Cirvo to manage verified tenant demand in Bengaluru and it cut our back-and-forth screening time in half.',
     name: 'Maya Rao',
     role: 'Growth manager',
     company: 'UrbanNest Living',

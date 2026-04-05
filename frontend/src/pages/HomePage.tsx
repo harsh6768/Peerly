@@ -70,9 +70,8 @@ export function HomePage() {
               <span className="headline-accent"> without a confusing marketplace.</span>
             </h1>
             <p>
-              Trusted Network is now focused on the two housing jobs that matter for MVP: seekers
-              browse live room listings, and hosts publish or manage their own apartments in a
-              separate mode.
+              Cirvo is focused on the two housing jobs that matter for MVP: seekers browse live
+              room listings, and hosts publish or manage their own apartments in a separate mode.
             </p>
 
             <div className="hero-actions hero-actions-centered">

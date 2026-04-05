@@ -1,5 +1,5 @@
-import { ShieldCheck } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import cirvoLogo from '../assets/cirvo_white.png'
 import { FooterWave } from './FooterWave'
 
 const footerColumns = [
@@ -22,7 +22,7 @@ const footerColumns = [
   {
     heading: 'Contact',
     items: [
-      { label: 'hello@trustednetwork.app' },
+      { label: 'hello@cirvo.in' },
       { label: 'Mumbai · Bengaluru · Gurugram' },
       { label: 'Demo environment with seeded data' },
     ],
@@ -47,10 +47,10 @@ export function AppFooter() {
           <div className="footer-brand">
             <div className="footer-brand-row">
               <span className="brand-mark footer-brand-mark">
-                <ShieldCheck size={18} />
+                <img alt="Cirvo" className="brand-mark-image" src={cirvoLogo} />
               </span>
               <div>
-                <strong>Trusted Network</strong>
+                <strong>Cirvo</strong>
                 <p>
                   Housing-first tenant replacement marketplace with a simple intent-driven flow.
                 </p>

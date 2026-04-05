@@ -133,20 +133,32 @@ input:focus {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
 
 .brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  color: white;
-  background: linear-gradient(135deg, var(--gradient-start), var(--primary));
-  box-shadow: 0 10px 24px rgba(108, 99, 255, 0.24);
+  flex: 0 0 auto;
+  display: block;
+  line-height: 0;
+}
+
+.brand-mark-header {
+  width: 78px;
+}
+
+.brand-mark-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1;
 }
 
 .brand-copy small {
@@ -155,6 +167,7 @@ input:focus {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.02em;
+  margin-top: 4px;
 }
 
 .desktop-nav,
@@ -1566,7 +1579,7 @@ input:focus {
 }
 
 .footer-brand-row {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .footer-brand strong,
@@ -1585,9 +1598,7 @@ input:focus {
 
 .footer-brand-mark {
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+  width: 108px;
 }
 
 .footer-badges {
@@ -1659,10 +1670,8 @@ input:focus {
     gap: 10px;
   }
 
-  .brand-mark {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
+  .brand-mark-header {
+    width: 64px;
   }
 
   .brand-copy {
@@ -1915,6 +1924,10 @@ input:focus {
 }
 
 @media (max-width: 420px) {
+  .brand-mark-header {
+    width: 58px;
+  }
+
   .brand-copy small {
     display: none;
   }
