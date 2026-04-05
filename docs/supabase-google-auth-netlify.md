@@ -40,6 +40,7 @@ The frontend API base URL is resolved in:
 Netlify SPA route fallback is handled by:
 
 - [frontend/public/_redirects](../frontend/public/_redirects)
+- [frontend/netlify.toml](../frontend/netlify.toml)
 
 ## End-to-end redirect flow
 
@@ -239,6 +240,20 @@ Important:
 
 Set frontend environment variables in Netlify for the deployed site.
 
+If the Netlify site is configured with:
+
+```text
+Base directory: frontend
+```
+
+then Netlify should read its config from:
+
+```text
+frontend/netlify.toml
+```
+
+This repo uses that layout.
+
 Required:
 
 ```env
@@ -259,6 +274,7 @@ Because this app uses React Router, Netlify must serve `index.html` for frontend
 This repo includes:
 
 - [frontend/public/_redirects](../frontend/public/_redirects)
+- [frontend/netlify.toml](../frontend/netlify.toml)
 
 with:
 
@@ -266,7 +282,21 @@ with:
 /* /index.html 200
 ```
 
+and:
+
+```toml
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
 Without this, direct loads or redirects to `/auth` can fail.
+
+Important:
+
+- if your Netlify site builds from `frontend/`, keep `netlify.toml` inside `frontend/`
+- a repo-root `netlify.toml` may be ignored when the site uses `frontend` as the base directory
 
 ## 4. EC2 + Nginx backend
 
@@ -371,10 +401,14 @@ Fix:
 Cause:
 
 - SPA fallback is missing
+- `netlify.toml` is in the wrong directory for the configured Netlify base directory
 
 Fix:
 
 - ensure [frontend/public/_redirects](../frontend/public/_redirects) is deployed
+- ensure [frontend/netlify.toml](../frontend/netlify.toml) exists when Netlify builds from `frontend/`
+- verify Netlify site settings:
+  `Base directory = frontend`, `Build command = npm run build`, `Publish directory = dist`
 
 ### Problem: backend rejects app session exchange
 

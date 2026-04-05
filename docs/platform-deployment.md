@@ -243,6 +243,29 @@ Output directory:
 dist
 ```
 
+## Frontend on Netlify
+
+If you deploy this workspace to Netlify and the site base directory is `frontend`, keep the Netlify config file at:
+
+```text
+frontend/netlify.toml
+```
+
+Recommended Netlify settings:
+
+```text
+Base directory: frontend
+Build command: npm run build
+Publish directory: dist
+```
+
+For React Router SPA fallback, make sure the frontend app includes either:
+
+- [frontend/netlify.toml](../frontend/netlify.toml)
+- [frontend/public/_redirects](../frontend/public/_redirects)
+
+This project includes both so routes like `/auth` and `/find-tenant` resolve correctly after deploy.
+
 ## Backend on Render
 
 If you deploy from this workspace repository, set the backend root directory to `backend`.
