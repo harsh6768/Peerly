@@ -375,3 +375,11 @@ If you want the best free or free-to-start setup for Trusted Network:
 6. Upstash for Redis later
 
 That gives you a clean MVP path with strong long-term upgrade options.
+
+## Current project note
+
+The current codebase uses Supabase Auth for Google sign-in rather than Clerk.
+
+For the exact Netlify + Supabase + Google Cloud callback flow and production redirect checklist, see:
+
+- [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)

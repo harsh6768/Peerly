@@ -37,6 +37,7 @@ Recommended reading order:
 7. [Backend API MVP](./docs/backend-api-mvp.md)
 8. [Backend TypeScript Guide](./docs/backend-typescript-guide.md)
 9. [Platform Deployment Guide](./docs/platform-deployment.md)
+10. [Supabase Google Auth with Netlify and EC2](./docs/supabase-google-auth-netlify.md)
 
 ## Local development
 

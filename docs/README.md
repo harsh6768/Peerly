@@ -15,6 +15,7 @@ This folder is the current working architecture reference for Trusted Network.
 9. [Backend API MVP](./backend-api-mvp.md)
 10. [Backend TypeScript Guide](./backend-typescript-guide.md)
 11. [Platform Deployment Guide](./platform-deployment.md)
+12. [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)
 
 ## What these docs cover
 
@@ -28,5 +29,6 @@ This folder is the current working architecture reference for Trusted Network.
 - A lightweight guide for reading and working in the backend TypeScript code
 - The visual relationship map between schema entities
 - The recommended free-stack deployment plan and environment setup
+- The exact Netlify + Supabase Auth + Google OAuth redirect flow used by the current login system
 
 These docs are written so frontend and backend can evolve independently without losing the shared product model.
