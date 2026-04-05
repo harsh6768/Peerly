@@ -60,7 +60,7 @@ export function HomePage() {
         <div className="page-inner landing-hero housing-home-shell">
           <div className="hero-copy hero-copy-centered reveal">
             <div className="hero-announcement">
-              <Badge tone="green">Housing MVP</Badge>
+              <Badge tone="green">Cirvo Housing</Badge>
               <span>Intent-driven tenant replacement marketplace</span>
               <ArrowRight size={14} />
             </div>
@@ -70,8 +70,9 @@ export function HomePage() {
               <span className="headline-accent"> without a confusing marketplace.</span>
             </h1>
             <p>
-              Cirvo is focused on the two housing jobs that matter for MVP: seekers browse live
-              room listings, and hosts publish or manage their own apartments in a separate mode.
+              Cirvo keeps the two housing jobs that matter most clearly separated: seekers browse
+              live room listings, and hosts publish or manage their own apartments in a dedicated
+              workspace.
             </p>
 
             <div className="hero-actions hero-actions-centered">

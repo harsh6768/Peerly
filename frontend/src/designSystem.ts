@@ -313,7 +313,7 @@ export const testimonials: Testimonial[] = [
   },
   {
     quote:
-      'Even without a backend demo, the seeded data already reads like a real category product. It helps stakeholders understand the opportunity instantly.',
+      'Cirvo already feels like a focused category product. The clarity in the housing flow makes the value obvious immediately.',
     name: 'Ananya Sethi',
     role: 'Product consultant',
     company: 'ShiftMint Advisory',

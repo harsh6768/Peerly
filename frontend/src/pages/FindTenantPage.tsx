@@ -4497,7 +4497,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
               <div className="housing-bottom-note">
                 <p>
-                  Delivery has been intentionally removed from the active MVP flow. The parked routes and APIs are documented so we can restore them later without losing the earlier work.
+                  Cirvo is currently focused on housing, so the experience stays clear for seekers
+                  and hosts without mixing in unrelated workflows.
                 </p>
                 <Button icon={<PencilLine size={16} />} onClick={() => navigate('/profile')} variant="ghost">
                   Open profile and verification

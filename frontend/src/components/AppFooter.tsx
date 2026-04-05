@@ -24,7 +24,7 @@ const footerColumns = [
     items: [
       { label: 'hello@cirvo.in' },
       { label: 'Mumbai · Bengaluru · Gurugram' },
-      { label: 'Demo environment with seeded data' },
+      { label: 'Built for fast, trusted housing moves' },
     ],
   },
 ] as const
@@ -84,8 +84,8 @@ export function AppFooter() {
           </div>
 
           <div className="footer-bottom">
-            <span>Housing MVP is live first. Delivery flows are documented and parked for a later phase.</span>
-            <span>Find room helps seekers browse listings, and tenant replacement helps owners publish and manage listings.</span>
+            <span>Cirvo helps people discover rooms faster and manage tenant replacements with less friction.</span>
+            <span>Find room is built for seekers, and tenant replacement is built for hosts managing live availability.</span>
           </div>
         </div>
       </div>
