@@ -1,5 +1,3 @@
-const DEFAULT_API_BASE_URL = 'http://localhost:4000/api'
-
 export const apiBaseUrl = resolveApiBaseUrl()
 
 type ApiRequestOptions = RequestInit & {
@@ -52,14 +50,7 @@ function resolveApiBaseUrl() {
     return configuredBaseUrl.replace(/\/$/, '')
   }
 
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ) {
-    return DEFAULT_API_BASE_URL
-  }
-
   throw new Error(
-    'VITE_API_BASE_URL must be configured for non-local deployments. Point it to your live backend API, for example https://api.example.com/api.',
+    'VITE_API_BASE_URL must be configured. Point it to your backend API, for example http://localhost:4000/api or https://api.example.com/api.',
   )
 }

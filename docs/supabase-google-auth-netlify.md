@@ -436,7 +436,7 @@ Fix:
 
 This repo now includes two production safeguards:
 
-1. [frontend/src/lib/api.ts](../frontend/src/lib/api.ts) throws in non-local environments if `VITE_API_BASE_URL` is missing, instead of silently calling localhost.
+1. [frontend/src/lib/api.ts](../frontend/src/lib/api.ts) always requires `VITE_API_BASE_URL` and throws immediately if it is missing.
 2. [frontend/public/_redirects](../frontend/public/_redirects) ensures Netlify serves the SPA correctly for frontend routes.
 
 ## Recommended sanity test
