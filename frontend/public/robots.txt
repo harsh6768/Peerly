@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /auth
+Disallow: /profile
+Disallow: /find-tenant/inquiries
+Disallow: /find-tenant/host
+
+Sitemap: https://cirvo.in/sitemap.xml
