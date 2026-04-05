@@ -1333,7 +1333,6 @@ function InquiryDetailsPage({ scope }: { scope: 'owner' | 'requester' }) {
   const { inquiryId } = useParams<{ inquiryId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setIntent } = useHousingIntent()
   const { sessionToken, user } = useAppAuth()
   const routeState = location.state as InquiryDetailsRouteState | null
   const initialInquiry = useMemo(
@@ -1407,12 +1406,6 @@ function InquiryDetailsPage({ scope }: { scope: 'owner' | 'requester' }) {
   }, [inquiry])
 
   function handleBack() {
-    if (routeState?.sourceIntent) {
-      setIntent(routeState.sourceIntent)
-    } else {
-      setIntent(isOwnerView ? housingIntentValues.tenantReplacement : housingIntentValues.findRoom)
-    }
-
     navigate(routeState?.backTo ?? (isOwnerView ? '/find-tenant/host/inquiries' : '/find-tenant/inquiries'))
   }
 
@@ -1985,7 +1978,6 @@ export function FindTenantListingDetailsPage() {
   const { listingId } = useParams<{ listingId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setIntent } = useHousingIntent()
   const { sessionToken, user } = useAppAuth()
   const routeState = location.state as ListingDetailsRouteState | null
   const initialListing = useMemo(
@@ -2093,10 +2085,6 @@ export function FindTenantListingDetailsPage() {
   const badgeLabel = listing?.owner.isVerified ? 'Verified owner' : 'Live listing'
 
   function handleBack() {
-    if (routeState?.sourceIntent) {
-      setIntent(routeState.sourceIntent)
-    }
-
     navigate(routeState?.backTo ?? '/find-tenant')
   }
 
@@ -2357,7 +2345,7 @@ export function FindTenantOwnerInquiryDetailsPage() {
 
 function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const { sessionToken, user } = useAppAuth()
-  const { intent, setIntent } = useHousingIntent()
+  const { setIntent } = useHousingIntent()
   const navigate = useNavigate()
   const location = useLocation()
   const { editListingId } = useParams<{ editListingId?: string }>()
@@ -2619,12 +2607,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   useEffect(() => {
     void loadHousingData()
   }, [sessionToken, user?.id])
-
-  useEffect(() => {
-    if (isDedicatedHostPage && user && intent !== housingIntentValues.tenantReplacement) {
-      setIntent(housingIntentValues.tenantReplacement)
-    }
-  }, [intent, isDedicatedHostPage, setIntent, user])
 
   useEffect(() => {
     if (
