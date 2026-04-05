@@ -45,7 +45,7 @@ async function tryParseJson(response: Response) {
 
 function resolveApiBaseUrl() {
   // const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
-  const configuredBaseUrl = "http://13.201.70.22/api"
+  const configuredBaseUrl = "http://localhost:4000/api"
 
   if (configuredBaseUrl) {
     return configuredBaseUrl.replace(/\/$/, '')

@@ -254,6 +254,7 @@ CREATE TABLE "ListingNearby" (
 CREATE TABLE "ListingImage" (
     "id" TEXT NOT NULL,
     "listingId" TEXT NOT NULL,
+    "assetProvider" "AssetProvider" NOT NULL DEFAULT 'CLOUDINARY',
     "providerAssetId" TEXT NOT NULL,
     "imageUrl" TEXT NOT NULL,
     "thumbnailUrl" TEXT NOT NULL,
@@ -277,6 +278,9 @@ CREATE TABLE "HousingNeed" (
     "preferredPropertyType" "PropertyType" NOT NULL,
     "preferredOccupancy" "OccupancyType" NOT NULL,
     "maxRentAmount" INTEGER,
+    "maxDepositAmount" INTEGER,
+    "maxMaintenanceAmount" INTEGER,
+    "preferredAmenities" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "moveInDate" TIMESTAMP(3) NOT NULL,
     "urgencyLevel" "UrgencyLevel" NOT NULL DEFAULT 'FLEXIBLE',
     "preferredContactMode" "ContactMode" NOT NULL DEFAULT 'WHATSAPP',
@@ -285,6 +289,16 @@ CREATE TABLE "HousingNeed" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "HousingNeed_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "HousingNeedNearby" (
+    "id" TEXT NOT NULL,
+    "housingNeedId" TEXT NOT NULL,
+    "name" VARCHAR(120) NOT NULL,
+    "type" "NearbyPlaceType" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "HousingNeedNearby_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -509,6 +523,15 @@ CREATE INDEX "HousingNeed_city_locality_status_idx" ON "HousingNeed"("city", "lo
 CREATE INDEX "HousingNeed_moveInDate_urgencyLevel_idx" ON "HousingNeed"("moveInDate", "urgencyLevel");
 
 -- CreateIndex
+CREATE INDEX "HousingNeedNearby_housingNeedId_createdAt_idx" ON "HousingNeedNearby"("housingNeedId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "HousingNeedNearby_name_idx" ON "HousingNeedNearby"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "HousingNeedNearby_housingNeedId_name_key" ON "HousingNeedNearby"("housingNeedId", "name");
+
+-- CreateIndex
 CREATE INDEX "ListingInquiry_listingId_status_idx" ON "ListingInquiry"("listingId", "status");
 
 -- CreateIndex
@@ -591,6 +614,9 @@ ALTER TABLE "HousingNeed" ADD constraint "HousingNeed_userId_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "HousingNeed" ADD constraint "HousingNeed_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "HousingNeedNearby" ADD constraint "HousingNeedNearby_housingNeedId_fkey" FOREIGN KEY ("housingNeedId") REFERENCES "HousingNeed"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ListingInquiry" ADD constraint "ListingInquiry_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;

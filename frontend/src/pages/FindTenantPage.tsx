@@ -179,6 +179,7 @@ type ReplaceTenantForm = {
   depositAmount: string
   maintenanceAmount: string
   amenities: string[]
+  nearbyPlaces: NearbyPlace[]
   propertyType: string
   occupancyType: string
   contactMode: string
@@ -220,12 +221,70 @@ type InquiryDetailsRouteState = {
   sourceIntent?: HousingIntent
 }
 
+type HousingNeedStatus = 'OPEN' | 'MATCHED' | 'CLOSED' | 'ARCHIVED'
+type HousingNeed = {
+  id: string
+  city: string
+  locality: string | null
+  preferredPropertyType: string
+  preferredOccupancy: string
+  maxRentAmount: number | null
+  maxDepositAmount: number | null
+  maxMaintenanceAmount: number | null
+  preferredAmenities: string[]
+  moveInDate: string
+  urgencyLevel: string
+  preferredContactMode: string
+  notes: string | null
+  nearbyPlaces: NearbyPlace[]
+  status: HousingNeedStatus
+  createdAt: string
+  updatedAt: string
+  user: {
+    id: string
+    fullName: string
+    companyName: string | null
+    isVerified: boolean
+  }
+}
+
+type HousingNeedForm = {
+  city: string
+  locality: string
+  maxRentAmount: string
+  maxDepositAmount: string
+  maxMaintenanceAmount: string
+  preferredPropertyType: string
+  preferredOccupancy: string
+  preferredAmenities: string[]
+  nearbyPlaces: NearbyPlace[]
+  moveInDate: string
+  urgencyLevel: string
+  preferredContactMode: string
+  notes: string
+}
+
+type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE'
+type ListingMatchSummary = {
+  matchScore: number
+  qualityScore: number
+  finalScore: number
+  label: ListingMatchLabel
+}
+
 type LocalFeedbackState = {
   tone: 'success' | 'error' | 'info'
   message: string
 }
 
-type HousingPageMode = 'root' | 'seeker-inquiries' | 'host-dashboard' | 'host-compose' | 'host-inquiries'
+type HousingPageMode =
+  | 'root'
+  | 'seeker-needs'
+  | 'seeker-posted-listings'
+  | 'seeker-inquiries'
+  | 'host-dashboard'
+  | 'host-compose'
+  | 'host-inquiries'
 type PublicListingFilters = {
   city: string
   propertyType: string
@@ -312,13 +371,39 @@ const publicListingBudgetFilters: Array<{ label: string; value: PublicListingBud
   { label: '30k - 45k', value: 'BETWEEN_30000_AND_45000' },
   { label: '45k+', value: 'ABOVE_45000' },
 ]
+const popularTechParks = [
+  'Bagmane Tech Park',
+  'Embassy Tech Village',
+  'Ecospace',
+  'ITPL',
+  'Manyata Tech Park',
+  'RMZ Ecoworld',
+  'RMZ Ecosystem',
+  'DLF Cyber City',
+  'Cyber City Hyderabad',
+  'HITEC City',
+] as const
+const popularOffices = [
+  'Google',
+  'Microsoft',
+  'Amazon',
+  'Flipkart',
+  'Uber',
+  'Adobe',
+  'Goldman Sachs',
+  'Accenture',
+  'Infosys',
+  'TCS',
+] as const
 
 function SearchListingCard({
   existingInquiry,
   listing,
+  matchSummary,
 }: {
   existingInquiry?: ListingInquiry | null
   listing: Listing
+  matchSummary?: ListingMatchSummary | null
 }) {
   const navigate = useNavigate()
   const [showInlineDetails, setShowInlineDetails] = useState(false)
@@ -350,6 +435,11 @@ function SearchListingCard({
           <p>{formatListingLocation(listing)}</p>
         </div>
         <div className="listing-card-badges">
+          {matchSummary ? (
+            <Badge tone={getListingMatchTone(matchSummary.label)}>
+              {formatListingMatchLabel(matchSummary.label)}
+            </Badge>
+          ) : null}
           {existingInquiry ? <Badge tone={getListingInquiryStatusTone(existingInquiry.status)}>Inquiry sent</Badge> : null}
           <Badge tone={listing.owner.isVerified ? 'green' : 'gray'}>
             {listing.owner.isVerified ? 'Verified' : 'Live'}
@@ -376,6 +466,14 @@ function SearchListingCard({
             {amenity}
           </span>
         ))}
+      </div>
+
+      <div className="feed-owner-row">
+        <div>
+          <strong>{listing.owner.fullName}</strong>
+          <span>{listing.owner.companyName ?? (listing.owner.isVerified ? 'Verified host' : 'Host')}</span>
+        </div>
+        {matchSummary ? <span className="pill">{matchSummary.matchScore}% fit</span> : null}
       </div>
 
       <div className="feed-card-actions">
@@ -2327,6 +2425,14 @@ export function FindTenantRequesterInquiriesPage() {
   return <HousingExperiencePage mode="seeker-inquiries" />
 }
 
+export function FindTenantNeedsPage() {
+  return <HousingExperiencePage mode="seeker-needs" />
+}
+
+export function FindTenantPostedListingsPage() {
+  return <HousingExperiencePage mode="seeker-posted-listings" />
+}
+
 export function FindTenantRequesterInquiryDetailsPage() {
   return <InquiryDetailsPage scope="requester" />
 }
@@ -2350,6 +2456,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const location = useLocation()
   const { editListingId } = useParams<{ editListingId?: string }>()
   const [publicListings, setPublicListings] = useState<Listing[]>([])
+  const [housingNeeds, setHousingNeeds] = useState<HousingNeed[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
   const [requesterInquiries, setRequesterInquiries] = useState<ListingInquiry[]>([])
   const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
@@ -2368,6 +2475,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [isCleaningUpUploads, setIsCleaningUpUploads] = useState(false)
   const [uploadSummary, setUploadSummary] = useState<string | null>(null)
   const [amenityInput, setAmenityInput] = useState('')
+  const [housingNeedAmenityInput, setHousingNeedAmenityInput] = useState('')
+  const [listingNearbyPlaceInput, setListingNearbyPlaceInput] = useState('')
+  const [listingNearbyPlaceType, setListingNearbyPlaceType] = useState<NearbyPlaceType>('tech_park')
+  const [housingNeedNearbyPlaceInput, setHousingNeedNearbyPlaceInput] = useState('')
+  const [housingNeedNearbyPlaceType, setHousingNeedNearbyPlaceType] = useState<NearbyPlaceType>('tech_park')
   const [isDragActive, setIsDragActive] = useState(false)
   const [busyListingAction, setBusyListingAction] = useState<string | null>(null)
   const [busyInquiryAction, setBusyInquiryAction] = useState<string | null>(null)
@@ -2382,7 +2494,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [scheduleVisitNoteInput, setScheduleVisitNoteInput] = useState('')
   const [replaceTenantCityOption, setReplaceTenantCityOption] = useState('')
   const [replaceTenantCustomCity, setReplaceTenantCustomCity] = useState('')
+  const [housingNeedCityOption, setHousingNeedCityOption] = useState('')
+  const [housingNeedCustomCity, setHousingNeedCustomCity] = useState('')
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>(makeEmptyReplaceTenantForm())
+  const [housingNeedForm, setHousingNeedForm] = useState<HousingNeedForm>(makeEmptyHousingNeedForm())
+  const [isSavingHousingNeed, setIsSavingHousingNeed] = useState(false)
   const listingImagesRef = useRef<DraftListingImage[]>([])
 
   const selectedListingLocation = useMemo(
@@ -2396,6 +2512,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   )
   const isDedicatedHostPage = mode !== 'root'
   const shouldShowHostDashboard = mode === 'host-dashboard'
+  const shouldShowSeekerNeeds = mode === 'seeker-needs'
+  const shouldShowSeekerPostedListings = mode === 'seeker-posted-listings'
   const shouldShowRequesterInquiries = mode === 'seeker-inquiries'
   const shouldShowHostComposer = mode === 'host-compose'
   const shouldShowHostInquiries = mode === 'host-inquiries'
@@ -2431,6 +2549,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       .map(([amenity]) => amenity)
   }, [discoverablePublicListings])
   const quickPublicCityOptions = useMemo(() => publicCityOptions.slice(0, 4), [publicCityOptions])
+  const activeHousingNeed = useMemo(
+    () =>
+      housingNeeds.find((need) => need.status === 'OPEN') ??
+      housingNeeds.find((need) => need.status === 'MATCHED') ??
+      null,
+    [housingNeeds],
+  )
   const filteredPublicListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
@@ -2488,6 +2613,28 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       return true
     })
   }, [discoverablePublicListings, publicListingFilters, searchQuery])
+  const rankedPublicListings = useMemo(() => {
+    if (!activeHousingNeed) {
+      return filteredPublicListings.map((listing) => ({
+        listing,
+        matchSummary: null as ListingMatchSummary | null,
+      }))
+    }
+
+    return filteredPublicListings
+      .map((listing) => ({
+        listing,
+        matchSummary: calculateListingMatchSummary(listing, activeHousingNeed),
+      }))
+      .filter((entry) => entry.matchSummary.matchScore >= 40)
+      .sort((left, right) => {
+        if (right.matchSummary.finalScore !== left.matchSummary.finalScore) {
+          return right.matchSummary.finalScore - left.matchSummary.finalScore
+        }
+
+        return new Date(right.listing.createdAt).getTime() - new Date(left.listing.createdAt).getTime()
+      })
+  }, [activeHousingNeed, filteredPublicListings])
   const activePublicListingFilterTokens = useMemo(() => {
     const tokens: Array<{ key: PublicListingFilterKey; label: string }> = []
 
@@ -2678,7 +2825,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
-        const [myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] = await Promise.all([
+        const [housingNeedsPayload, myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
+          await Promise.all([
+            apiRequest<HousingNeed[]>('/housing-needs/mine', {
+              token: sessionToken,
+            }),
           apiRequest<Listing[]>(
             `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
             {
@@ -2691,11 +2842,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
             token: sessionToken,
           }),
-        ])
+          ])
+        setHousingNeeds(normalizeHousingNeeds(housingNeedsPayload))
         setMyListings(normalizeListings(myListingsPayload))
         setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
         setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
+        setHousingNeeds([])
         setMyListings([])
         setRequesterInquiries([])
         setOwnerInquiries([])
@@ -2750,6 +2903,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       depositAmount: listing.depositAmount ? String(listing.depositAmount) : '',
       maintenanceAmount: listing.maintenanceAmount ? String(listing.maintenanceAmount) : '',
       amenities: listing.amenities,
+      nearbyPlaces: listing.nearbyPlaces,
       propertyType: listing.propertyType ?? 'APARTMENT',
       occupancyType: listing.occupancyType ?? 'SHARED',
       contactMode: listing.contactMode || 'WHATSAPP',
@@ -2798,6 +2952,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     setReplaceTenantCityOption('')
     setReplaceTenantCustomCity('')
     setAmenityInput('')
+    setListingNearbyPlaceInput('')
+    setListingNearbyPlaceType('tech_park')
     setUploadSummary(null)
     clearListingImages(false)
   }
@@ -2806,6 +2962,15 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     setSearchQuery('')
     setPublicListingFilters(makeEmptyPublicListingFilters())
     setShowAdvancedPublicFilters(false)
+  }
+
+  function resetHousingNeedForm() {
+    setHousingNeedForm(makeEmptyHousingNeedForm())
+    setHousingNeedCityOption('')
+    setHousingNeedCustomCity('')
+    setHousingNeedAmenityInput('')
+    setHousingNeedNearbyPlaceInput('')
+    setHousingNeedNearbyPlaceType('tech_park')
   }
 
   function clearSinglePublicListingFilter(key: PublicListingFilterKey) {
@@ -2832,6 +2997,107 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           return current
       }
     })
+  }
+
+  async function handleSaveHousingNeed() {
+    if (!sessionToken || !user) {
+      setFeedback({
+        tone: 'error',
+        message: 'Please sign in before posting what you are looking for.',
+      })
+      return
+    }
+
+    const city = resolveCityValue(housingNeedCityOption, housingNeedCustomCity)
+
+    if (!city || !housingNeedForm.moveInDate) {
+      setFeedback({
+        tone: 'error',
+        message: 'City and move-in date are required to post your room need.',
+      })
+      return
+    }
+
+    try {
+      setIsSavingHousingNeed(true)
+      setFeedback(null)
+
+      await apiRequest('/housing-needs', {
+        method: 'POST',
+        token: sessionToken,
+        body: JSON.stringify({
+          city,
+          locality: housingNeedForm.locality.trim() || undefined,
+          preferredPropertyType: housingNeedForm.preferredPropertyType,
+          preferredOccupancy: housingNeedForm.preferredOccupancy,
+          maxRentAmount: housingNeedForm.maxRentAmount ? Number(housingNeedForm.maxRentAmount) : undefined,
+          maxDepositAmount: housingNeedForm.maxDepositAmount ? Number(housingNeedForm.maxDepositAmount) : undefined,
+          maxMaintenanceAmount: housingNeedForm.maxMaintenanceAmount
+            ? Number(housingNeedForm.maxMaintenanceAmount)
+            : undefined,
+          preferredAmenities: housingNeedForm.preferredAmenities,
+          nearbyPlaces: housingNeedForm.nearbyPlaces,
+          moveInDate: toIsoDate(housingNeedForm.moveInDate),
+          urgencyLevel: housingNeedForm.urgencyLevel,
+          preferredContactMode: housingNeedForm.preferredContactMode,
+          notes: housingNeedForm.notes.trim() || undefined,
+          status: 'OPEN',
+        }),
+      })
+
+      resetHousingNeedForm()
+      await loadHousingData()
+      navigate('/find-tenant')
+      setFeedback({
+        tone: 'success',
+        message: 'Your room need is live. We updated the feed to show your strongest matches first.',
+      })
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to post your room need right now.',
+      })
+    } finally {
+      setIsSavingHousingNeed(false)
+    }
+  }
+
+  async function handleHousingNeedStatusChange(
+    housingNeed: HousingNeed,
+    nextStatus: Extract<HousingNeedStatus, 'OPEN' | 'CLOSED'>,
+  ) {
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyInquiryAction(`housing-need-${housingNeed.id}-${nextStatus}`)
+      setFeedback(null)
+
+      await apiRequest(`/housing-needs/${housingNeed.id}`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({
+          status: nextStatus,
+        }),
+      })
+
+      await loadHousingData()
+      setFeedback({
+        tone: 'success',
+        message:
+          nextStatus === 'OPEN'
+            ? 'Your room need is active again and matching has resumed.'
+            : 'Your room need has been closed and removed from active matching.',
+      })
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to update your room need.',
+      })
+    } finally {
+      setBusyInquiryAction(null)
+    }
   }
 
   async function handleSaveListing(targetStatus: 'DRAFT' | 'PUBLISHED') {
@@ -2879,6 +3145,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         depositAmount: replaceTenantForm.depositAmount ? Number(replaceTenantForm.depositAmount) : undefined,
         maintenanceAmount: replaceTenantForm.maintenanceAmount ? Number(replaceTenantForm.maintenanceAmount) : undefined,
         amenities: replaceTenantForm.amenities,
+        nearbyPlaces: replaceTenantForm.nearbyPlaces,
         propertyType: replaceTenantForm.propertyType,
         occupancyType: replaceTenantForm.occupancyType,
         contactMode: replaceTenantForm.contactMode,
@@ -3281,6 +3548,117 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     setAmenityInput('')
   }
 
+  function toggleHousingNeedAmenity(amenity: string) {
+    setHousingNeedForm((current) => {
+      const hasAmenity = current.preferredAmenities.some((item) => item.toLowerCase() === amenity.toLowerCase())
+
+      return {
+        ...current,
+        preferredAmenities: hasAmenity
+          ? current.preferredAmenities.filter((item) => item.toLowerCase() !== amenity.toLowerCase())
+          : [...current.preferredAmenities, amenity],
+      }
+    })
+  }
+
+  function addCustomHousingNeedAmenity() {
+    const normalizedAmenity = normalizeAmenityName(housingNeedAmenityInput)
+
+    if (!normalizedAmenity) {
+      return
+    }
+
+    setHousingNeedForm((current) => {
+      if (current.preferredAmenities.some((item) => item.toLowerCase() === normalizedAmenity.toLowerCase())) {
+        return current
+      }
+
+      return {
+        ...current,
+        preferredAmenities: [...current.preferredAmenities, normalizedAmenity],
+      }
+    })
+    setHousingNeedAmenityInput('')
+  }
+
+  function addListingNearbyPlace() {
+    const normalizedName = normalizeNearbyPlaceName(listingNearbyPlaceInput)
+
+    if (!normalizedName) {
+      return
+    }
+
+    setReplaceTenantForm((current) => {
+      if (
+        current.nearbyPlaces.some(
+          (place) =>
+            place.name.toLowerCase() === normalizedName.toLowerCase() && place.type === listingNearbyPlaceType,
+        )
+      ) {
+        return current
+      }
+
+      if (current.nearbyPlaces.length >= 5) {
+        return current
+      }
+
+      return {
+        ...current,
+        nearbyPlaces: [...current.nearbyPlaces, { name: normalizedName, type: listingNearbyPlaceType }],
+      }
+    })
+
+    setListingNearbyPlaceInput('')
+  }
+
+  function removeListingNearbyPlace(placeToRemove: NearbyPlace) {
+    setReplaceTenantForm((current) => ({
+      ...current,
+      nearbyPlaces: current.nearbyPlaces.filter(
+        (place) => !(place.name === placeToRemove.name && place.type === placeToRemove.type),
+      ),
+    }))
+  }
+
+  function addHousingNeedNearbyPlace() {
+    const normalizedName = normalizeNearbyPlaceName(housingNeedNearbyPlaceInput)
+
+    if (!normalizedName) {
+      return
+    }
+
+    setHousingNeedForm((current) => {
+      if (
+        current.nearbyPlaces.some(
+          (place) =>
+            place.name.toLowerCase() === normalizedName.toLowerCase() && place.type === housingNeedNearbyPlaceType,
+        )
+      ) {
+        return current
+      }
+
+      if (current.nearbyPlaces.length >= 5) {
+        return current
+      }
+
+      return {
+        ...current,
+        nearbyPlaces: [...current.nearbyPlaces, { name: normalizedName, type: housingNeedNearbyPlaceType }],
+      }
+    })
+
+    setHousingNeedNearbyPlaceInput('')
+  }
+
+  function removeHousingNeedNearbyPlace(placeToRemove: NearbyPlace) {
+    setHousingNeedForm((current) => ({
+      ...current,
+      nearbyPlaces: current.nearbyPlaces.filter(
+        (place) => !(place.name === placeToRemove.name && place.type === placeToRemove.type),
+      ),
+    }))
+  }
+
   const hostModeEmptyState =
     myListings.length === 0 ? (
       <Card className="feed-card">
@@ -3294,6 +3672,26 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         <strong>No {formatHostListingFilterLabel(myListingFilter).toLowerCase()} listings right now</strong>
         <p className="feed-copy">
           Switch the status filter to review a different group of listings, including archived posts when needed.
+        </p>
+      </Card>
+    )
+
+  const seekerPostedListingsEmptyState =
+    myListings.length === 0 ? (
+      <Card className="feed-card">
+        <strong>You have not posted a room listing yet</strong>
+        <p className="feed-copy">
+          When you publish a room post, it will appear here so you can edit it, pause it, or mark it as rented later.
+        </p>
+        <Button to="/find-tenant/host/listings/new" variant="secondary">
+          Post a room listing
+        </Button>
+      </Card>
+    ) : (
+      <Card className="feed-card">
+        <strong>No {formatHostListingFilterLabel(myListingFilter).toLowerCase()} room posts right now</strong>
+        <p className="feed-copy">
+          Switch the status filter to review a different set of your room posts, including rented and archived ones.
         </p>
       </Card>
     )
@@ -3375,6 +3773,78 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               <HostListingCard
                 busyAction={busyListingAction}
                 key={listing.id}
+                listing={listing}
+                onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
+                onEdit={startEditingListing}
+                onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
+                onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
+                onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
+                onViewDetails={openListingDetails}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderSeekerPostedListingsPanel() {
+    return (
+      <div className="hub-panel host-dashboard-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Your room posts</span>
+            <h2>Listings you have posted</h2>
+            <p className="panel-subtitle">
+              Review the room listings you created without leaving the find-room workspace. Your public discovery feed still stays separate.
+            </p>
+          </div>
+          <div className="hub-panel-actions">
+            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}</Badge>
+            {user ? (
+              <Button to="/find-tenant/host/listings/new" variant="secondary">
+                Post a room listing
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {user ? (
+          <div className="host-listing-toolbar">
+            <div className="listing-filter-chip-row">
+              {hostListingFilters.map((filterOption) => (
+                <button
+                  aria-pressed={myListingFilter === filterOption.value}
+                  className={`listing-filter-chip${myListingFilter === filterOption.value ? ' active' : ''}`}
+                  key={`seeker-posted-${filterOption.value}`}
+                  onClick={() => setMyListingFilter(filterOption.value)}
+                  type="button"
+                >
+                  {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!user ? (
+          <Card className="feed-card">
+            <strong>Sign in to see your room posts</strong>
+            <p className="feed-copy">
+              Once you sign in, every room listing you create will be visible here with edit and status controls.
+            </p>
+            <Button to="/profile" variant="secondary">
+              Open profile
+            </Button>
+          </Card>
+        ) : filteredMyListings.length === 0 && !isLoading ? (
+          seekerPostedListingsEmptyState
+        ) : (
+          <div className="host-listing-grid">
+            {filteredMyListings.map((listing) => (
+              <HostListingCard
+                busyAction={busyListingAction}
+                key={`seeker-posted-${listing.id}`}
                 listing={listing}
                 onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
                 onEdit={startEditingListing}
@@ -3725,6 +4195,77 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   Add amenity
                 </Button>
               </div>
+
+              <div className="post-form-section-head">
+                <strong>Nearby offices or tech parks</strong>
+                <span className="muted">Add the workplaces this room is convenient for. You can add up to 5.</span>
+              </div>
+
+              <div className="form-grid two-column">
+                <div className="field">
+                  <label htmlFor="listing-nearby-suggestion">Popular picks</label>
+                  <select
+                    id="listing-nearby-suggestion"
+                    onChange={(event) => setListingNearbyPlaceInput(event.target.value)}
+                    value={getNearbyPlaceSuggestions(listingNearbyPlaceType).includes(listingNearbyPlaceInput) ? listingNearbyPlaceInput : ''}
+                  >
+                    <option value="">Choose a popular place</option>
+                    {getNearbyPlaceSuggestions(listingNearbyPlaceType).map((place) => (
+                      <option key={`listing-nearby-suggestion-${listingNearbyPlaceType}-${place}`} value={place}>
+                        {place}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="listing-nearby-place">Office or tech park</label>
+                  <input
+                    id="listing-nearby-place"
+                    onChange={(event) => setListingNearbyPlaceInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        addListingNearbyPlace()
+                      }
+                    }}
+                    placeholder="Ecospace, ITPL, Manyata..."
+                    value={listingNearbyPlaceInput}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="listing-nearby-type">Type</label>
+                  <select
+                    id="listing-nearby-type"
+                    onChange={(event) => setListingNearbyPlaceType(event.target.value as NearbyPlaceType)}
+                    value={listingNearbyPlaceType}
+                  >
+                    <option value="tech_park">Tech park</option>
+                    <option value="company">Office / company</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="amenity-input-row">
+                <Button onClick={addListingNearbyPlace} variant="secondary">
+                  Add nearby place
+                </Button>
+              </div>
+
+              {replaceTenantForm.nearbyPlaces.length > 0 ? (
+                <div className="nearby-place-chip-row">
+                  {replaceTenantForm.nearbyPlaces.map((place) => (
+                    <button
+                      className="listing-filter-chip active"
+                      key={`listing-nearby-${place.type}-${place.name}`}
+                      onClick={() => removeListingNearbyPlace(place)}
+                      type="button"
+                    >
+                      {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
+                      <X size={14} />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </>
           )}
 
@@ -3922,6 +4463,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   <span className="muted">Images</span>
                   <strong>{listingImages.length} uploaded</strong>
                 </div>
+                <div className="listing-details-fact">
+                  <span className="muted">Nearby workplaces</span>
+                  <strong>
+                    {replaceTenantForm.nearbyPlaces.length > 0
+                      ? `${replaceTenantForm.nearbyPlaces.length} added`
+                      : 'None added yet'}
+                  </strong>
+                </div>
               </div>
 
               {selectedListingLocation ? <LocationSummaryCard compact location={selectedListingLocation} /> : null}
@@ -3975,6 +4524,444 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         sourceIntent: housingIntentValues.findRoom,
       } as ListingDetailsRouteState,
     })
+  }
+
+  function renderHousingNeedsPanel() {
+    return (
+      <div className="hub-panel host-dashboard-panel">
+        <div className="hub-panel-head">
+          <div>
+            <span className="muted">Your room need</span>
+            <h2>Post what you are looking for</h2>
+            <p className="panel-subtitle">
+              Keep this short and structured. Cirvo uses these preferences to sort the feed into stronger matches first.
+            </p>
+          </div>
+          <Badge tone="green">
+            {housingNeeds.filter((need) => need.status === 'OPEN').length} active
+          </Badge>
+        </div>
+
+        {!user ? (
+          <Card className="feed-card">
+            <strong>Sign in to post your room need</strong>
+            <p className="feed-copy">
+              Once you are signed in, you can post your preferences and Cirvo will start matching the feed around them.
+            </p>
+            <Button to="/profile" variant="secondary">
+              Open profile
+            </Button>
+          </Card>
+        ) : (
+          <>
+            <Card className="feed-card">
+              <div className="listing-filter-grid">
+                <div className="field">
+                  <span>City</span>
+                  <select
+                    onChange={(event) => {
+                      setHousingNeedCityOption(event.target.value)
+                      if (event.target.value !== otherCityOptionValue) {
+                        setHousingNeedCustomCity('')
+                      }
+                    }}
+                    value={housingNeedCityOption}
+                  >
+                    <option value="">Select tier 1 city</option>
+                    {majorCities.map((city) => (
+                      <option key={`housing-need-city-${city}`} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                    <option value={otherCityOptionValue}>Other city</option>
+                  </select>
+                </div>
+                {housingNeedCityOption === otherCityOptionValue ? (
+                  <label className="field">
+                    <span>Enter city</span>
+                    <input
+                      onChange={(event) => setHousingNeedCustomCity(event.target.value)}
+                      placeholder="Enter the city"
+                      value={housingNeedCustomCity}
+                    />
+                  </label>
+                ) : null}
+                <label className="field">
+                  <span>Locality</span>
+                  <input
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, locality: event.target.value }))
+                    }
+                    placeholder="Whitefield, HSR Layout, Koramangala..."
+                    value={housingNeedForm.locality}
+                  />
+                </label>
+                <label className="field">
+                  <span>Preferred monthly rent</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, maxRentAmount: event.target.value }))
+                    }
+                    placeholder="20000"
+                    value={housingNeedForm.maxRentAmount}
+                  />
+                </label>
+                <label className="field">
+                  <span>Move-in date</span>
+                  <input
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, moveInDate: event.target.value }))
+                    }
+                    type="date"
+                    value={housingNeedForm.moveInDate}
+                  />
+                </label>
+              </div>
+
+              <div className="listing-filter-grid">
+                <label className="field">
+                  <span>Preferred deposit</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, maxDepositAmount: event.target.value }))
+                    }
+                    placeholder="80000"
+                    value={housingNeedForm.maxDepositAmount}
+                  />
+                </label>
+                <label className="field">
+                  <span>Preferred maintenance</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, maxMaintenanceAmount: event.target.value }))
+                    }
+                    placeholder="2500"
+                    value={housingNeedForm.maxMaintenanceAmount}
+                  />
+                </label>
+              </div>
+
+              <div className="listing-filter-grid">
+                <label className="field">
+                  <span>Property type</span>
+                  <select
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({
+                        ...current,
+                        preferredPropertyType: event.target.value,
+                      }))
+                    }
+                    value={housingNeedForm.preferredPropertyType}
+                  >
+                    {propertyTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {formatEnum(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Occupancy</span>
+                  <select
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({
+                        ...current,
+                        preferredOccupancy: event.target.value,
+                      }))
+                    }
+                    value={housingNeedForm.preferredOccupancy}
+                  >
+                    {occupancyTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {formatEnum(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Urgency</span>
+                  <select
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({ ...current, urgencyLevel: event.target.value }))
+                    }
+                    value={housingNeedForm.urgencyLevel}
+                  >
+                    <option value="FLEXIBLE">Flexible</option>
+                    <option value="THIS_WEEK">This week</option>
+                    <option value="IMMEDIATE">Immediate</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Preferred contact</span>
+                  <select
+                    onChange={(event) =>
+                      setHousingNeedForm((current) => ({
+                        ...current,
+                        preferredContactMode: event.target.value,
+                      }))
+                    }
+                    value={housingNeedForm.preferredContactMode}
+                  >
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="CALL">Call</option>
+                    <option value="CHAT">Chat</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="field">
+                <span>Preferred amenities</span>
+                <span className="muted">Select the must-have basics so Cirvo can surface tighter matches.</span>
+              </label>
+
+              <div className="amenity-chip-grid">
+                {standardAmenities.map((amenity) => (
+                  <button
+                    aria-pressed={housingNeedForm.preferredAmenities.includes(amenity)}
+                    className={`listing-filter-chip${housingNeedForm.preferredAmenities.includes(amenity) ? ' active' : ''}`}
+                    key={`housing-need-amenity-${amenity}`}
+                    onClick={() => toggleHousingNeedAmenity(amenity)}
+                    type="button"
+                  >
+                    {amenity}
+                  </button>
+                ))}
+              </div>
+
+              <div className="amenity-input-row">
+                <input
+                  onChange={(event) => setHousingNeedAmenityInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      addCustomHousingNeedAmenity()
+                    }
+                  }}
+                  placeholder="Add a custom amenity"
+                  value={housingNeedAmenityInput}
+                />
+                <Button onClick={addCustomHousingNeedAmenity} variant="secondary">
+                  Add amenity
+                </Button>
+              </div>
+
+              <div className="post-form-section-head">
+                <strong>Nearby offices or tech parks</strong>
+                <span className="muted">Add the work hubs you want to stay close to. You can add up to 5.</span>
+              </div>
+
+              <div className="form-grid two-column">
+                <label className="field">
+                  <span>Popular picks</span>
+                  <select
+                    onChange={(event) => setHousingNeedNearbyPlaceInput(event.target.value)}
+                    value={getNearbyPlaceSuggestions(housingNeedNearbyPlaceType).includes(housingNeedNearbyPlaceInput) ? housingNeedNearbyPlaceInput : ''}
+                  >
+                    <option value="">Choose a popular place</option>
+                    {getNearbyPlaceSuggestions(housingNeedNearbyPlaceType).map((place) => (
+                      <option key={`housing-need-nearby-suggestion-${housingNeedNearbyPlaceType}-${place}`} value={place}>
+                        {place}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Office or tech park</span>
+                  <input
+                    onChange={(event) => setHousingNeedNearbyPlaceInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        addHousingNeedNearbyPlace()
+                      }
+                    }}
+                    placeholder="Ecospace, ITPL, RMZ Ecoworld..."
+                    value={housingNeedNearbyPlaceInput}
+                  />
+                </label>
+                <label className="field">
+                  <span>Type</span>
+                  <select
+                    onChange={(event) => setHousingNeedNearbyPlaceType(event.target.value as NearbyPlaceType)}
+                    value={housingNeedNearbyPlaceType}
+                  >
+                    <option value="tech_park">Tech park</option>
+                    <option value="company">Office / company</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="amenity-input-row">
+                <Button onClick={addHousingNeedNearbyPlace} variant="secondary">
+                  Add workplace preference
+                </Button>
+              </div>
+
+              {housingNeedForm.nearbyPlaces.length > 0 ? (
+                <div className="nearby-place-chip-row">
+                  {housingNeedForm.nearbyPlaces.map((place) => (
+                    <button
+                      className="listing-filter-chip active"
+                      key={`housing-need-nearby-${place.type}-${place.name}`}
+                      onClick={() => removeHousingNeedNearbyPlace(place)}
+                      type="button"
+                    >
+                      {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
+                      <X size={14} />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <label className="field">
+                <span>Description</span>
+                <textarea
+                  onChange={(event) =>
+                    setHousingNeedForm((current) => ({ ...current, notes: event.target.value }))
+                  }
+                  placeholder="Share your move-in context, flatmate preferences, budget flexibility, and any deal-breakers."
+                  rows={4}
+                  value={housingNeedForm.notes}
+                />
+              </label>
+
+              <div className="feed-card-actions">
+                <Button
+                  disabled={isSavingHousingNeed}
+                  onClick={() => void handleSaveHousingNeed()}
+                >
+                  {isSavingHousingNeed ? 'Posting...' : 'Post your need'}
+                </Button>
+                <Button
+                  disabled={isSavingHousingNeed}
+                  onClick={resetHousingNeedForm}
+                  variant="ghost"
+                >
+                  Clear form
+                </Button>
+              </div>
+            </Card>
+
+            <div className="host-inquiry-grid">
+              {housingNeeds.length === 0 ? (
+                <Card className="feed-card">
+                  <strong>No room needs posted yet</strong>
+                  <p className="feed-copy">
+                    Post a need once and the listing feed will start prioritizing your strongest matches.
+                  </p>
+                </Card>
+              ) : (
+                housingNeeds.map((housingNeed) => (
+                  <Card className="listing-inquiry-card requester-inquiry-card" key={housingNeed.id}>
+                    <div className="inquiry-card-top">
+                      <div>
+                        <strong>
+                          {housingNeed.locality ? `${housingNeed.locality}, ${housingNeed.city}` : housingNeed.city}
+                        </strong>
+                        <p>
+                          {formatEnum(housingNeed.preferredPropertyType)} · {formatEnum(housingNeed.preferredOccupancy)}
+                        </p>
+                      </div>
+                      <div className="listing-card-badges">
+                        <Badge tone={housingNeed.status === 'OPEN' ? 'green' : 'gray'}>
+                          {formatEnum(housingNeed.status) ?? housingNeed.status}
+                        </Badge>
+                        {activeHousingNeed?.id === housingNeed.id ? (
+                          <Badge tone="purple">Driving matches</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="inquiry-meta-row">
+                      <span>Move in {formatShortDate(housingNeed.moveInDate)}</span>
+                      <span>
+                        {housingNeed.maxRentAmount ? `Rent up to ${formatMoney(housingNeed.maxRentAmount)}` : 'Flexible rent'}
+                      </span>
+                    </div>
+
+                    {housingNeed.maxDepositAmount || housingNeed.maxMaintenanceAmount ? (
+                      <div className="inquiry-meta-row">
+                        <span>
+                          {housingNeed.maxDepositAmount
+                            ? `Deposit up to ${formatMoney(housingNeed.maxDepositAmount)}`
+                            : 'Deposit flexible'}
+                        </span>
+                        <span>
+                          {housingNeed.maxMaintenanceAmount
+                            ? `Maintenance up to ${formatMoney(housingNeed.maxMaintenanceAmount)}`
+                            : 'Maintenance flexible'}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {housingNeed.preferredAmenities.length > 0 ? (
+                      <div className="listing-details-section">
+                        <strong>Preferred amenities</strong>
+                        <div className="nearby-place-chip-row compact">
+                          {housingNeed.preferredAmenities.map((amenity) => (
+                            <span className="nearby-place-chip static" key={`${housingNeed.id}-amenity-${amenity}`}>
+                              {amenity}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {housingNeed.nearbyPlaces.length > 0 ? (
+                      <div className="listing-details-section">
+                        <strong>Preferred workplaces</strong>
+                        <div className="nearby-place-chip-row compact">
+                          {housingNeed.nearbyPlaces.map((place) => (
+                            <span className="nearby-place-chip static" key={`${housingNeed.id}-${place.type}-${place.name}`}>
+                              {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {housingNeed.notes ? (
+                      <div className="listing-details-section">
+                        <strong>Description</strong>
+                        <p className="feed-copy">{housingNeed.notes}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="inquiry-actions">
+                      {housingNeed.status === 'OPEN' ? (
+                        <Button
+                          disabled={busyInquiryAction === `housing-need-${housingNeed.id}-CLOSED`}
+                          onClick={() => void handleHousingNeedStatusChange(housingNeed, 'CLOSED')}
+                          variant="secondary"
+                        >
+                          {busyInquiryAction === `housing-need-${housingNeed.id}-CLOSED` ? 'Closing...' : 'Close post'}
+                        </Button>
+                      ) : (
+                        <Button
+                          disabled={busyInquiryAction === `housing-need-${housingNeed.id}-OPEN`}
+                          onClick={() => void handleHousingNeedStatusChange(housingNeed, 'OPEN')}
+                        >
+                          {busyInquiryAction === `housing-need-${housingNeed.id}-OPEN` ? 'Reopening...' : 'Reopen post'}
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => navigate('/find-tenant')}
+                        variant="ghost"
+                      >
+                        View matches
+                      </Button>
+                    </div>
+                  </Card>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
   }
 
   function renderRequesterInquiriesPanel() {
@@ -4142,7 +5129,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
         <FindRoomSectionChips
           activeInquiryCount={activeRequesterInquiriesCount}
-          liveListingCount={filteredPublicListings.length}
+          activeNeedCount={housingNeeds.filter((need) => need.status === 'OPEN').length}
+          liveListingCount={rankedPublicListings.length}
+          postedListingCount={activeMyListingsCount}
           user={user}
         />
 
@@ -4186,30 +5175,32 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             </div>
           )}
 
-          {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries && !shouldShowRequesterInquiries ? (
+          {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries && !shouldShowRequesterInquiries && !shouldShowSeekerNeeds && !shouldShowSeekerPostedListings ? (
             renderFindRoomPage(
-              'Browse live rooms with a dedicated seeker workspace.',
-              'Use the chips to move between live listings and the inquiries you have already sent.',
+              activeHousingNeed
+                ? 'Your best room matches are ranked first.'
+                : 'Browse live rooms with a dedicated seeker workspace.',
+              activeHousingNeed
+                ? 'Cirvo is using your latest room need to rank better fits higher across the feed.'
+                : 'Use the chips to move between live listings, your room-need post, your room posts, and the inquiries you have already sent.',
               <div className="hub-panel hub-panel-wide live-feed-panel">
               <div className="hub-panel-head live-feed-head">
                 <div>
                   <span className="muted">Intent: Find room</span>
                   <h2>Live room listings</h2>
                   <p className="panel-subtitle">
-                    Explore published listings only. If you are signed in, your own posts stay hidden here so this feed remains purely for discovery.
+                    {activeHousingNeed
+                      ? `Matching against ${activeHousingNeed.locality ? `${activeHousingNeed.locality}, ` : ''}${activeHousingNeed.city} with ${formatEnum(activeHousingNeed.preferredOccupancy)?.toLowerCase()} occupancy preferences.`
+                      : 'Explore published listings only. If you are signed in, your own posts stay hidden here so this feed remains purely for discovery.'}
                   </p>
                 </div>
                 <div className="hub-panel-actions">
-                  <Badge tone="green">{isLoading ? 'Loading' : `${filteredPublicListings.length} live`}</Badge>
-                  {user ? (
-                    <Button onClick={() => handleIntentChange(housingIntentValues.tenantReplacement)} variant="secondary">
-                      Switch to tenant replacement
-                    </Button>
-                  ) : (
+                  <Badge tone="green">{isLoading ? 'Loading' : `${rankedPublicListings.length} live`}</Badge>
+                  {!user ? (
                     <Button to="/profile" variant="secondary">
                       Sign in to host
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -4220,7 +5211,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 </div>
                 <div className="listing-filter-toolbar-actions">
                   <span className="listing-filter-status">
-                    {filteredPublicListings.length} result{filteredPublicListings.length === 1 ? '' : 's'}
+                    {rankedPublicListings.length} result{rankedPublicListings.length === 1 ? '' : 's'}
                   </span>
                   <div className="listing-toolbar-actions">
                     <Button
@@ -4443,19 +5434,26 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               </div>
 
               <div className="feed-grid listing-feed-grid">
-                {filteredPublicListings.map((listing) => (
+                {rankedPublicListings.map(({ listing, matchSummary }) => (
                   <SearchListingCard
                     existingInquiry={requesterInquiryByListingId[listing.id] ?? null}
                     key={listing.id}
                     listing={listing}
+                    matchSummary={matchSummary}
                   />
                 ))}
 
-                {!isLoading && filteredPublicListings.length === 0 && (
+                {!isLoading && rankedPublicListings.length === 0 && (
                   <Card className="feed-card">
-                    <strong>No live listings match these filters yet</strong>
+                    <strong>
+                      {activeHousingNeed
+                        ? 'No strong matches for your current room need yet'
+                        : 'No live listings match these filters yet'}
+                    </strong>
                     <p className="feed-copy">
-                      Try a broader locality, switch off one or two filters, or clear everything to widen the results.
+                      {activeHousingNeed
+                        ? 'Try broadening locality or budget, or update your room need to widen the matching window.'
+                        : 'Try a broader locality, switch off one or two filters, or clear everything to widen the results.'}
                     </p>
                     {hasActivePublicListingFilters ? (
                       <div className="feed-card-actions">
@@ -4468,6 +5466,18 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 )}
               </div>
             </div>,
+            )
+          ) : shouldShowSeekerNeeds ? (
+            renderFindRoomPage(
+              'Post what you need in under a minute.',
+              'Keep your room search structured so Cirvo can sort better matches to the top of the feed.',
+              renderHousingNeedsPanel(),
+            )
+          ) : shouldShowSeekerPostedListings ? (
+            renderFindRoomPage(
+              'See the room posts you have already created.',
+              'Use this view to manage your own room listings while keeping the main feed focused on discovery.',
+              renderSeekerPostedListingsPanel(),
             )
           ) : shouldShowRequesterInquiries ? (
             renderFindRoomPage(
@@ -4594,12 +5604,16 @@ function TenantReplacementSectionChips({
 }
 
 function FindRoomSectionChips({
+  activeNeedCount,
   activeInquiryCount,
   liveListingCount,
+  postedListingCount,
   user,
 }: {
+  activeNeedCount: number
   activeInquiryCount: number
   liveListingCount: number
+  postedListingCount: number
   user: ReturnType<typeof useAppAuth>['user']
 }) {
   const location = useLocation()
@@ -4612,11 +5626,25 @@ function FindRoomSectionChips({
       tone: 'mint',
     },
     {
+      key: 'needs',
+      label: 'Your room need',
+      meta: user ? (activeNeedCount > 0 ? `${activeNeedCount} active post` : 'Create your first post') : 'Sign in to post',
+      to: user ? '/find-tenant/needs' : '/profile',
+      tone: 'amber',
+    },
+    {
+      key: 'posts',
+      label: 'Your room posts',
+      meta: user ? (postedListingCount > 0 ? `${postedListingCount} active` : 'See your listings') : 'Sign in to host',
+      to: user ? '/find-tenant/posts' : '/profile',
+      tone: 'violet',
+    },
+    {
       key: 'inquiries',
       label: 'Sent inquiries',
       meta: `${activeInquiryCount} active`,
       to: user ? '/find-tenant/inquiries' : '/profile',
-      tone: 'violet',
+      tone: 'mint',
     },
   ] as const
 
@@ -4626,7 +5654,11 @@ function FindRoomSectionChips({
         const isActive =
           link.key === 'listings'
             ? location.pathname === '/find-tenant'
-            : location.pathname.startsWith('/find-tenant/inquiries')
+            : link.key === 'needs'
+              ? location.pathname.startsWith('/find-tenant/needs')
+              : link.key === 'posts'
+                ? location.pathname.startsWith('/find-tenant/posts')
+                : location.pathname.startsWith('/find-tenant/inquiries')
 
         return (
           <NavLink
@@ -4670,12 +5702,31 @@ function makeEmptyReplaceTenantForm(): ReplaceTenantForm {
     depositAmount: '',
     maintenanceAmount: '',
     amenities: [],
+    nearbyPlaces: [],
     propertyType: 'APARTMENT',
     occupancyType: 'SHARED',
     contactMode: 'WHATSAPP',
     contactPhone: '',
     description: '',
     miscCharges: '',
+  }
+}
+
+function makeEmptyHousingNeedForm(): HousingNeedForm {
+  return {
+    city: '',
+    locality: '',
+    maxRentAmount: '',
+    maxDepositAmount: '',
+    maxMaintenanceAmount: '',
+    preferredPropertyType: 'APARTMENT',
+    preferredOccupancy: 'SHARED',
+    preferredAmenities: [],
+    nearbyPlaces: [],
+    moveInDate: '',
+    urgencyLevel: 'FLEXIBLE',
+    preferredContactMode: 'WHATSAPP',
+    notes: '',
   }
 }
 
@@ -4687,6 +5738,135 @@ function makeEmptyInquiryForm(): InquiryForm {
     preferredOccupancy: '',
     preferredVisitAt: '',
     preferredVisitNote: '',
+  }
+}
+
+function normalizeHousingNeeds(housingNeeds: HousingNeed[]) {
+  return housingNeeds.map((housingNeed) => ({
+    ...housingNeed,
+    city: typeof housingNeed.city === 'string' ? housingNeed.city : '',
+    locality: typeof housingNeed.locality === 'string' ? housingNeed.locality : null,
+    maxRentAmount: typeof housingNeed.maxRentAmount === 'number' ? housingNeed.maxRentAmount : null,
+    maxDepositAmount:
+      typeof housingNeed.maxDepositAmount === 'number'
+        ? housingNeed.maxDepositAmount
+        : typeof housingNeed.maxDepositAmount === 'string'
+          ? Number(housingNeed.maxDepositAmount)
+          : null,
+    maxMaintenanceAmount:
+      typeof housingNeed.maxMaintenanceAmount === 'number'
+        ? housingNeed.maxMaintenanceAmount
+        : typeof housingNeed.maxMaintenanceAmount === 'string'
+          ? Number(housingNeed.maxMaintenanceAmount)
+          : null,
+    preferredAmenities: Array.isArray(housingNeed.preferredAmenities) ? housingNeed.preferredAmenities : [],
+    nearbyPlaces: Array.isArray(housingNeed.nearbyPlaces) ? housingNeed.nearbyPlaces : [],
+    moveInDate: typeof housingNeed.moveInDate === 'string' ? housingNeed.moveInDate : '',
+    notes: typeof housingNeed.notes === 'string' ? housingNeed.notes : null,
+    status: (housingNeed.status as HousingNeedStatus) ?? 'OPEN',
+  }))
+}
+
+function calculateListingMatchSummary(listing: Listing, housingNeed: HousingNeed): ListingMatchSummary {
+  let matchScore = 0
+
+  if (normalizeMatchValue(listing.city) === normalizeMatchValue(housingNeed.city)) {
+    matchScore += 40
+  }
+
+  if (
+    normalizeMatchValue(listing.locality) &&
+    normalizeMatchValue(listing.locality) === normalizeMatchValue(housingNeed.locality)
+  ) {
+    matchScore += 25
+  }
+
+  if (typeof listing.rentAmount === 'number' && typeof housingNeed.maxRentAmount === 'number') {
+    if (listing.rentAmount <= housingNeed.maxRentAmount) {
+      matchScore += 15
+    }
+  }
+
+  if (areMoveInDatesClose(listing.moveInDate, housingNeed.moveInDate)) {
+    matchScore += 10
+  }
+
+  if (
+    normalizeMatchValue(listing.occupancyType) === normalizeMatchValue(housingNeed.preferredOccupancy)
+  ) {
+    matchScore += 10
+  }
+
+  const amenityMatches = housingNeed.preferredAmenities.filter((amenity) =>
+    listing.amenities.some((listingAmenity) => normalizeMatchValue(listingAmenity) === normalizeMatchValue(amenity)),
+  ).length
+  const nearbyPlaceMatches = housingNeed.nearbyPlaces.filter((place) =>
+    listing.nearbyPlaces.some(
+      (listingPlace) =>
+        normalizeMatchValue(listingPlace.name) === normalizeMatchValue(place.name) && listingPlace.type === place.type,
+    ),
+  ).length
+
+  const qualityScore =
+    (listing.images.length > 0 ? 30 : 0) +
+    (listing.description.trim().length > 0 ? 20 : 0) +
+    (listing.amenities.length > 0 ? 10 : 0) +
+    (listing.owner.isVerified ? 20 : 0) +
+    (isRecentListing(listing.createdAt) ? 20 : 0)
+
+  const preferenceBoost = Math.min(10, amenityMatches * 5) + Math.min(10, nearbyPlaceMatches * 5)
+  const finalScore = matchScore * 0.7 + qualityScore * 0.3 + preferenceBoost
+
+  return {
+    matchScore,
+    qualityScore,
+    finalScore,
+    label: matchScore >= 80 ? 'BEST_MATCH' : matchScore >= 60 ? 'GOOD_MATCH' : 'POSSIBLE',
+  }
+}
+
+function normalizeMatchValue(value?: string | null) {
+  return value?.trim().toLowerCase() ?? ''
+}
+
+function areMoveInDatesClose(first?: string | null, second?: string | null) {
+  if (!first || !second) {
+    return false
+  }
+
+  const firstDate = new Date(first)
+  const secondDate = new Date(second)
+  const diffInDays = Math.abs(firstDate.getTime() - secondDate.getTime()) / (1000 * 60 * 60 * 24)
+
+  return diffInDays <= 14
+}
+
+function isRecentListing(createdAt: string) {
+  const listingCreatedAt = new Date(createdAt)
+  const diffInDays = Math.abs(Date.now() - listingCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
+
+  return diffInDays <= 14
+}
+
+function formatListingMatchLabel(label: ListingMatchLabel) {
+  switch (label) {
+    case 'BEST_MATCH':
+      return 'Best match'
+    case 'GOOD_MATCH':
+      return 'Good match'
+    case 'POSSIBLE':
+      return 'Possible'
+  }
+}
+
+function getListingMatchTone(label: ListingMatchLabel) {
+  switch (label) {
+    case 'BEST_MATCH':
+      return 'green'
+    case 'GOOD_MATCH':
+      return 'purple'
+    case 'POSSIBLE':
+      return 'gray'
   }
 }
 
@@ -5241,6 +6421,14 @@ function inferInquiryTimelineTone(message: string) {
 
 function normalizeAmenityName(value: string) {
   return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeNearbyPlaceName(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function getNearbyPlaceSuggestions(type: NearbyPlaceType): readonly string[] {
+  return type === 'tech_park' ? popularTechParks : popularOffices
 }
 
 function resolveCityValue(cityOption: string, customCity: string) {

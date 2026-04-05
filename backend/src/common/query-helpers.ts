@@ -23,6 +23,15 @@ export const listInclude = {
   },
 } as const;
 
+export const housingNeedInclude = {
+  ...listInclude,
+  nearbyPlaces: {
+    orderBy: {
+      createdAt: 'asc',
+    },
+  },
+} as const;
+
 export const listingInclude = {
   owner: {
     select: {

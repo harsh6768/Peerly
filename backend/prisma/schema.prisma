@@ -445,6 +445,9 @@ model HousingNeed {
   preferredPropertyType PropertyType
   preferredOccupancy   OccupancyType
   maxRentAmount        Int?
+  maxDepositAmount     Int?
+  maxMaintenanceAmount Int?
+  preferredAmenities   String[]          @default([])
   moveInDate           DateTime
   urgencyLevel         UrgencyLevel      @default(FLEXIBLE)
   preferredContactMode ContactMode       @default(WHATSAPP)
@@ -454,10 +457,24 @@ model HousingNeed {
   updatedAt            DateTime          @updatedAt
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization         Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  nearbyPlaces         HousingNeedNearby[]
 
   @@index([organizationId, status])
   @@index([city, locality, status])
   @@index([moveInDate, urgencyLevel])
+}
+
+model HousingNeedNearby {
+  id            String          @id @default(cuid())
+  housingNeedId String
+  name          String          @db.VarChar(120)
+  type          NearbyPlaceType
+  createdAt     DateTime        @default(now())
+  housingNeed   HousingNeed     @relation(fields: [housingNeedId], references: [id], onDelete: Cascade)
+
+  @@unique([housingNeedId, name])
+  @@index([housingNeedId, createdAt])
+  @@index([name])
 }
 
 model ListingInquiry {
