@@ -4,6 +4,7 @@ export type AuthenticatedUser = {
   id: string;
   name: string;
   email: string;
+  isAdmin: boolean;
   phone: string | null;
   avatarUrl: string | null;
   authProvider: AuthProvider;

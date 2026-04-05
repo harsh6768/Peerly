@@ -6,6 +6,7 @@ import {
 import { AuthProvider, Prisma, VerificationType } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+import { isAdminEmail } from '../../common/admin-access';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseGoogleLoginDto } from './dto/supabase-google-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -219,6 +220,7 @@ export class AuthService {
       id: user.id,
       name: user.fullName,
       email: user.email,
+      isAdmin: isAdminEmail(user.email),
       phone: user.phone,
       avatarUrl: user.avatarUrl,
       authProvider: user.authProvider,

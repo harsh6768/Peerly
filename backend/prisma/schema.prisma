@@ -241,12 +241,15 @@ model User {
   workEmail                   String?
   companyName                 String?
   linkedinUrl                 String?
+  linkedinProofCode           String?
   verificationStatus          VerificationStatus?
+  phoneVerifiedAt             DateTime?
   isActive                    Boolean                   @default(true)
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
   authSessions                AuthSession[]
   workEmailOtps               WorkEmailOtp[]
+  phoneOtps                   PhoneOtp[]
   memberships                 UserOrganizationMembership[]
   verificationProfile         VerificationProfile?
   ownedListings               Listing[]                 @relation("ListingOwner")
@@ -259,6 +262,7 @@ model User {
   listingInquiries            ListingInquiry[]          @relation("InquiryRequester")
   receivedListingInquiries    ListingInquiry[]          @relation("InquiryListingOwner")
   reportsFiled                Report[]                  @relation("ReportReporter")
+  reportsReviewed             Report[]                  @relation("ReportReviewer")
 }
 
 model Organization {
@@ -299,6 +303,7 @@ model VerificationProfile {
   userId               String            @unique
   companyEmailVerified Boolean           @default(false)
   linkedinVerified     Boolean           @default(false)
+  phoneVerified        Boolean           @default(false)
   governmentIdVerified Boolean           @default(false)
   verificationBadge    VerificationBadge @default(NONE)
   trustScore           Int               @default(0)
@@ -335,6 +340,22 @@ model WorkEmailOtp {
 
   @@index([userId, createdAt])
   @@index([workEmail, createdAt])
+}
+
+model PhoneOtp {
+  id           String   @id @default(cuid())
+  userId       String
+  phone        String
+  otpHash      String
+  attemptCount Int      @default(0)
+  maxAttempts  Int      @default(3)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([phone, createdAt])
 }
 
 model Listing {
@@ -583,14 +604,18 @@ model Message {
 model Report {
   id               String       @id @default(cuid())
   reportedByUserId String
+  reviewedByUserId String?
   entityType       EntityType
   entityId         String
   reason           ReportReason
   notes            String?      @db.Text
   status           ReportStatus @default(OPEN)
+  reviewNotes      String?      @db.Text
+  reviewedAt       DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   reportedBy       User         @relation("ReportReporter", fields: [reportedByUserId], references: [id], onDelete: Cascade)
+  reviewedBy       User?        @relation("ReportReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId, status])
 }

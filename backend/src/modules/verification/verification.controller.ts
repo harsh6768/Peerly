@@ -4,7 +4,9 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppSessionGuard } from '../auth/app-session.guard';
 import { CurrentSession } from '../auth/current-session.decorator';
 import type { AuthenticatedSession } from '../auth/auth.types';
+import { ConfirmPhoneOtpDto } from './dto/confirm-phone-otp.dto';
 import { ConfirmWorkEmailOtpDto } from './dto/confirm-work-email-otp.dto';
+import { RequestPhoneOtpDto } from './dto/request-phone-otp.dto';
 import { RequestWorkEmailOtpDto } from './dto/request-work-email-otp.dto';
 import { ReviewLinkedinVerificationDto } from './dto/review-linkedin-verification.dto';
 import { SubmitLinkedinVerificationDto } from './dto/submit-linkedin-verification.dto';
@@ -35,6 +37,18 @@ export class VerificationController {
     return this.verificationService.requestWorkEmailOtp(session, dto);
   }
 
+  @ApiOperation({ summary: 'Request an OTP for phone verification' })
+  @ApiBearerAuth()
+  @ApiBody({ type: RequestPhoneOtpDto })
+  @UseGuards(AppSessionGuard)
+  @Post('phone/request-otp')
+  requestPhoneOtp(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: RequestPhoneOtpDto,
+  ) {
+    return this.verificationService.requestPhoneOtp(session, dto);
+  }
+
   @ApiOperation({ summary: 'Confirm the OTP for work email verification' })
   @ApiBearerAuth()
   @ApiBody({ type: ConfirmWorkEmailOtpDto })
@@ -45,6 +59,18 @@ export class VerificationController {
     @Body() dto: ConfirmWorkEmailOtpDto,
   ) {
     return this.verificationService.confirmWorkEmailOtp(session, dto);
+  }
+
+  @ApiOperation({ summary: 'Confirm the OTP for phone verification' })
+  @ApiBearerAuth()
+  @ApiBody({ type: ConfirmPhoneOtpDto })
+  @UseGuards(AppSessionGuard)
+  @Post('phone/confirm')
+  confirmPhoneOtp(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: ConfirmPhoneOtpDto,
+  ) {
+    return this.verificationService.confirmPhoneOtp(session, dto);
   }
 
   @ApiOperation({ summary: 'Submit LinkedIn verification for manual review' })
@@ -68,10 +94,15 @@ export class VerificationController {
   }
 
   @ApiOperation({ summary: 'Approve or reject a LinkedIn verification request' })
+  @ApiBearerAuth()
   @ApiBody({ type: ReviewLinkedinVerificationDto })
+  @UseGuards(AppSessionGuard)
   @Post('linkedin/review')
-  reviewLinkedinVerification(@Body() dto: ReviewLinkedinVerificationDto) {
-    return this.verificationService.reviewLinkedinVerification(dto);
+  reviewLinkedinVerification(
+    @CurrentSession() session: AuthenticatedSession,
+    @Body() dto: ReviewLinkedinVerificationDto,
+  ) {
+    return this.verificationService.reviewLinkedinVerification(session, dto);
   }
 
   @ApiOperation({ summary: 'Get verification funnel metrics for the MVP' })

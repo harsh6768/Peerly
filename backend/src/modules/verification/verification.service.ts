@@ -8,10 +8,13 @@ import {
 import { Prisma, VerificationBadge, VerificationStatus, VerificationType } from '@prisma/client';
 import { createHash, randomInt } from 'node:crypto';
 
+import { assertAdminSession } from '../../common/admin-access';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { ConfirmWorkEmailOtpDto } from './dto/confirm-work-email-otp.dto';
+import { ConfirmPhoneOtpDto } from './dto/confirm-phone-otp.dto';
 import { RequestWorkEmailOtpDto } from './dto/request-work-email-otp.dto';
+import { RequestPhoneOtpDto } from './dto/request-phone-otp.dto';
 import { ResendEmailService } from './resend-email.service';
 import { ReviewLinkedinVerificationDto } from './dto/review-linkedin-verification.dto';
 import { SubmitLinkedinVerificationDto } from './dto/submit-linkedin-verification.dto';
@@ -28,6 +31,9 @@ const userSummarySelect = {
   workEmail: true,
   companyName: true,
   linkedinUrl: true,
+  linkedinProofCode: true,
+  phone: true,
+  phoneVerifiedAt: true,
   createdAt: true,
 } satisfies Prisma.UserSelect;
 
@@ -57,6 +63,11 @@ export class VerificationService {
         'Better response rate',
       ],
       availableMethods: [
+        {
+          type: 'PHONE',
+          recommended: false,
+          label: 'Verify with Phone OTP',
+        },
         {
           type: VerificationType.WORK_EMAIL,
           recommended: true,
@@ -165,6 +176,85 @@ export class VerificationService {
     };
   }
 
+  async requestPhoneOtp(session: AuthenticatedSession, dto: RequestPhoneOtpDto) {
+    const phone = dto.phone.trim();
+
+    if (phone.length < 8) {
+      throw new BadRequestException('Enter a valid phone number before requesting verification.');
+    }
+
+    const recentRequestCount = await this.prisma.phoneOtp.count({
+      where: {
+        userId: session.user.id,
+        createdAt: {
+          gte: new Date(Date.now() - 1000 * 60 * 15),
+        },
+      },
+    });
+
+    if (recentRequestCount >= 3) {
+      throw new HttpException(
+        'Too many phone verification requests. Please wait 15 minutes before trying again.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const lastRequest = await this.prisma.phoneOtp.findFirst({
+      where: {
+        userId: session.user.id,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (lastRequest && Date.now() - lastRequest.createdAt.getTime() < 1000 * 60) {
+      throw new HttpException(
+        'Please wait at least 60 seconds before requesting a new phone OTP.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    await this.prisma.phoneOtp.updateMany({
+      where: {
+        userId: session.user.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    const otp = this.generateOtp();
+
+    await this.prisma.phoneOtp.create({
+      data: {
+        userId: session.user.id,
+        phone,
+        otpHash: this.hashOtp(otp),
+        expiresAt: new Date(Date.now() + 1000 * 60 * 5),
+      },
+    });
+
+    await this.prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        phone,
+      },
+    });
+
+    return {
+      success: true,
+      delivery: {
+        channel: 'sms',
+        provider: 'preview',
+        destination: this.maskPhone(phone),
+        expiresInMinutes: 5,
+      },
+      otpPreview: process.env.NODE_ENV === 'production' ? undefined : otp,
+    };
+  }
+
   async confirmWorkEmailOtp(session: AuthenticatedSession, dto: ConfirmWorkEmailOtpDto) {
     const workEmail = dto.workEmail.trim().toLowerCase();
     const otpRecord = await this.prisma.workEmailOtp.findFirst({
@@ -243,6 +333,79 @@ export class VerificationService {
     return this.getMyVerificationStatus(session);
   }
 
+  async confirmPhoneOtp(session: AuthenticatedSession, dto: ConfirmPhoneOtpDto) {
+    const phone = dto.phone.trim();
+    const otpRecord = await this.prisma.phoneOtp.findFirst({
+      where: {
+        userId: session.user.id,
+        phone,
+        usedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (!otpRecord) {
+      throw new NotFoundException('No active OTP was found for this phone number.');
+    }
+
+    if (otpRecord.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('This OTP has expired. Please request a new one.');
+    }
+
+    if (otpRecord.attemptCount >= otpRecord.maxAttempts) {
+      throw new BadRequestException('Maximum OTP attempts reached. Please request a new OTP.');
+    }
+
+    if (otpRecord.otpHash !== this.hashOtp(dto.otp)) {
+      await this.prisma.phoneOtp.update({
+        where: { id: otpRecord.id },
+        data: {
+          attemptCount: {
+            increment: 1,
+          },
+        },
+      });
+
+      throw new BadRequestException('Invalid OTP.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.phoneOtp.update({
+        where: { id: otpRecord.id },
+        data: {
+          usedAt: new Date(),
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          phone,
+          phoneVerifiedAt: new Date(),
+        },
+      }),
+      this.prisma.verificationProfile.upsert({
+        where: { userId: session.user.id },
+        update: {
+          phoneVerified: true,
+          trustScore: {
+            increment: 12,
+          },
+          lastVerifiedAt: new Date(),
+        },
+        create: {
+          userId: session.user.id,
+          phoneVerified: true,
+          trustScore: 12,
+          lastVerifiedAt: new Date(),
+        },
+      }),
+    ]);
+
+    return this.getMyVerificationStatus(session);
+  }
+
   async submitLinkedinVerification(session: AuthenticatedSession, dto: SubmitLinkedinVerificationDto) {
     const linkedinUrl = dto.linkedinUrl.trim();
     this.assertLinkedinUrl(linkedinUrl);
@@ -251,6 +414,7 @@ export class VerificationService {
       where: { id: session.user.id },
       data: {
         linkedinUrl,
+        linkedinProofCode: dto.proofCode?.trim() || null,
         verificationType: VerificationType.LINKEDIN,
         verificationStatus: VerificationStatus.PENDING,
         isVerified: false,
@@ -305,6 +469,7 @@ export class VerificationService {
         where: { id: session.user.id },
         data: {
           linkedinUrl: null,
+          linkedinProofCode: null,
           verificationType: null,
           verificationStatus: null,
           isVerified: false,
@@ -334,7 +499,12 @@ export class VerificationService {
     };
   }
 
-  async reviewLinkedinVerification(dto: ReviewLinkedinVerificationDto) {
+  async reviewLinkedinVerification(
+    session: AuthenticatedSession,
+    dto: ReviewLinkedinVerificationDto,
+  ) {
+    assertAdminSession(session);
+
     const existingUser = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: userSummarySelect,
@@ -382,7 +552,7 @@ export class VerificationService {
   }
 
   async getVerificationMetrics() {
-    const [totalUsers, verifiedUsers, pendingLinkedinReviews, boostedListings, publishedListings] =
+    const [totalUsers, verifiedUsers, pendingLinkedinReviews, phoneVerifiedUsers, boostedListings, publishedListings] =
       await Promise.all([
         this.prisma.user.count(),
         this.prisma.user.count({
@@ -394,6 +564,13 @@ export class VerificationService {
           where: {
             verificationType: VerificationType.LINKEDIN,
             verificationStatus: VerificationStatus.PENDING,
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            phoneVerifiedAt: {
+              not: null,
+            },
           },
         }),
         this.prisma.listing.count({
@@ -409,6 +586,7 @@ export class VerificationService {
       verifiedUsers,
       verificationRate: totalUsers === 0 ? 0 : Number(((verifiedUsers / totalUsers) * 100).toFixed(1)),
       pendingLinkedinReviews,
+      phoneVerifiedUsers,
       boostedListings,
       publishedListings,
       trackedMetrics: [
@@ -455,6 +633,14 @@ export class VerificationService {
     return `${visible}${'*'.repeat(Math.max(localPart.length - 2, 2))}@${domain}`;
   }
 
+  private maskPhone(phone: string) {
+    if (phone.length <= 4) {
+      return phone;
+    }
+
+    return `${'*'.repeat(Math.max(phone.length - 4, 4))}${phone.slice(-4)}`;
+  }
+
   private assertLinkedinUrl(linkedinUrl: string) {
     const url = new URL(linkedinUrl);
     const hostname = url.hostname.replace(/^www\./, '').toLowerCase();
@@ -477,6 +663,9 @@ export class VerificationService {
       workEmail: user.workEmail,
       companyName: user.companyName,
       linkedinUrl: user.linkedinUrl,
+      linkedinProofCode: user.linkedinProofCode,
+      phone: user.phone,
+      phoneVerifiedAt: user.phoneVerifiedAt,
       createdAt: user.createdAt,
       statusLabel: user.isVerified
         ? 'Verified'
@@ -487,6 +676,7 @@ export class VerificationService {
         user.isVerified ? 'Verified Professional' : null,
         user.companyName ? `Company: ${user.companyName}` : null,
         user.linkedinUrl ? 'LinkedIn' : null,
+        user.phoneVerifiedAt ? 'Phone verified' : null,
       ].filter(Boolean),
     };
   }

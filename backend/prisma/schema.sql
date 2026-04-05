@@ -110,7 +110,9 @@ CREATE TABLE "User" (
     "workEmail" TEXT,
     "companyName" TEXT,
     "linkedinUrl" TEXT,
+    "linkedinProofCode" TEXT,
     "verificationStatus" "VerificationStatus",
+    "phoneVerifiedAt" TIMESTAMP(3),
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -151,6 +153,7 @@ CREATE TABLE "VerificationProfile" (
     "userId" TEXT NOT NULL,
     "companyEmailVerified" BOOLEAN NOT NULL DEFAULT false,
     "linkedinVerified" BOOLEAN NOT NULL DEFAULT false,
+    "phoneVerified" BOOLEAN NOT NULL DEFAULT false,
     "governmentIdVerified" BOOLEAN NOT NULL DEFAULT false,
     "verificationBadge" "VerificationBadge" NOT NULL DEFAULT 'NONE',
     "trustScore" INTEGER NOT NULL DEFAULT 0,
@@ -187,6 +190,21 @@ CREATE TABLE "WorkEmailOtp" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "WorkEmailOtp_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PhoneOtp" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "otpHash" TEXT NOT NULL,
+    "attemptCount" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "usedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PhoneOtp_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -402,11 +420,14 @@ CREATE TABLE "Message" (
 CREATE TABLE "Report" (
     "id" TEXT NOT NULL,
     "reportedByUserId" TEXT NOT NULL,
+    "reviewedByUserId" TEXT,
     "entityType" "EntityType" NOT NULL,
     "entityId" TEXT NOT NULL,
     "reason" "ReportReason" NOT NULL,
     "notes" TEXT,
     "status" "ReportStatus" NOT NULL DEFAULT 'OPEN',
+    "reviewNotes" TEXT,
+    "reviewedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -461,6 +482,12 @@ CREATE INDEX "WorkEmailOtp_userId_createdAt_idx" ON "WorkEmailOtp"("userId", "cr
 
 -- CreateIndex
 CREATE INDEX "WorkEmailOtp_workEmail_createdAt_idx" ON "WorkEmailOtp"("workEmail", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "PhoneOtp_userId_createdAt_idx" ON "PhoneOtp"("userId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "PhoneOtp_phone_createdAt_idx" ON "PhoneOtp"("phone", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "Listing_organizationId_status_idx" ON "Listing"("organizationId", "status");
@@ -562,6 +589,9 @@ ALTER TABLE "AuthSession" ADD CONSTRAINT "AuthSession_userId_fkey" FOREIGN KEY (
 ALTER TABLE "WorkEmailOtp" ADD CONSTRAINT "WorkEmailOtp_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "PhoneOtp" ADD CONSTRAINT "PhoneOtp_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Listing" ADD CONSTRAINT "Listing_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -629,6 +659,9 @@ ALTER TABLE "Message" ADD CONSTRAINT "Message_senderUserId_fkey" FOREIGN KEY ("s
 
 -- AddForeignKey
 ALTER TABLE "Report" ADD CONSTRAINT "Report_reportedByUserId_fkey" FOREIGN KEY ("reportedByUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Report" ADD CONSTRAINT "Report_reviewedByUserId_fkey" FOREIGN KEY ("reviewedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ParcelTrackingEvent" ADD CONSTRAINT "ParcelTrackingEvent_shipmentRequestId_fkey" FOREIGN KEY ("shipmentRequestId") REFERENCES "ShipmentRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;

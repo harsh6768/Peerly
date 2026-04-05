@@ -24,19 +24,21 @@ type VerificationResponse = {
     name: string
     email: string
     phone?: string | null
+    phoneVerifiedAt?: string | null
     isVerified: boolean
     verificationType: 'WORK_EMAIL' | 'LINKEDIN' | null
     verificationStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
     workEmail: string | null
     companyName: string | null
     linkedinUrl: string | null
+    linkedinProofCode?: string | null
     createdAt: string
     statusLabel: string
     badges: string[]
   }
   incentives: string[]
   availableMethods: Array<{
-    type: 'WORK_EMAIL' | 'LINKEDIN'
+    type: 'WORK_EMAIL' | 'LINKEDIN' | 'PHONE'
     recommended: boolean
     label: string
   }>
@@ -47,9 +49,82 @@ type VerificationMetrics = {
   verifiedUsers: number
   verificationRate: number
   pendingLinkedinReviews: number
+  phoneVerifiedUsers: number
   boostedListings: number
   publishedListings: number
   trackedMetrics: string[]
+}
+
+type PhoneOtpRequestResponse = {
+  success: boolean
+  delivery: {
+    destination: string
+    expiresInMinutes: number
+    provider?: 'preview'
+  }
+  otpPreview?: string
+}
+
+type ModerationQueueResponse = {
+  summary: {
+    openReports: number
+    reviewedReports: number
+    actionedReports: number
+    dismissedReports: number
+    pendingLinkedinReviews: number
+  }
+  reports: Array<{
+    id: string
+    entityType: 'LISTING' | 'USER'
+    entityId: string
+    reason: 'SPAM' | 'FAKE_LISTING' | 'HARASSMENT' | 'PROHIBITED_ITEM' | 'OTHER'
+    notes: string | null
+    status: 'OPEN' | 'REVIEWED' | 'ACTIONED' | 'DISMISSED'
+    reviewNotes: string | null
+    createdAt: string
+    updatedAt: string
+    reportedBy: {
+      id: string
+      fullName: string
+      email: string
+    }
+    reviewedBy?: {
+      id: string
+      fullName: string
+      email: string
+    } | null
+    entity:
+      | {
+          id: string
+          title: string
+          city: string | null
+          locality: string | null
+          status: string
+          owner: {
+            id: string
+            fullName: string
+            email: string
+          }
+        }
+      | {
+          id: string
+          fullName: string
+          email: string
+          isActive: boolean
+          isVerified: boolean
+          verificationStatus: string | null
+          phoneVerifiedAt: string | null
+        }
+      | null
+  }>
+  pendingLinkedinReviews: Array<{
+    id: string
+    fullName: string
+    email: string
+    linkedinUrl: string | null
+    linkedinProofCode: string | null
+    createdAt: string
+  }>
 }
 
 type ListingPreview = {
@@ -86,6 +161,8 @@ type LinkedinCancelResponse = {
   message: string
 }
 
+const phoneOtpVerificationEnabled = false
+
 const statusToneMap = {
   Verified: 'green',
   'Pending verification': 'gray',
@@ -117,6 +194,11 @@ export function TrustCenterPage() {
   const [otpPreview, setOtpPreview] = useState<string | null>(null)
   const [otpExpiresInMinutes, setOtpExpiresInMinutes] = useState<number | null>(null)
   const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null)
+  const [phoneOtp, setPhoneOtp] = useState('')
+  const [phoneOtpPreview, setPhoneOtpPreview] = useState<string | null>(null)
+  const [phoneOtpExpiresInMinutes, setPhoneOtpExpiresInMinutes] = useState<number | null>(null)
+  const [phoneOtpExpiresAt, setPhoneOtpExpiresAt] = useState<number | null>(null)
+  const [moderationQueue, setModerationQueue] = useState<ModerationQueueResponse | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   useEffect(() => {
@@ -132,6 +214,7 @@ export function TrustCenterPage() {
     setWorkEmail(user?.workEmail ?? '')
     setPhone(user?.phone ?? '')
     setLinkedinUrl(user?.linkedinUrl ?? '')
+    setPhoneOtp('')
     setIsEditingPhone(false)
   }, [user])
 
@@ -153,23 +236,47 @@ export function TrustCenterPage() {
     return () => window.clearInterval(timer)
   }, [otpExpiresAt])
 
+  useEffect(() => {
+    if (!phoneOtpExpiresAt) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      if (Date.now() >= phoneOtpExpiresAt) {
+        setPhoneOtpExpiresAt(null)
+        setPhoneOtpExpiresInMinutes(null)
+        return
+      }
+
+      setPhoneOtpExpiresInMinutes(Math.max(1, Math.ceil((phoneOtpExpiresAt - Date.now()) / 60000)))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [phoneOtpExpiresAt])
+
   async function loadProtectedData() {
     if (!sessionToken) {
       return
     }
 
     try {
-      const [verificationPayload, metricsPayload, listingsPayload] = await Promise.all([
+      const [verificationPayload, metricsPayload, listingsPayload, moderationPayload] = await Promise.all([
         apiRequest<VerificationResponse>('/verification/me', {
           token: sessionToken,
         }),
         apiRequest<VerificationMetrics>('/verification/metrics'),
         apiRequest<ListingPreview[]>('/listings'),
+        user?.isAdmin
+          ? apiRequest<ModerationQueueResponse>('/reports/moderation-queue', {
+              token: sessionToken,
+            })
+          : Promise.resolve(null),
       ])
 
       setVerification(verificationPayload)
       setMetrics(metricsPayload)
       setListings(listingsPayload.slice(0, 4))
+      setModerationQueue(moderationPayload)
     } catch (loadError) {
       setFeedback({
         tone: 'error',
@@ -314,6 +421,74 @@ export function TrustCenterPage() {
     }
   }
 
+  async function handlePhoneOtpRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction('phone-request')
+      setFeedback(null)
+      const response = await apiRequest<PhoneOtpRequestResponse>('/verification/phone/request-otp', {
+        method: 'POST',
+        token: sessionToken,
+        body: JSON.stringify({ phone }),
+      })
+
+      setPhoneOtpPreview(response.otpPreview ?? null)
+      const nextExpiry = Date.now() + response.delivery.expiresInMinutes * 60_000
+      setPhoneOtpExpiresAt(nextExpiry)
+      setPhoneOtpExpiresInMinutes(response.delivery.expiresInMinutes)
+      setFeedback({
+        tone: 'success',
+        message: `Phone OTP generated for ${response.delivery.destination}. It expires in ${response.delivery.expiresInMinutes} minutes.`,
+      })
+    } catch (requestError) {
+      setFeedback({
+        tone: 'error',
+        message: requestError instanceof Error ? requestError.message : 'Unable to send phone OTP.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handlePhoneOtpConfirm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction('phone-confirm')
+      setFeedback(null)
+      const response = await apiRequest<VerificationResponse>('/verification/phone/confirm', {
+        method: 'POST',
+        token: sessionToken,
+        body: JSON.stringify({ phone, otp: phoneOtp }),
+      })
+
+      setVerification(response)
+      setPhoneOtp('')
+      setPhoneOtpPreview(null)
+      setPhoneOtpExpiresAt(null)
+      setPhoneOtpExpiresInMinutes(null)
+      setFeedback({
+        tone: 'success',
+        message: 'Phone number verified. This trust signal is now active on your profile.',
+      })
+      await loadProtectedData()
+    } catch (confirmError) {
+      setFeedback({
+        tone: 'error',
+        message: confirmError instanceof Error ? confirmError.message : 'Unable to verify phone OTP.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   async function handleProfileSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!sessionToken) {
@@ -343,6 +518,80 @@ export function TrustCenterPage() {
       setFeedback({
         tone: 'error',
         message: saveError instanceof Error ? saveError.message : 'Unable to save your profile right now.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleLinkedinReview(
+    userId: string,
+    status: 'APPROVED' | 'REJECTED',
+  ) {
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction(`linkedin-review-${userId}-${status}`)
+      setFeedback(null)
+      await apiRequest('/verification/linkedin/review', {
+        method: 'POST',
+        token: sessionToken,
+        body: JSON.stringify({
+          userId,
+          status,
+        }),
+      })
+
+      setFeedback({
+        tone: 'success',
+        message:
+          status === 'APPROVED'
+            ? 'LinkedIn verification approved.'
+            : 'LinkedIn verification rejected.',
+      })
+      await loadProtectedData()
+    } catch (reviewError) {
+      setFeedback({
+        tone: 'error',
+        message: reviewError instanceof Error ? reviewError.message : 'Unable to review LinkedIn verification.',
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleReportReview(
+    reportId: string,
+    payload: {
+      status: 'REVIEWED' | 'ACTIONED' | 'DISMISSED'
+      entityAction?: 'ARCHIVE_LISTING' | 'DEACTIVATE_USER' | 'REACTIVATE_USER'
+      reviewNotes?: string
+    },
+  ) {
+    if (!sessionToken) {
+      return
+    }
+
+    try {
+      setBusyAction(`report-${reportId}-${payload.status}`)
+      setFeedback(null)
+      await apiRequest(`/reports/${reportId}/review`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify(payload),
+      })
+
+      setFeedback({
+        tone: 'success',
+        message: 'Report updated in the moderation queue.',
+      })
+      await loadProtectedData()
+    } catch (reviewError) {
+      setFeedback({
+        tone: 'error',
+        message: reviewError instanceof Error ? reviewError.message : 'Unable to update this report.',
       })
     } finally {
       setBusyAction(null)
@@ -655,6 +904,82 @@ export function TrustCenterPage() {
                   )}
                 </Card>
 
+                {phoneOtpVerificationEnabled ? (
+                  <Card className="verification-method-card trust-method-panel">
+                    <div className="mini-row">
+                      <Badge tone={verification?.user.phoneVerifiedAt ? 'green' : 'gray'}>
+                        {verification?.user.phoneVerifiedAt ? 'Verified' : 'Required for inquiries'}
+                      </Badge>
+                      <BadgeCheck size={18} />
+                    </div>
+                    <h3>Verify with Phone OTP</h3>
+                    <p>
+                      Phone verification strengthens direct contact trust and makes your inquiry
+                      profile feel safer to respond to.
+                    </p>
+
+                    <form className="stack-form" onSubmit={handlePhoneOtpRequest}>
+                      <label className="field">
+                        <span>Phone number</span>
+                        <input
+                          onChange={(event) => setPhone(event.target.value)}
+                          placeholder="+91 98765 43210"
+                          type="tel"
+                          value={phone}
+                        />
+                      </label>
+                      <Button
+                        disabled={busyAction === 'phone-request' || !phone}
+                        fullWidth
+                        type="submit"
+                      >
+                        {busyAction === 'phone-request' ? 'Sending OTP...' : 'Send phone OTP'}
+                      </Button>
+                    </form>
+
+                    {phoneOtpExpiresInMinutes && (
+                      <div className="otp-status-row">
+                        <span className="pill success-pill">
+                          <CheckCircle2 size={14} />
+                          OTP sent
+                        </span>
+                        <span className="pill info-pill">
+                          <TimerReset size={14} />
+                          Expires in {formatOtpCountdown(phoneOtpExpiresAt)}
+                        </span>
+                      </div>
+                    )}
+
+                    <form className="stack-form compact-form" onSubmit={handlePhoneOtpConfirm}>
+                      <label className="field">
+                        <span>Phone OTP</span>
+                        <input
+                          inputMode="numeric"
+                          maxLength={6}
+                          onChange={(event) => setPhoneOtp(event.target.value)}
+                          placeholder="6-digit code"
+                          value={phoneOtp}
+                        />
+                      </label>
+                      <Button
+                        disabled={busyAction === 'phone-confirm' || phoneOtp.length !== 6}
+                        fullWidth
+                        type="submit"
+                        variant="secondary"
+                      >
+                        {busyAction === 'phone-confirm' ? 'Verifying...' : 'Verify phone'}
+                      </Button>
+                    </form>
+
+                    {phoneOtpPreview && (
+                      <div className="dev-note">
+                        <strong>Local OTP preview</strong>
+                        <span>{phoneOtpPreview}</span>
+                      </div>
+                    )}
+                  </Card>
+                ) : null}
+
                 <Card className="verification-method-card trust-method-panel">
                   <div className="mini-row">
                     <Badge tone="gray">Fallback</Badge>
@@ -727,6 +1052,147 @@ export function TrustCenterPage() {
               )}
             </div>
           </div>
+
+          {user.isAdmin && moderationQueue ? (
+            <div className="listing-priority-section">
+              <div className="section-head">
+                <div className="eyebrow">Moderation queue</div>
+                <h2>Review reported listings, flagged users, and pending LinkedIn proofs.</h2>
+                <p>
+                  This admin-only queue keeps trust operations inside the product so moderation decisions are traceable.
+                </p>
+              </div>
+
+              <div className="trust-metrics-grid trust-metrics-ribbon">
+                <Card>
+                  <span className="muted">Open reports</span>
+                  <strong>{moderationQueue.summary.openReports}</strong>
+                  <p>Freshly filed trust or abuse reports</p>
+                </Card>
+                <Card>
+                  <span className="muted">Reviewed reports</span>
+                  <strong>{moderationQueue.summary.reviewedReports}</strong>
+                  <p>Reports triaged but not actioned yet</p>
+                </Card>
+                <Card>
+                  <span className="muted">Actioned reports</span>
+                  <strong>{moderationQueue.summary.actionedReports}</strong>
+                  <p>Reports that led to an entity change</p>
+                </Card>
+                <Card>
+                  <span className="muted">Pending LinkedIn reviews</span>
+                  <strong>{moderationQueue.summary.pendingLinkedinReviews}</strong>
+                  <p>Profiles waiting for manual trust approval</p>
+                </Card>
+              </div>
+
+              <div className="trust-method-grid moderation-grid">
+                <Card className="verification-method-card trust-method-panel">
+                  <h3>Pending LinkedIn reviews</h3>
+                  {moderationQueue.pendingLinkedinReviews.length === 0 ? (
+                    <p>Nothing is waiting for manual LinkedIn review right now.</p>
+                  ) : (
+                    <div className="moderation-stack">
+                      {moderationQueue.pendingLinkedinReviews.map((review) => (
+                        <div className="moderation-item" key={review.id}>
+                          <strong>{review.fullName}</strong>
+                          <p>{review.email}</p>
+                          <p>{review.linkedinUrl ?? 'No LinkedIn URL submitted'}</p>
+                          {review.linkedinProofCode ? <p>Proof code: {review.linkedinProofCode}</p> : null}
+                          <div className="feed-card-actions">
+                            <Button
+                              disabled={busyAction === `linkedin-review-${review.id}-APPROVED`}
+                              onClick={() => void handleLinkedinReview(review.id, 'APPROVED')}
+                              variant="secondary"
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              disabled={busyAction === `linkedin-review-${review.id}-REJECTED`}
+                              onClick={() => void handleLinkedinReview(review.id, 'REJECTED')}
+                              variant="ghost"
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+
+                <Card className="verification-method-card trust-method-panel">
+                  <h3>Flagged listings and users</h3>
+                  {moderationQueue.reports.length === 0 ? (
+                    <p>No reports are in the moderation queue right now.</p>
+                  ) : (
+                    <div className="moderation-stack">
+                      {moderationQueue.reports.map((report) => (
+                        <div className="moderation-item" key={report.id}>
+                          <div className="mini-row">
+                            <Badge tone={report.status === 'OPEN' ? 'red' : report.status === 'ACTIONED' ? 'green' : 'gray'}>
+                              {formatEnum(report.status) ?? report.status}
+                            </Badge>
+                            <span className="muted">{formatEnum(report.reason)}</span>
+                          </div>
+                          <strong>
+                            {report.entityType === 'LISTING'
+                              ? (report.entity as { title?: string } | null)?.title ?? 'Reported listing'
+                              : (report.entity as { fullName?: string } | null)?.fullName ?? 'Reported user'}
+                          </strong>
+                          <p>Reported by {report.reportedBy.fullName}</p>
+                          {report.notes ? <p>{report.notes}</p> : null}
+                          <div className="feed-card-actions">
+                            <Button
+                              disabled={busyAction === `report-${report.id}-REVIEWED`}
+                              onClick={() => void handleReportReview(report.id, { status: 'REVIEWED' })}
+                              variant="secondary"
+                            >
+                              Mark reviewed
+                            </Button>
+                            {report.entityType === 'LISTING' ? (
+                              <Button
+                                disabled={busyAction === `report-${report.id}-ACTIONED`}
+                                onClick={() =>
+                                  void handleReportReview(report.id, {
+                                    status: 'ACTIONED',
+                                    entityAction: 'ARCHIVE_LISTING',
+                                  })
+                                }
+                                variant="ghost"
+                              >
+                                Archive listing
+                              </Button>
+                            ) : (
+                              <Button
+                                disabled={busyAction === `report-${report.id}-ACTIONED`}
+                                onClick={() =>
+                                  void handleReportReview(report.id, {
+                                    status: 'ACTIONED',
+                                    entityAction: 'DEACTIVATE_USER',
+                                  })
+                                }
+                                variant="ghost"
+                              >
+                                Deactivate user
+                              </Button>
+                            )}
+                            <Button
+                              disabled={busyAction === `report-${report.id}-DISMISSED`}
+                              onClick={() => void handleReportReview(report.id, { status: 'DISMISSED' })}
+                              variant="ghost"
+                            >
+                              Dismiss
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </div>
+          ) : null}
 
           <div className="listing-priority-section">
             <div className="section-head">
