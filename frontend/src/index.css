@@ -2507,6 +2507,11 @@ input:focus {
   gap: 14px;
 }
 
+.posted-room-listing-card {
+  display: grid;
+  gap: 14px;
+}
+
 .host-listing-toolbar,
 .host-inquiry-section,
 .host-inquiry-head,

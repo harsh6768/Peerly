@@ -687,6 +687,143 @@ function HostListingCard({
   )
 }
 
+function PostedRoomListingCard({
+  listing,
+  busyAction,
+  onArchive,
+  onEdit,
+  onMarkAsRented,
+  onResume,
+  onToggleHold,
+  onViewDetails,
+}: {
+  listing: Listing
+  busyAction: string | null
+  onArchive: (listing: Listing) => void
+  onEdit: (listing: Listing) => void
+  onMarkAsRented: (listing: Listing) => void
+  onResume: (listing: Listing) => void
+  onToggleHold: (listing: Listing) => void
+  onViewDetails: (listing: Listing) => void
+}) {
+  const listingHeading =
+    listing.locality && listing.city ? `${listing.locality}, ${listing.city}` : formatListingLocation(listing)
+  const listingSubheading = [listing.propertyType, listing.occupancyType]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => formatEnum(value))
+    .join(' · ')
+
+  return (
+    <Card className="listing-inquiry-card posted-room-listing-card">
+      <div className="inquiry-card-top">
+        <div>
+          <strong>{listingHeading}</strong>
+          <p>{listingSubheading || listing.title}</p>
+        </div>
+        <div className="listing-card-badges">
+          <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
+          {listing.status === 'PUBLISHED' ? <Badge tone="purple">Live in feed</Badge> : null}
+        </div>
+      </div>
+
+      <div className="inquiry-meta-row">
+        <span>{formatMoveInLabel(listing.moveInDate)}</span>
+        <span>{formatPriceLine(listing)}</span>
+      </div>
+
+      {listing.depositAmount || listing.maintenanceAmount ? (
+        <div className="inquiry-meta-row">
+          <span>
+            {listing.depositAmount ? `Deposit ${formatMoney(listing.depositAmount)}` : 'Deposit pending'}
+          </span>
+          <span>
+            {listing.maintenanceAmount
+              ? `Maintenance ${formatMoney(listing.maintenanceAmount)}`
+              : 'Maintenance pending'}
+          </span>
+        </div>
+      ) : null}
+
+      {listing.amenities.length > 0 ? (
+        <div className="listing-details-section">
+          <strong>Amenities</strong>
+          <div className="nearby-place-chip-row compact">
+            {listing.amenities.map((amenity) => (
+              <span className="nearby-place-chip static" key={`${listing.id}-posted-amenity-${amenity}`}>
+                {amenity}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {listing.nearbyPlaces.length > 0 ? (
+        <div className="listing-details-section">
+          <strong>Nearby workplaces</strong>
+          <div className="nearby-place-chip-row compact">
+            {listing.nearbyPlaces.map((place) => (
+              <span className="nearby-place-chip static" key={`${listing.id}-posted-${place.type}-${place.name}`}>
+                {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {listing.description ? (
+        <div className="listing-details-section">
+          <strong>Description</strong>
+          <p className="feed-copy">{listing.description}</p>
+        </div>
+      ) : null}
+
+      <div className="inquiry-actions">
+        <Button onClick={() => onViewDetails(listing)} variant="secondary">
+          Show details
+        </Button>
+        <Button className="listing-action-edit" onClick={() => onEdit(listing)} variant="ghost">
+          Edit
+        </Button>
+        {listing.status === 'PAUSED' ? (
+          <Button
+            className="listing-action-resume"
+            disabled={busyAction === `PUBLISHED-${listing.id}`}
+            onClick={() => onResume(listing)}
+            variant="ghost"
+          >
+            {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming...' : 'Resume listing'}
+          </Button>
+        ) : listing.status === 'PUBLISHED' ? (
+          <Button
+            className="listing-action-hold"
+            disabled={busyAction === `PAUSED-${listing.id}`}
+            onClick={() => onToggleHold(listing)}
+            variant="ghost"
+          >
+            {busyAction === `PAUSED-${listing.id}` ? 'Updating...' : 'Put on hold'}
+          </Button>
+        ) : null}
+        <Button
+          className="listing-action-rented"
+          disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
+          onClick={() => onMarkAsRented(listing)}
+          variant="ghost"
+        >
+          {busyAction === `FILLED-${listing.id}` ? 'Updating...' : listing.status === 'FILLED' ? 'Marked as rented' : 'Mark as rented'}
+        </Button>
+        <Button
+          className="listing-action-delete"
+          disabled={busyAction === `ARCHIVED-${listing.id}`}
+          onClick={() => onArchive(listing)}
+          variant="ghost"
+        >
+          {busyAction === `ARCHIVED-${listing.id}` ? 'Removing...' : 'Delete'}
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
 function ListingActionDialog({
   action,
   busyAction,
@@ -3062,44 +3199,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     }
   }
 
-  async function handleHousingNeedStatusChange(
-    housingNeed: HousingNeed,
-    nextStatus: Extract<HousingNeedStatus, 'OPEN' | 'CLOSED'>,
-  ) {
-    if (!sessionToken) {
-      return
-    }
-
-    try {
-      setBusyInquiryAction(`housing-need-${housingNeed.id}-${nextStatus}`)
-      setFeedback(null)
-
-      await apiRequest(`/housing-needs/${housingNeed.id}`, {
-        method: 'PATCH',
-        token: sessionToken,
-        body: JSON.stringify({
-          status: nextStatus,
-        }),
-      })
-
-      await loadHousingData()
-      setFeedback({
-        tone: 'success',
-        message:
-          nextStatus === 'OPEN'
-            ? 'Your room need is active again and matching has resumed.'
-            : 'Your room need has been closed and removed from active matching.',
-      })
-    } catch (error) {
-      setFeedback({
-        tone: 'error',
-        message: error instanceof Error ? error.message : 'Unable to update your room need.',
-      })
-    } finally {
-      setBusyInquiryAction(null)
-    }
-  }
-
   async function handleSaveListing(targetStatus: 'DRAFT' | 'PUBLISHED') {
     if (!user) {
       setFeedback({
@@ -3257,6 +3356,17 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         backLabel: 'Back to your listings',
         backTo: '/find-tenant/host',
         sourceIntent: housingIntentValues.tenantReplacement,
+      } as ListingDetailsRouteState,
+    })
+  }
+
+  function openSeekerPostedListingDetails(listing: Listing) {
+    navigate(`/find-tenant/listings/${listing.id}`, {
+      state: {
+        listing,
+        backLabel: 'Back to your room posts',
+        backTo: '/find-tenant/posts',
+        sourceIntent: housingIntentValues.findRoom,
       } as ListingDetailsRouteState,
     })
   }
@@ -3840,9 +3950,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         ) : filteredMyListings.length === 0 && !isLoading ? (
           seekerPostedListingsEmptyState
         ) : (
-          <div className="host-listing-grid">
+          <div className="host-inquiry-grid">
             {filteredMyListings.map((listing) => (
-              <HostListingCard
+              <PostedRoomListingCard
                 busyAction={busyListingAction}
                 key={`seeker-posted-${listing.id}`}
                 listing={listing}
@@ -3851,7 +3961,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
                 onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
                 onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
-                onViewDetails={openListingDetails}
+                onViewDetails={openSeekerPostedListingDetails}
               />
             ))}
           </div>
@@ -4845,119 +4955,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               </div>
             </Card>
 
-            <div className="host-inquiry-grid">
-              {housingNeeds.length === 0 ? (
-                <Card className="feed-card">
-                  <strong>No room needs posted yet</strong>
-                  <p className="feed-copy">
-                    Post a need once and the listing feed will start prioritizing your strongest matches.
-                  </p>
-                </Card>
-              ) : (
-                housingNeeds.map((housingNeed) => (
-                  <Card className="listing-inquiry-card requester-inquiry-card" key={housingNeed.id}>
-                    <div className="inquiry-card-top">
-                      <div>
-                        <strong>
-                          {housingNeed.locality ? `${housingNeed.locality}, ${housingNeed.city}` : housingNeed.city}
-                        </strong>
-                        <p>
-                          {formatEnum(housingNeed.preferredPropertyType)} · {formatEnum(housingNeed.preferredOccupancy)}
-                        </p>
-                      </div>
-                      <div className="listing-card-badges">
-                        <Badge tone={housingNeed.status === 'OPEN' ? 'green' : 'gray'}>
-                          {formatEnum(housingNeed.status) ?? housingNeed.status}
-                        </Badge>
-                        {activeHousingNeed?.id === housingNeed.id ? (
-                          <Badge tone="purple">Driving matches</Badge>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="inquiry-meta-row">
-                      <span>Move in {formatShortDate(housingNeed.moveInDate)}</span>
-                      <span>
-                        {housingNeed.maxRentAmount ? `Rent up to ${formatMoney(housingNeed.maxRentAmount)}` : 'Flexible rent'}
-                      </span>
-                    </div>
-
-                    {housingNeed.maxDepositAmount || housingNeed.maxMaintenanceAmount ? (
-                      <div className="inquiry-meta-row">
-                        <span>
-                          {housingNeed.maxDepositAmount
-                            ? `Deposit up to ${formatMoney(housingNeed.maxDepositAmount)}`
-                            : 'Deposit flexible'}
-                        </span>
-                        <span>
-                          {housingNeed.maxMaintenanceAmount
-                            ? `Maintenance up to ${formatMoney(housingNeed.maxMaintenanceAmount)}`
-                            : 'Maintenance flexible'}
-                        </span>
-                      </div>
-                    ) : null}
-
-                    {housingNeed.preferredAmenities.length > 0 ? (
-                      <div className="listing-details-section">
-                        <strong>Preferred amenities</strong>
-                        <div className="nearby-place-chip-row compact">
-                          {housingNeed.preferredAmenities.map((amenity) => (
-                            <span className="nearby-place-chip static" key={`${housingNeed.id}-amenity-${amenity}`}>
-                              {amenity}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {housingNeed.nearbyPlaces.length > 0 ? (
-                      <div className="listing-details-section">
-                        <strong>Preferred workplaces</strong>
-                        <div className="nearby-place-chip-row compact">
-                          {housingNeed.nearbyPlaces.map((place) => (
-                            <span className="nearby-place-chip static" key={`${housingNeed.id}-${place.type}-${place.name}`}>
-                              {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {housingNeed.notes ? (
-                      <div className="listing-details-section">
-                        <strong>Description</strong>
-                        <p className="feed-copy">{housingNeed.notes}</p>
-                      </div>
-                    ) : null}
-
-                    <div className="inquiry-actions">
-                      {housingNeed.status === 'OPEN' ? (
-                        <Button
-                          disabled={busyInquiryAction === `housing-need-${housingNeed.id}-CLOSED`}
-                          onClick={() => void handleHousingNeedStatusChange(housingNeed, 'CLOSED')}
-                          variant="secondary"
-                        >
-                          {busyInquiryAction === `housing-need-${housingNeed.id}-CLOSED` ? 'Closing...' : 'Close post'}
-                        </Button>
-                      ) : (
-                        <Button
-                          disabled={busyInquiryAction === `housing-need-${housingNeed.id}-OPEN`}
-                          onClick={() => void handleHousingNeedStatusChange(housingNeed, 'OPEN')}
-                        >
-                          {busyInquiryAction === `housing-need-${housingNeed.id}-OPEN` ? 'Reopening...' : 'Reopen post'}
-                        </Button>
-                      )}
-                      <Button
-                        onClick={() => navigate('/find-tenant')}
-                        variant="ghost"
-                      >
-                        View matches
-                      </Button>
-                    </div>
-                  </Card>
-                ))
-              )}
-            </div>
           </>
         )}
       </div>
