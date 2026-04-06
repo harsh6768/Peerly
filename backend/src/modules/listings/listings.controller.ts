@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ListingStatus } from '@prisma/client';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { AppSessionGuard } from '../auth/app-session.guard';
 import { CurrentSession } from '../auth/current-session.decorator';
+import { AuthService } from '../auth/auth.service';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { DeleteListingImageUploadsDto } from './dto/delete-listing-image-uploads.dto';
@@ -13,7 +14,10 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 @ApiTags('listings')
 @Controller('listings')
 export class ListingsController {
-  constructor(private readonly listingsService: ListingsService) {}
+  constructor(
+    private readonly listingsService: ListingsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @ApiOperation({ summary: 'List published tenant replacement listings' })
   @ApiQuery({ name: 'city', required: false })
@@ -22,19 +26,23 @@ export class ListingsController {
   @ApiQuery({ name: 'ownerUserId', required: false })
   @ApiQuery({ name: 'includeArchived', required: false, type: Boolean })
   @Get()
-  findAll(
+  async findAll(
     @Query('city') city?: string,
     @Query('status') status?: ListingStatus,
     @Query('nearby') nearby?: string,
     @Query('ownerUserId') ownerUserId?: string,
     @Query('includeArchived') includeArchived?: string,
+    @Headers('authorization') authorization?: string,
   ) {
+    const session = await this.resolveOptionalSession(authorization);
+
     return this.listingsService.findAll(
       city,
       status,
       nearby,
       ownerUserId,
       includeArchived === 'true',
+      session,
     );
   }
 
@@ -78,5 +86,32 @@ export class ListingsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateListingDto) {
     return this.listingsService.update(id, dto);
+  }
+
+  private async resolveOptionalSession(authorization?: string) {
+    const token = this.extractBearerToken(authorization);
+
+    if (!token) {
+      return undefined;
+    }
+
+    try {
+      return await this.authService.getAuthenticatedSession(token);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractBearerToken(authorization?: string) {
+    if (!authorization) {
+      return undefined;
+    }
+
+    const [scheme, token] = authorization.split(' ');
+    if (scheme?.toLowerCase() !== 'bearer' || !token) {
+      return undefined;
+    }
+
+    return token;
   }
 }

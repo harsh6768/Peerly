@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { ListingInquiryStatus, ListingStatus, ListingType, MessageType } from '@prisma/client';
+import { HousingNeedStatus, ListingInquiryStatus, ListingStatus, ListingType, MessageType, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import {
@@ -9,8 +9,28 @@ import {
   toRequiredDate,
 } from '../../common/query-helpers';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { AuthenticatedSession } from '../auth/auth.types';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
+
+type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE';
+type ListingMatchSummary = {
+  matchScore: number;
+  qualityScore: number;
+  finalScore: number;
+  label: ListingMatchLabel;
+  reasons: string[];
+};
+
+type ListingWithRelations = Prisma.ListingGetPayload<{
+  include: typeof listingInclude;
+}>;
+
+type HousingNeedForScoring = Prisma.HousingNeedGetPayload<{
+  include: {
+    nearbyPlaces: true;
+  };
+}>;
 
 @Injectable()
 export class ListingsService {
@@ -22,6 +42,7 @@ export class ListingsService {
     nearby?: string,
     ownerUserId?: string,
     includeArchived = false,
+    session?: AuthenticatedSession,
   ) {
     const trimmedNearby = nearby?.trim();
     const listings = await this.prisma.listing.findMany({
@@ -63,17 +84,38 @@ export class ListingsService {
       return listings;
     }
 
-    return listings.sort((left, right) => {
-      if (left.isBoosted !== right.isBoosted) {
-        return Number(right.isBoosted) - Number(left.isBoosted);
-      }
+    const activeHousingNeed = session ? await this.findActiveHousingNeed(session.user.id) : null;
 
-      if (left.owner.isVerified !== right.owner.isVerified) {
-        return Number(right.owner.isVerified) - Number(left.owner.isVerified);
-      }
+    if (!activeHousingNeed) {
+      return [...listings].sort((left, right) => {
+        const rightScore = this.calculateGenericListingScore(right);
+        const leftScore = this.calculateGenericListingScore(left);
 
-      return right.createdAt.getTime() - left.createdAt.getTime();
-    });
+        if (rightScore !== leftScore) {
+          return rightScore - leftScore;
+        }
+
+        return right.createdAt.getTime() - left.createdAt.getTime();
+      });
+    }
+
+    return listings
+      .map((listing) => {
+        const matchSummary = this.calculateListingMatchSummary(listing, activeHousingNeed);
+
+        return {
+          ...listing,
+          matchSummary,
+        };
+      })
+      .filter((listing) => listing.matchSummary.matchScore >= 30)
+      .sort((left, right) => {
+        if (right.matchSummary.finalScore !== left.matchSummary.finalScore) {
+          return right.matchSummary.finalScore - left.matchSummary.finalScore;
+        }
+
+        return right.createdAt.getTime() - left.createdAt.getTime();
+      });
   }
 
   async findById(id: string) {
@@ -381,6 +423,291 @@ export class ListingsService {
       cleanedUp: results.length,
       results,
     };
+  }
+
+  private async findActiveHousingNeed(userId: string): Promise<HousingNeedForScoring | null> {
+    return this.prisma.housingNeed.findFirst({
+      where: {
+        userId,
+        status: {
+          in: [HousingNeedStatus.OPEN, HousingNeedStatus.MATCHED],
+        },
+      },
+      include: {
+        nearbyPlaces: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+      orderBy: [
+        {
+          updatedAt: 'desc',
+        },
+        {
+          createdAt: 'desc',
+        },
+      ],
+    });
+  }
+
+  private calculateListingMatchSummary(
+    listing: ListingWithRelations,
+    housingNeed: HousingNeedForScoring,
+  ): ListingMatchSummary {
+    let matchScore = 0;
+    const scoredReasons: Array<{ label: string; score: number }> = [];
+
+    if (this.normalizeMatchValue(listing.city) === this.normalizeMatchValue(housingNeed.city)) {
+      matchScore += 22;
+      scoredReasons.push({ label: `City match: ${housingNeed.city}`, score: 22 });
+    }
+
+    if (
+      this.normalizeMatchValue(listing.locality) &&
+      this.normalizeMatchValue(listing.locality) === this.normalizeMatchValue(housingNeed.locality)
+    ) {
+      matchScore += 16;
+      scoredReasons.push({ label: `Locality match: ${listing.locality}`, score: 16 });
+    }
+
+    if (
+      this.normalizeMatchValue(listing.propertyType) ===
+      this.normalizeMatchValue(housingNeed.preferredPropertyType)
+    ) {
+      matchScore += 10;
+      scoredReasons.push({
+        label: `Property type: ${this.humanizeEnum(housingNeed.preferredPropertyType)}`,
+        score: 10,
+      });
+    }
+
+    if (
+      this.normalizeMatchValue(listing.occupancyType) ===
+      this.normalizeMatchValue(housingNeed.preferredOccupancy)
+    ) {
+      matchScore += 10;
+      scoredReasons.push({
+        label: `Occupancy: ${this.humanizeEnum(housingNeed.preferredOccupancy)}`,
+        score: 10,
+      });
+    }
+
+    const rentScore = this.scoreBudgetAlignment(listing.rentAmount, housingNeed.maxRentAmount, 12);
+    if (rentScore > 0) {
+      matchScore += rentScore;
+      scoredReasons.push({
+        label:
+          rentScore >= 12
+            ? 'Within rent budget'
+            : rentScore >= 6
+              ? 'Close to rent budget'
+              : 'Slightly above rent budget',
+        score: rentScore,
+      });
+    }
+
+    const depositScore = this.scoreBudgetAlignment(listing.depositAmount, housingNeed.maxDepositAmount, 6);
+    if (depositScore > 0) {
+      matchScore += depositScore;
+      scoredReasons.push({
+        label: depositScore >= 6 ? 'Deposit fits' : 'Deposit is close',
+        score: depositScore,
+      });
+    }
+
+    const maintenanceScore = this.scoreBudgetAlignment(
+      listing.maintenanceAmount,
+      housingNeed.maxMaintenanceAmount,
+      4,
+    );
+    if (maintenanceScore > 0) {
+      matchScore += maintenanceScore;
+      scoredReasons.push({
+        label: maintenanceScore >= 4 ? 'Maintenance fits' : 'Maintenance is close',
+        score: maintenanceScore,
+      });
+    }
+
+    const moveInScore = this.scoreMoveInAlignment(listing.moveInDate, housingNeed.moveInDate, 10);
+    if (moveInScore > 0) {
+      matchScore += moveInScore;
+      scoredReasons.push({
+        label:
+          moveInScore >= 10
+            ? 'Move-in lines up well'
+            : moveInScore >= 6
+              ? 'Move-in is close'
+              : 'Move-in could work',
+        score: moveInScore,
+      });
+    }
+
+    const amenityMatches = housingNeed.preferredAmenities.filter((amenity) =>
+      listing.amenities.some(
+        (listingAmenity) =>
+          this.normalizeMatchValue(listingAmenity) === this.normalizeMatchValue(amenity),
+      ),
+    );
+    const nearbyPlaceMatches = housingNeed.nearbyPlaces.filter((place) =>
+      listing.nearbyPlaces.some(
+        (listingPlace) =>
+          this.normalizeMatchValue(listingPlace.name) === this.normalizeMatchValue(place.name) &&
+          listingPlace.type === place.type,
+      ),
+    );
+
+    const amenityScore = this.scorePreferenceOverlap(
+      amenityMatches.length,
+      housingNeed.preferredAmenities.length,
+      8,
+    );
+    if (amenityScore > 0) {
+      matchScore += amenityScore;
+      scoredReasons.push({
+        label:
+          amenityMatches.length === 1 ? '1 amenity match' : `${amenityMatches.length} amenity matches`,
+        score: amenityScore,
+      });
+    }
+
+    const nearbyScore = this.scorePreferenceOverlap(
+      nearbyPlaceMatches.length,
+      housingNeed.nearbyPlaces.length,
+      8,
+    );
+    if (nearbyScore > 0) {
+      matchScore += nearbyScore;
+      scoredReasons.push({
+        label:
+          nearbyPlaceMatches.length === 1
+            ? 'Near 1 preferred workplace'
+            : `Near ${nearbyPlaceMatches.length} preferred workplaces`,
+        score: nearbyScore,
+      });
+    }
+
+    const qualityScore = this.calculateListingQualityScore(listing);
+    const finalScore = this.roundScore(matchScore * 0.82 + qualityScore * 0.18);
+    const reasons = scoredReasons
+      .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label))
+      .slice(0, 3)
+      .map((reason) => reason.label);
+
+    return {
+      matchScore: this.roundScore(matchScore),
+      qualityScore: this.roundScore(qualityScore),
+      finalScore,
+      label: finalScore >= 78 ? 'BEST_MATCH' : finalScore >= 58 ? 'GOOD_MATCH' : 'POSSIBLE',
+      reasons,
+    };
+  }
+
+  private calculateGenericListingScore(listing: ListingWithRelations) {
+    return this.roundScore(this.calculateListingQualityScore(listing) + (listing.isBoosted ? 8 : 0));
+  }
+
+  private calculateListingQualityScore(listing: ListingWithRelations) {
+    const description = typeof listing.description === 'string' ? listing.description.trim() : '';
+
+    return (
+      (listing.images.length >= 3 ? 8 : listing.images.length > 0 ? 5 : 0) +
+      (description.length >= 80 ? 6 : description.length > 0 ? 3 : 0) +
+      (listing.amenities.length >= 4 ? 4 : listing.amenities.length > 0 ? 2 : 0) +
+      (listing.nearbyPlaces.length >= 2 ? 3 : listing.nearbyPlaces.length > 0 ? 1 : 0) +
+      (listing.locality ? 2 : 0) +
+      (listing.owner.isVerified ? 4 : 0) +
+      (listing.isBoosted ? 1 : 0) +
+      (this.isRecentListing(listing.createdAt) ? 2 : 0)
+    );
+  }
+
+  private scoreBudgetAlignment(
+    listingAmount: number | null,
+    preferredAmount: number | null,
+    maxScore: number,
+  ) {
+    if (typeof listingAmount !== 'number' || typeof preferredAmount !== 'number' || preferredAmount <= 0) {
+      return 0;
+    }
+
+    if (listingAmount <= preferredAmount) {
+      return maxScore;
+    }
+
+    const overshootRatio = (listingAmount - preferredAmount) / preferredAmount;
+
+    if (overshootRatio <= 0.1) {
+      return this.roundScore(maxScore * 0.5);
+    }
+
+    if (overshootRatio <= 0.2) {
+      return this.roundScore(maxScore * 0.25);
+    }
+
+    return 0;
+  }
+
+  private scoreMoveInAlignment(
+    listingMoveInDate: Date | null,
+    preferredMoveInDate: Date,
+    maxScore: number,
+  ) {
+    if (!listingMoveInDate || !preferredMoveInDate) {
+      return 0;
+    }
+
+    const diffInDays =
+      Math.abs(listingMoveInDate.getTime() - preferredMoveInDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (diffInDays <= 7) {
+      return maxScore;
+    }
+
+    if (diffInDays <= 14) {
+      return this.roundScore(maxScore * 0.8);
+    }
+
+    if (diffInDays <= 30) {
+      return this.roundScore(maxScore * 0.5);
+    }
+
+    if (diffInDays <= 45) {
+      return this.roundScore(maxScore * 0.2);
+    }
+
+    return 0;
+  }
+
+  private scorePreferenceOverlap(matches: number, totalPreferences: number, maxScore: number) {
+    if (matches <= 0 || totalPreferences <= 0) {
+      return 0;
+    }
+
+    return this.roundScore((matches / totalPreferences) * maxScore);
+  }
+
+  private isRecentListing(createdAt: Date) {
+    const diffInDays = Math.abs(Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    return diffInDays <= 14;
+  }
+
+  private normalizeMatchValue(value?: string | null) {
+    return value?.trim().toLowerCase() ?? '';
+  }
+
+  private humanizeEnum(value?: string | null) {
+    return (
+      value
+        ?.toLowerCase()
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ') ?? ''
+    );
+  }
+
+  private roundScore(value: number) {
+    return Math.round(value);
   }
 
   private normalizeListingImages(

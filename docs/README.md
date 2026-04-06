@@ -9,13 +9,14 @@ This folder is the current working architecture reference for Trusted Network.
 3. [Frontend Architecture](./frontend-architecture.md)
 4. [Backend Blueprint](./backend-blueprint.md)
 5. [Housing MVP Workflow v1](./housing-mvp-workflow-v1.md)
-6. [Parked Delivery Module](./parked-delivery-module.md)
-7. [MVP Schema Design](./mvp-schema-design.md)
-8. [Entity Relationship Diagram](./entity-relationship-diagram.md)
-9. [Backend API MVP](./backend-api-mvp.md)
-10. [Backend TypeScript Guide](./backend-typescript-guide.md)
-11. [Platform Deployment Guide](./platform-deployment.md)
-12. [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)
+6. [Listing Matching Heuristic](./listing-matching-heuristic.md)
+7. [Parked Delivery Module](./parked-delivery-module.md)
+8. [MVP Schema Design](./mvp-schema-design.md)
+9. [Entity Relationship Diagram](./entity-relationship-diagram.md)
+10. [Backend API MVP](./backend-api-mvp.md)
+11. [Backend TypeScript Guide](./backend-typescript-guide.md)
+12. [Platform Deployment Guide](./platform-deployment.md)
+13. [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)
 
 ## What these docs cover
 
@@ -23,6 +24,7 @@ This folder is the current working architecture reference for Trusted Network.
 - The database comparison and why PostgreSQL is the preferred default
 - The modular frontend structure we should move toward as the product grows
 - The current housing-only product workflow and the intent-driven UX reset
+- The backend scoring heuristic used to rank room listings for signed-in and signed-out users
 - Which delivery APIs and screens were parked for later, without removing schema keys
 - The backend domain model, service boundaries, API surfaces, and rollout path
 - The first working backend API slice and example payloads for the MVP

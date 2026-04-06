@@ -106,6 +106,7 @@ type Listing = {
     companyName: string | null
     isVerified: boolean
   }
+  matchSummary?: ListingMatchSummary | null
 }
 
 type ListingInquiryPerson = {
@@ -270,6 +271,7 @@ type ListingMatchSummary = {
   qualityScore: number
   finalScore: number
   label: ListingMatchLabel
+  reasons: string[]
 }
 
 type LocalFeedbackState = {
@@ -467,6 +469,16 @@ function SearchListingCard({
           </span>
         ))}
       </div>
+
+      {matchSummary?.reasons.length ? (
+        <div className="listing-match-reason-row">
+          {matchSummary.reasons.map((reason) => (
+            <span className="listing-match-reason-pill" key={`${listing.id}-${reason}`}>
+              {reason}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="feed-owner-row">
         <div>
@@ -2751,27 +2763,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     })
   }, [discoverablePublicListings, publicListingFilters, searchQuery])
   const rankedPublicListings = useMemo(() => {
-    if (!activeHousingNeed) {
-      return filteredPublicListings.map((listing) => ({
-        listing,
-        matchSummary: null as ListingMatchSummary | null,
-      }))
-    }
-
-    return filteredPublicListings
-      .map((listing) => ({
-        listing,
-        matchSummary: calculateListingMatchSummary(listing, activeHousingNeed),
-      }))
-      .filter((entry) => entry.matchSummary.matchScore >= 40)
-      .sort((left, right) => {
-        if (right.matchSummary.finalScore !== left.matchSummary.finalScore) {
-          return right.matchSummary.finalScore - left.matchSummary.finalScore
-        }
-
-        return new Date(right.listing.createdAt).getTime() - new Date(left.listing.createdAt).getTime()
-      })
-  }, [activeHousingNeed, filteredPublicListings])
+    return filteredPublicListings.map((listing) => ({
+      listing,
+      matchSummary: listing.matchSummary ?? null,
+    }))
+  }, [filteredPublicListings])
   const activePublicListingFilterTokens = useMemo(() => {
     const tokens: Array<{ key: PublicListingFilterKey; label: string }> = []
 
@@ -2958,7 +2954,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setIsLoading(true)
       setFeedback(null)
 
-      const publicListingsPayload = await apiRequest<Listing[]>('/listings?status=PUBLISHED')
+      const publicListingsPayload = await apiRequest<Listing[]>('/listings?status=PUBLISHED', {
+        token: sessionToken,
+      })
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
@@ -5188,7 +5186,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   <p className="panel-subtitle">
                     {activeHousingNeed
                       ? `Matching against ${activeHousingNeed.locality ? `${activeHousingNeed.locality}, ` : ''}${activeHousingNeed.city} with ${formatEnum(activeHousingNeed.preferredOccupancy)?.toLowerCase()} occupancy preferences.`
-                      : 'Explore published listings only. If you are signed in, your own posts stay hidden here so this feed remains purely for discovery.'}
+                      : user
+                        ? 'Explore published listings only. Post your room need to unlock personalized scoring and stronger ranking.'
+                        : 'Explore published listings only. Sign in and post your room need to unlock personalized scoring; until then the feed stays ranked by listing quality and freshness.'}
                   </p>
                 </div>
                 <div className="hub-panel-actions">
@@ -5764,87 +5764,6 @@ function normalizeHousingNeeds(housingNeeds: HousingNeed[]) {
   }))
 }
 
-function calculateListingMatchSummary(listing: Listing, housingNeed: HousingNeed): ListingMatchSummary {
-  let matchScore = 0
-
-  if (normalizeMatchValue(listing.city) === normalizeMatchValue(housingNeed.city)) {
-    matchScore += 40
-  }
-
-  if (
-    normalizeMatchValue(listing.locality) &&
-    normalizeMatchValue(listing.locality) === normalizeMatchValue(housingNeed.locality)
-  ) {
-    matchScore += 25
-  }
-
-  if (typeof listing.rentAmount === 'number' && typeof housingNeed.maxRentAmount === 'number') {
-    if (listing.rentAmount <= housingNeed.maxRentAmount) {
-      matchScore += 15
-    }
-  }
-
-  if (areMoveInDatesClose(listing.moveInDate, housingNeed.moveInDate)) {
-    matchScore += 10
-  }
-
-  if (
-    normalizeMatchValue(listing.occupancyType) === normalizeMatchValue(housingNeed.preferredOccupancy)
-  ) {
-    matchScore += 10
-  }
-
-  const amenityMatches = housingNeed.preferredAmenities.filter((amenity) =>
-    listing.amenities.some((listingAmenity) => normalizeMatchValue(listingAmenity) === normalizeMatchValue(amenity)),
-  ).length
-  const nearbyPlaceMatches = housingNeed.nearbyPlaces.filter((place) =>
-    listing.nearbyPlaces.some(
-      (listingPlace) =>
-        normalizeMatchValue(listingPlace.name) === normalizeMatchValue(place.name) && listingPlace.type === place.type,
-    ),
-  ).length
-
-  const qualityScore =
-    (listing.images.length > 0 ? 30 : 0) +
-    (listing.description.trim().length > 0 ? 20 : 0) +
-    (listing.amenities.length > 0 ? 10 : 0) +
-    (listing.owner.isVerified ? 20 : 0) +
-    (isRecentListing(listing.createdAt) ? 20 : 0)
-
-  const preferenceBoost = Math.min(10, amenityMatches * 5) + Math.min(10, nearbyPlaceMatches * 5)
-  const finalScore = matchScore * 0.7 + qualityScore * 0.3 + preferenceBoost
-
-  return {
-    matchScore,
-    qualityScore,
-    finalScore,
-    label: matchScore >= 80 ? 'BEST_MATCH' : matchScore >= 60 ? 'GOOD_MATCH' : 'POSSIBLE',
-  }
-}
-
-function normalizeMatchValue(value?: string | null) {
-  return value?.trim().toLowerCase() ?? ''
-}
-
-function areMoveInDatesClose(first?: string | null, second?: string | null) {
-  if (!first || !second) {
-    return false
-  }
-
-  const firstDate = new Date(first)
-  const secondDate = new Date(second)
-  const diffInDays = Math.abs(firstDate.getTime() - secondDate.getTime()) / (1000 * 60 * 60 * 24)
-
-  return diffInDays <= 14
-}
-
-function isRecentListing(createdAt: string) {
-  const listingCreatedAt = new Date(createdAt)
-  const diffInDays = Math.abs(Date.now() - listingCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
-
-  return diffInDays <= 14
-}
-
 function formatListingMatchLabel(label: ListingMatchLabel) {
   switch (label) {
     case 'BEST_MATCH':
@@ -5934,7 +5853,7 @@ function normalizeListingInquiries(inquiriesPayload: ListingInquiry[]) {
   return inquiriesPayload.map((inquiry) => normalizeListingInquiry(inquiry))
 }
 
-function normalizeListing(listing: Listing) {
+function normalizeListing(listing: Listing): Listing {
   return {
     ...listing,
     city: typeof listing.city === 'string' ? listing.city : null,
@@ -5973,9 +5892,34 @@ function normalizeListing(listing: Listing) {
         : typeof listing.longitude === 'string'
           ? Number(listing.longitude)
           : null,
+    matchSummary: normalizeListingMatchSummary(listing.matchSummary),
     amenities: Array.isArray(listing.amenities) ? listing.amenities : [],
     nearbyPlaces: Array.isArray(listing.nearbyPlaces) ? listing.nearbyPlaces : [],
     images: Array.isArray(listing.images) ? listing.images : [],
+  }
+}
+
+function normalizeListingMatchSummary(matchSummary?: ListingMatchSummary | null): ListingMatchSummary | null {
+  if (!matchSummary) {
+    return null
+  }
+
+  return {
+    matchScore:
+      typeof matchSummary.matchScore === 'number' ? matchSummary.matchScore : Number(matchSummary.matchScore) || 0,
+    qualityScore:
+      typeof matchSummary.qualityScore === 'number'
+        ? matchSummary.qualityScore
+        : Number(matchSummary.qualityScore) || 0,
+    finalScore:
+      typeof matchSummary.finalScore === 'number' ? matchSummary.finalScore : Number(matchSummary.finalScore) || 0,
+    label:
+      matchSummary.label === 'BEST_MATCH' || matchSummary.label === 'GOOD_MATCH'
+        ? matchSummary.label
+        : 'POSSIBLE',
+    reasons: Array.isArray(matchSummary.reasons)
+      ? matchSummary.reasons.filter((reason): reason is string => typeof reason === 'string')
+      : [],
   }
 }
 

@@ -4468,6 +4468,24 @@ input:focus {
   min-width: 0;
 }
 
+.listing-match-reason-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.listing-match-reason-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(108, 99, 255, 0.08);
+  border: 1px solid rgba(108, 99, 255, 0.16);
+  color: #5846d8;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .hub-panel-wide {
   grid-column: 1 / -1;
 }
