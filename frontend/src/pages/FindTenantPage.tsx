@@ -213,6 +213,7 @@ type ListingDetailsRouteState = {
 
 type ListingComposerRouteState = {
   listing?: Listing
+  sourceIntent?: HousingIntent
 }
 
 type InquiryDetailsRouteState = {
@@ -220,33 +221,6 @@ type InquiryDetailsRouteState = {
   backLabel?: string
   backTo?: string
   sourceIntent?: HousingIntent
-}
-
-type HousingNeedStatus = 'OPEN' | 'MATCHED' | 'CLOSED' | 'ARCHIVED'
-type HousingNeed = {
-  id: string
-  city: string
-  locality: string | null
-  preferredPropertyType: string
-  preferredOccupancy: string
-  maxRentAmount: number | null
-  maxDepositAmount: number | null
-  maxMaintenanceAmount: number | null
-  preferredAmenities: string[]
-  moveInDate: string
-  urgencyLevel: string
-  preferredContactMode: string
-  notes: string | null
-  nearbyPlaces: NearbyPlace[]
-  status: HousingNeedStatus
-  createdAt: string
-  updatedAt: string
-  user: {
-    id: string
-    fullName: string
-    companyName: string | null
-    isVerified: boolean
-  }
 }
 
 type HousingNeedForm = {
@@ -397,6 +371,54 @@ const popularOffices = [
   'Infosys',
   'TCS',
 ] as const
+const listingIntentStorageKey = 'trusted-network.listing-intents'
+
+function readListingIntentAssignments(): Record<string, HousingIntent> {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    const rawAssignments = window.localStorage.getItem(listingIntentStorageKey)
+    if (!rawAssignments) {
+      return {}
+    }
+
+    const parsedAssignments = JSON.parse(rawAssignments) as Record<string, unknown>
+    return Object.entries(parsedAssignments).reduce<Record<string, HousingIntent>>((accumulator, [listingId, intent]) => {
+      if (intent === housingIntentValues.findRoom || intent === housingIntentValues.tenantReplacement) {
+        accumulator[listingId] = intent
+      }
+
+      return accumulator
+    }, {})
+  } catch {
+    return {}
+  }
+}
+
+function persistListingIntentAssignments(assignments: Record<string, HousingIntent>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(listingIntentStorageKey, JSON.stringify(assignments))
+}
+
+function getListingIntentForDisplay(
+  listingId: string,
+  assignments: Record<string, HousingIntent>,
+): HousingIntent {
+  return assignments[listingId] ?? housingIntentValues.tenantReplacement
+}
+
+function shouldUseListingComposerRouteState(value: unknown): value is ListingComposerRouteState {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  return 'listing' in value || 'sourceIntent' in value
+}
 
 function SearchListingCard({
   existingInquiry,
@@ -2604,8 +2626,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { editListingId } = useParams<{ editListingId?: string }>()
+  const composerRouteState = shouldUseListingComposerRouteState(location.state)
+    ? location.state
+    : null
   const [publicListings, setPublicListings] = useState<Listing[]>([])
-  const [housingNeeds, setHousingNeeds] = useState<HousingNeed[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
   const [requesterInquiries, setRequesterInquiries] = useState<ListingInquiry[]>([])
   const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
@@ -2648,6 +2672,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [replaceTenantForm, setReplaceTenantForm] = useState<ReplaceTenantForm>(makeEmptyReplaceTenantForm())
   const [housingNeedForm, setHousingNeedForm] = useState<HousingNeedForm>(makeEmptyHousingNeedForm())
   const [isSavingHousingNeed, setIsSavingHousingNeed] = useState(false)
+  const [listingIntentAssignments, setListingIntentAssignments] = useState<Record<string, HousingIntent>>(
+    () => readListingIntentAssignments(),
+  )
   const listingImagesRef = useRef<DraftListingImage[]>([])
 
   const selectedListingLocation = useMemo(
@@ -2659,7 +2686,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       ),
     [replaceTenantForm.latitude, replaceTenantForm.locationName, replaceTenantForm.longitude],
   )
-  const isDedicatedHostPage = mode !== 'root'
   const shouldShowHostDashboard = mode === 'host-dashboard'
   const shouldShowSeekerNeeds = mode === 'seeker-needs'
   const shouldShowSeekerPostedListings = mode === 'seeker-posted-listings'
@@ -2698,13 +2724,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       .map(([amenity]) => amenity)
   }, [discoverablePublicListings])
   const quickPublicCityOptions = useMemo(() => publicCityOptions.slice(0, 4), [publicCityOptions])
-  const activeHousingNeed = useMemo(
-    () =>
-      housingNeeds.find((need) => need.status === 'OPEN') ??
-      housingNeeds.find((need) => need.status === 'MATCHED') ??
-      null,
-    [housingNeeds],
+  const hasActiveRoomNeed = useMemo(
+    () => publicListings.some((listing) => Boolean(listing.matchSummary)),
+    [publicListings],
   )
+  const activeRoomNeedCount = hasActiveRoomNeed ? 1 : 0
   const filteredPublicListings = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
@@ -2768,6 +2792,20 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       matchSummary: listing.matchSummary ?? null,
     }))
   }, [filteredPublicListings])
+  const hostModeListings = useMemo(
+    () =>
+      myListings.filter(
+        (listing) => getListingIntentForDisplay(listing.id, listingIntentAssignments) === housingIntentValues.tenantReplacement,
+      ),
+    [listingIntentAssignments, myListings],
+  )
+  const seekerPostedListings = useMemo(
+    () =>
+      myListings.filter(
+        (listing) => getListingIntentForDisplay(listing.id, listingIntentAssignments) === housingIntentValues.findRoom,
+      ),
+    [listingIntentAssignments, myListings],
+  )
   const activePublicListingFilterTokens = useMemo(() => {
     const tokens: Array<{ key: PublicListingFilterKey; label: string }> = []
 
@@ -2820,12 +2858,26 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       ].filter(Boolean).length,
     [publicListingFilters.amenity, publicListingFilters.occupancyType, publicListingFilters.propertyType],
   )
-  const filteredMyListings = useMemo(
-    () => filterHostListings(myListings, myListingFilter),
-    [myListingFilter, myListings],
+  const filteredHostListings = useMemo(
+    () => filterHostListings(hostModeListings, myListingFilter),
+    [hostModeListings, myListingFilter],
   )
-  const activeMyListingsCount = useMemo(() => filterHostListings(myListings, 'ACTIVE').length, [myListings])
-  const pausedMyListingsCount = useMemo(() => filterHostListings(myListings, 'PAUSED').length, [myListings])
+  const filteredSeekerPostedListings = useMemo(
+    () => filterHostListings(seekerPostedListings, myListingFilter),
+    [myListingFilter, seekerPostedListings],
+  )
+  const activeHostListingsCount = useMemo(
+    () => filterHostListings(hostModeListings, 'ACTIVE').length,
+    [hostModeListings],
+  )
+  const activeSeekerPostedListingsCount = useMemo(
+    () => filterHostListings(seekerPostedListings, 'ACTIVE').length,
+    [seekerPostedListings],
+  )
+  const pausedHostListingsCount = useMemo(
+    () => filterHostListings(hostModeListings, 'PAUSED').length,
+    [hostModeListings],
+  )
   const activeRequesterInquiriesCount = useMemo(
     () => filterListingInquiries(requesterInquiries, 'ACTIVE').length,
     [requesterInquiries],
@@ -2869,6 +2921,17 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     () => ownerInquiries.filter((inquiry) => inquiry.visitStatus === 'CONFIRMED').length,
     [ownerInquiries],
   )
+  const composerSourceIntent = useMemo(() => {
+    if (composerRouteState?.sourceIntent) {
+      return composerRouteState.sourceIntent
+    }
+
+    if (editListingId) {
+      return getListingIntentForDisplay(editListingId, listingIntentAssignments)
+    }
+
+    return housingIntentValues.tenantReplacement
+  }, [composerRouteState, editListingId, listingIntentAssignments])
 
   useEffect(() => {
     listingImagesRef.current = listingImages
@@ -2928,10 +2991,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       return
     }
 
-    const routeState = location.state as ListingComposerRouteState | null
     const routeListing =
-      routeState?.listing && routeState.listing.id === editListingId
-        ? normalizeListing(routeState.listing)
+      composerRouteState?.listing && composerRouteState.listing.id === editListingId
+        ? normalizeListing(composerRouteState.listing)
         : null
 
     if (routeListing && editingListingId !== routeListing.id) {
@@ -2947,7 +3009,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     if (existingListing && editingListingId !== existingListing.id) {
       applyListingForEditing(existingListing)
     }
-  }, [editListingId, editingListingId, location.state, myListings, shouldShowHostComposer])
+  }, [composerRouteState, editListingId, editingListingId, myListings, shouldShowHostComposer])
 
   async function loadHousingData() {
     try {
@@ -2960,11 +3022,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
-        const [housingNeedsPayload, myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
+        const [myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
           await Promise.all([
-            apiRequest<HousingNeed[]>('/housing-needs/mine', {
-              token: sessionToken,
-            }),
           apiRequest<Listing[]>(
             `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
             {
@@ -2978,12 +3037,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             token: sessionToken,
           }),
           ])
-        setHousingNeeds(normalizeHousingNeeds(housingNeedsPayload))
         setMyListings(normalizeListings(myListingsPayload))
         setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
         setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
-        setHousingNeeds([])
         setMyListings([])
         setRequesterInquiries([])
         setOwnerInquiries([])
@@ -2998,29 +3055,29 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     }
   }
 
-  function handleIntentChange(nextIntent: HousingIntent) {
-    if (!user && nextIntent === housingIntentValues.tenantReplacement) {
-      navigate('/profile')
-      return
-    }
+  function rememberListingIntent(listingId: string, sourceIntent: HousingIntent) {
+    setListingIntentAssignments((current) => {
+      if (current[listingId] === sourceIntent) {
+        return current
+      }
 
-    setIntent(nextIntent)
+      const nextAssignments = {
+        ...current,
+        [listingId]: sourceIntent,
+      }
 
-    if (nextIntent === housingIntentValues.tenantReplacement) {
-      navigate('/find-tenant/host')
-      return
-    }
-
-    if (nextIntent === housingIntentValues.findRoom && isDedicatedHostPage) {
-      navigate('/find-tenant')
-    }
+      persistListingIntentAssignments(nextAssignments)
+      return nextAssignments
+    })
   }
 
-  function startCreateListing() {
+  function startCreateListing(sourceIntent: HousingIntent = housingIntentValues.tenantReplacement) {
     resetListingComposer()
     setHostStep(0)
-    handleIntentChange(housingIntentValues.tenantReplacement)
-    navigate('/find-tenant/host/listings/new')
+    setIntent(sourceIntent)
+    navigate('/find-tenant/host/listings/new', {
+      state: { sourceIntent } as ListingComposerRouteState,
+    })
   }
 
   function applyListingForEditing(listing: Listing) {
@@ -3074,10 +3131,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     setFeedback(null)
   }
 
-  function startEditingListing(listing: Listing) {
-    handleIntentChange(housingIntentValues.tenantReplacement)
+  function startEditingListing(
+    listing: Listing,
+    sourceIntent: HousingIntent = getListingIntentForDisplay(listing.id, listingIntentAssignments),
+  ) {
+    setIntent(sourceIntent)
     navigate(`/find-tenant/host/listings/${listing.id}/edit`, {
-      state: { listing } as ListingComposerRouteState,
+      state: { listing, sourceIntent } as ListingComposerRouteState,
     })
   }
 
@@ -3215,6 +3275,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     }
 
     const city = resolveCityValue(replaceTenantCityOption, replaceTenantCustomCity)
+    const sourceIntent =
+      composerRouteState?.sourceIntent ??
+      (editingListingId
+        ? getListingIntentForDisplay(editingListingId, listingIntentAssignments)
+        : housingIntentValues.tenantReplacement)
     const uploadedImages = listingImages
       .filter((image) => image.status === 'uploaded' && image.upload)
       .map((image) => image.upload!)
@@ -3254,15 +3319,19 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       }
 
       if (editingListingId) {
-        await apiRequest(`/listings/${editingListingId}`, {
+        const updatedListing = await apiRequest<Listing>(`/listings/${editingListingId}`, {
           method: 'PATCH',
+          token: sessionToken,
           body: JSON.stringify(payload),
         })
+        rememberListingIntent(updatedListing.id, sourceIntent)
       } else {
-        await apiRequest('/listings', {
+        const createdListing = await apiRequest<Listing>('/listings', {
           method: 'POST',
+          token: sessionToken,
           body: JSON.stringify(payload),
         })
+        rememberListingIntent(createdListing.id, sourceIntent)
       }
 
       resetListingComposer()
@@ -3768,7 +3837,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   }
 
   const hostModeEmptyState =
-    myListings.length === 0 ? (
+    hostModeListings.length === 0 ? (
       <Card className="feed-card">
         <strong>You have no active listings yet</strong>
         <p className="feed-copy">
@@ -3785,13 +3854,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     )
 
   const seekerPostedListingsEmptyState =
-    myListings.length === 0 ? (
+    seekerPostedListings.length === 0 ? (
       <Card className="feed-card">
         <strong>You have not posted a room listing yet</strong>
         <p className="feed-copy">
           When you publish a room post, it will appear here so you can edit it, pause it, or mark it as rented later.
         </p>
-        <Button to="/find-tenant/host/listings/new" variant="secondary">
+        <Button onClick={() => startCreateListing(housingIntentValues.findRoom)} variant="secondary">
           Post a room listing
         </Button>
       </Card>
@@ -3816,7 +3885,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             </p>
           </div>
           <div className="hub-panel-actions">
-            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}</Badge>
+            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeHostListingsCount} active`}</Badge>
           </div>
         </div>
 
@@ -3824,12 +3893,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           <div className="host-metrics-grid">
             <Card className="host-metric-card">
               <span className="muted">Live listings</span>
-              <strong>{myListings.filter((listing) => listing.status === 'PUBLISHED').length}</strong>
+              <strong>{hostModeListings.filter((listing) => listing.status === 'PUBLISHED').length}</strong>
               <p className="feed-copy">Currently visible in the public feed.</p>
             </Card>
             <Card className="host-metric-card">
               <span className="muted">On hold</span>
-              <strong>{pausedMyListingsCount}</strong>
+              <strong>{pausedHostListingsCount}</strong>
               <p className="feed-copy">Temporarily hidden until you resume them.</p>
             </Card>
             <Card className="host-metric-card">
@@ -3856,7 +3925,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   onClick={() => setMyListingFilter(filterOption.value)}
                   type="button"
                 >
-                  {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
+                  {filterOption.label} ({filterHostListings(hostModeListings, filterOption.value).length})
                 </button>
               ))}
             </div>
@@ -3873,17 +3942,17 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               Open profile
             </Button>
           </Card>
-        ) : filteredMyListings.length === 0 && !isLoading ? (
+        ) : filteredHostListings.length === 0 && !isLoading ? (
           hostModeEmptyState
         ) : (
           <div className="host-listing-grid">
-            {filteredMyListings.map((listing) => (
+            {filteredHostListings.map((listing) => (
               <HostListingCard
                 busyAction={busyListingAction}
                 key={listing.id}
                 listing={listing}
                 onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
-                onEdit={startEditingListing}
+                onEdit={(current) => startEditingListing(current, housingIntentValues.tenantReplacement)}
                 onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
                 onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
                 onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
@@ -3908,9 +3977,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             </p>
           </div>
           <div className="hub-panel-actions">
-            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeMyListingsCount} active`}</Badge>
+            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeSeekerPostedListingsCount} active`}</Badge>
             {user ? (
-              <Button to="/find-tenant/host/listings/new" variant="secondary">
+              <Button onClick={() => startCreateListing(housingIntentValues.findRoom)} variant="secondary">
                 Post a room listing
               </Button>
             ) : null}
@@ -3928,7 +3997,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   onClick={() => setMyListingFilter(filterOption.value)}
                   type="button"
                 >
-                  {filterOption.label} ({filterHostListings(myListings, filterOption.value).length})
+                  {filterOption.label} ({filterHostListings(seekerPostedListings, filterOption.value).length})
                 </button>
               ))}
             </div>
@@ -3945,17 +4014,17 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               Open profile
             </Button>
           </Card>
-        ) : filteredMyListings.length === 0 && !isLoading ? (
+        ) : filteredSeekerPostedListings.length === 0 && !isLoading ? (
           seekerPostedListingsEmptyState
         ) : (
           <div className="host-inquiry-grid">
-            {filteredMyListings.map((listing) => (
+            {filteredSeekerPostedListings.map((listing) => (
               <PostedRoomListingCard
                 busyAction={busyListingAction}
                 key={`seeker-posted-${listing.id}`}
                 listing={listing}
                 onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
-                onEdit={startEditingListing}
+                onEdit={(current) => startEditingListing(current, housingIntentValues.findRoom)}
                 onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
                 onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
                 onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
@@ -4072,18 +4141,30 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   }
 
   function renderHostComposerPanel() {
+    const isFindRoomComposer = composerSourceIntent === housingIntentValues.findRoom
+
     return (
       <div className="hub-panel host-composer-panel">
         <div className="hub-panel-head">
           <div>
-            <span className="muted">Listing flow</span>
-            <h2>{editingListingId ? 'Edit replacement listing' : 'Create replacement listing'}</h2>
+            <span className="muted">{isFindRoomComposer ? 'Room post flow' : 'Listing flow'}</span>
+            <h2>
+              {editingListingId
+                ? isFindRoomComposer
+                  ? 'Edit room post'
+                  : 'Edit replacement listing'
+                : isFindRoomComposer
+                  ? 'Create room post'
+                  : 'Create replacement listing'}
+            </h2>
             <p className="panel-subtitle">
-              Keep the publishing flow focused in its own page so you can move step by step without dashboard clutter.
+              {isFindRoomComposer
+                ? 'Keep the room-post flow focused in its own page so you can publish without mixing it into the discovery feed.'
+                : 'Keep the publishing flow focused in its own page so you can move step by step without dashboard clutter.'}
             </p>
           </div>
           {editingListingId ? (
-            <Button onClick={startCreateListing} variant="ghost">
+            <Button onClick={() => startCreateListing(composerSourceIntent)} variant="ghost">
               Start fresh
             </Button>
           ) : null}
@@ -4645,9 +4726,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               Keep this short and structured. Cirvo uses these preferences to sort the feed into stronger matches first.
             </p>
           </div>
-          <Badge tone="green">
-            {housingNeeds.filter((need) => need.status === 'OPEN').length} active
-          </Badge>
+          <Badge tone="green">{activeRoomNeedCount} active</Badge>
         </div>
 
         {!user ? (
@@ -5124,9 +5203,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
         <FindRoomSectionChips
           activeInquiryCount={activeRequesterInquiriesCount}
-          activeNeedCount={housingNeeds.filter((need) => need.status === 'OPEN').length}
+          activeNeedCount={activeRoomNeedCount}
           liveListingCount={rankedPublicListings.length}
-          postedListingCount={activeMyListingsCount}
+          postedListingCount={activeSeekerPostedListingsCount}
           user={user}
         />
 
@@ -5150,7 +5229,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
         <TenantReplacementSectionChips
           activeInquiryCount={activeOwnerInquiriesCount}
-          activeListingsCount={activeMyListingsCount}
+          activeListingsCount={activeHostListingsCount}
           newInquiryCount={newOwnerInquiriesCount}
           user={user}
         />
@@ -5172,10 +5251,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
           {!shouldShowHostDashboard && !shouldShowHostComposer && !shouldShowHostInquiries && !shouldShowRequesterInquiries && !shouldShowSeekerNeeds && !shouldShowSeekerPostedListings ? (
             renderFindRoomPage(
-              activeHousingNeed
+              hasActiveRoomNeed
                 ? 'Your best room matches are ranked first.'
                 : 'Browse live rooms with a dedicated seeker workspace.',
-              activeHousingNeed
+              hasActiveRoomNeed
                 ? 'Cirvo is using your latest room need to rank better fits higher across the feed.'
                 : 'Use the chips to move between live listings, your room-need post, your room posts, and the inquiries you have already sent.',
               <div className="hub-panel hub-panel-wide live-feed-panel">
@@ -5184,8 +5263,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   <span className="muted">Intent: Find room</span>
                   <h2>Live room listings</h2>
                   <p className="panel-subtitle">
-                    {activeHousingNeed
-                      ? `Matching against ${activeHousingNeed.locality ? `${activeHousingNeed.locality}, ` : ''}${activeHousingNeed.city} with ${formatEnum(activeHousingNeed.preferredOccupancy)?.toLowerCase()} occupancy preferences.`
+                    {hasActiveRoomNeed
+                      ? 'Personalized scoring is active for your latest room need, so stronger fit and quality signals are ranking higher in the feed.'
                       : user
                         ? 'Explore published listings only. Post your room need to unlock personalized scoring and stronger ranking.'
                         : 'Explore published listings only. Sign in and post your room need to unlock personalized scoring; until then the feed stays ranked by listing quality and freshness.'}
@@ -5443,12 +5522,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 {!isLoading && rankedPublicListings.length === 0 && (
                   <Card className="feed-card">
                     <strong>
-                      {activeHousingNeed
+                      {hasActiveRoomNeed
                         ? 'No strong matches for your current room need yet'
                         : 'No live listings match these filters yet'}
                     </strong>
                     <p className="feed-copy">
-                      {activeHousingNeed
+                      {hasActiveRoomNeed
                         ? 'Try broadening locality or budget, or update your room need to widen the matching window.'
                         : 'Try a broader locality, switch off one or two filters, or clear everything to widen the results.'}
                     </p>
@@ -5483,11 +5562,17 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               renderRequesterInquiriesPanel(),
             )
           ) : shouldShowHostComposer ? (
-            renderTenantReplacementPage(
-              editingListingId ? 'Edit your replacement listing in a focused flow.' : 'Create a replacement listing in a dedicated workspace.',
-              'Jump between sections from the colored chips on top, then complete the publishing flow without mixing it with dashboard cards.',
-              renderHostComposerPanel(),
-            )
+            composerSourceIntent === housingIntentValues.findRoom
+              ? renderFindRoomPage(
+                  editingListingId ? 'Edit your room post in a focused flow.' : 'Create a room post in a dedicated workspace.',
+                  'Keep room posting separate from discovery so you can finish the form without mixing it into your listing feed.',
+                  renderHostComposerPanel(),
+                )
+              : renderTenantReplacementPage(
+                  editingListingId ? 'Edit your replacement listing in a focused flow.' : 'Create a replacement listing in a dedicated workspace.',
+                  'Jump between sections from the colored chips on top, then complete the publishing flow without mixing it with dashboard cards.',
+                  renderHostComposerPanel(),
+                )
           ) : shouldShowHostInquiries ? (
             renderTenantReplacementPage(
               'Manage incoming inquiries in their own queue.',
@@ -5736,32 +5821,6 @@ function makeEmptyInquiryForm(): InquiryForm {
     preferredVisitAt: '',
     preferredVisitNote: '',
   }
-}
-
-function normalizeHousingNeeds(housingNeeds: HousingNeed[]) {
-  return housingNeeds.map((housingNeed) => ({
-    ...housingNeed,
-    city: typeof housingNeed.city === 'string' ? housingNeed.city : '',
-    locality: typeof housingNeed.locality === 'string' ? housingNeed.locality : null,
-    maxRentAmount: typeof housingNeed.maxRentAmount === 'number' ? housingNeed.maxRentAmount : null,
-    maxDepositAmount:
-      typeof housingNeed.maxDepositAmount === 'number'
-        ? housingNeed.maxDepositAmount
-        : typeof housingNeed.maxDepositAmount === 'string'
-          ? Number(housingNeed.maxDepositAmount)
-          : null,
-    maxMaintenanceAmount:
-      typeof housingNeed.maxMaintenanceAmount === 'number'
-        ? housingNeed.maxMaintenanceAmount
-        : typeof housingNeed.maxMaintenanceAmount === 'string'
-          ? Number(housingNeed.maxMaintenanceAmount)
-          : null,
-    preferredAmenities: Array.isArray(housingNeed.preferredAmenities) ? housingNeed.preferredAmenities : [],
-    nearbyPlaces: Array.isArray(housingNeed.nearbyPlaces) ? housingNeed.nearbyPlaces : [],
-    moveInDate: typeof housingNeed.moveInDate === 'string' ? housingNeed.moveInDate : '',
-    notes: typeof housingNeed.notes === 'string' ? housingNeed.notes : null,
-    status: (housingNeed.status as HousingNeedStatus) ?? 'OPEN',
-  }))
 }
 
 function formatListingMatchLabel(label: ListingMatchLabel) {
