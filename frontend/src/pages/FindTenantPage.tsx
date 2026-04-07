@@ -6,6 +6,7 @@ import {
   ChevronRight,
   LoaderCircle,
   MapPin,
+  MoreHorizontal,
   PencilLine,
   Search,
   ShieldCheck,
@@ -451,86 +452,114 @@ function SearchListingCard({
 
   return (
     <Card className={`feed-card${showInlineDetails ? ' expanded' : ''}`}>
-      {renderListingCoverImage(listing)}
-
-      <div className="feed-card-top">
-        <div>
-          <strong>{listing.title}</strong>
-          <p>{formatListingLocation(listing)}</p>
-        </div>
-        <div className="listing-card-badges">
-          {matchSummary ? (
-            <Badge tone={getListingMatchTone(matchSummary.label)}>
-              {formatListingMatchLabel(matchSummary.label)}
-            </Badge>
-          ) : null}
-          {existingInquiry ? <Badge tone={getListingInquiryStatusTone(existingInquiry.status)}>Inquiry sent</Badge> : null}
-          <Badge tone={listing.owner.isVerified ? 'green' : 'gray'}>
-            {listing.owner.isVerified ? 'Verified' : 'Live'}
-          </Badge>
-        </div>
+      {/* Clean image — no overlaid badges */}
+      <div className="feed-card-media-wrap">
+        {renderListingCoverImage(listing)}
       </div>
 
+      {/* Title + single-line truncated short location */}
+      <div className="feed-card-heading">
+        <strong className="feed-card-title">{listing.title}</strong>
+        <p className="feed-card-location">
+          <MapPin size={13} />
+          <span>{formatListingLocationShort(listing)}</span>
+        </p>
+      </div>
+
+      {/* Status badges: match, inquiry, verified — always readable in card body */}
+      <div className="feed-card-badges">
+        {matchSummary ? (
+          <Badge tone={getListingMatchTone(matchSummary.label)}>
+            {formatListingMatchLabel(matchSummary.label)}
+          </Badge>
+        ) : null}
+        {existingInquiry ? (
+          <Badge tone={getListingInquiryStatusTone(existingInquiry.status)}>Inquiry sent</Badge>
+        ) : null}
+        {listing.owner.isVerified ? (
+          <Badge tone="green">Verified host</Badge>
+        ) : null}
+      </div>
+
+      {/* Price · Move-in · Fit score all in one row */}
       <div className="feed-meta-row">
         <span>
-          <Building2 size={16} />
+          <Building2 size={15} />
           {formatPriceLine(listing)}
         </span>
         <span>
-          <CalendarRange size={16} />
+          <CalendarRange size={15} />
           {formatMoveInLabel(listing.moveInDate)}
         </span>
+        {matchSummary ? (
+          <span className="feed-fit-score">{matchSummary.matchScore}% fit</span>
+        ) : null}
       </div>
 
-      <div className="nearby-place-chip-row compact">
-        {listing.propertyType ? <span className="nearby-place-chip static">{formatEnum(listing.propertyType)}</span> : null}
-        {listing.occupancyType ? <span className="nearby-place-chip static">{formatEnum(listing.occupancyType)}</span> : null}
-        {getVisibleAmenities(listing.amenities).map((amenity) => (
-          <span className="nearby-place-chip static" key={`${listing.id}-${amenity}`}>
-            {amenity}
-          </span>
-        ))}
-      </div>
+      {/* Amenity chips — cap at 3 to keep card height consistent */}
+      {(() => {
+        const typeChips = [
+          listing.propertyType ? formatEnum(listing.propertyType) : null,
+          listing.occupancyType ? formatEnum(listing.occupancyType) : null,
+        ].filter(Boolean) as string[]
+        const amenityChips = getVisibleAmenities(listing.amenities)
+        const allChips = [...typeChips, ...amenityChips]
+        const visible = allChips.slice(0, 3)
+        const extra = allChips.length - visible.length
+        return (
+          <div className="nearby-place-chip-row compact">
+            {visible.map((chip) => (
+              <span className="nearby-place-chip static" key={`${listing.id}-${chip}`}>{chip}</span>
+            ))}
+            {extra > 0 ? (
+              <span className="nearby-place-chip static muted">+{extra}</span>
+            ) : null}
+          </div>
+        )
+      })()}
 
+      {/* Match reasons — cap at 2 pills to avoid wrapping */}
       {matchSummary?.reasons.length ? (
         <div className="listing-match-reason-row">
-          {matchSummary.reasons.map((reason) => (
+          {matchSummary.reasons.slice(0, 2).map((reason) => (
             <span className="listing-match-reason-pill" key={`${listing.id}-${reason}`}>
               {reason}
             </span>
           ))}
+          {matchSummary.reasons.length > 2 ? (
+            <span className="listing-match-reason-pill muted">+{matchSummary.reasons.length - 2} more</span>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="feed-owner-row">
-        <div>
+      {/* Owner + action buttons in a single footer row */}
+      <div className="feed-card-footer">
+        <div className="feed-card-owner">
           <strong>{listing.owner.fullName}</strong>
           <span>{listing.owner.companyName ?? (listing.owner.isVerified ? 'Verified host' : 'Host')}</span>
         </div>
-        {matchSummary ? <span className="pill">{matchSummary.matchScore}% fit</span> : null}
-      </div>
-
-      <div className="feed-card-actions">
-        <Button onClick={handleViewDetails} variant="secondary">
-          {showInlineDetails ? 'Hide details' : 'View details'}
-        </Button>
-        {existingInquiry ? (
-          <Button
-            onClick={() =>
-              navigate(`/find-tenant/inquiries/${existingInquiry.id}`, {
-                state: {
-                  inquiry: existingInquiry,
-                  backLabel: 'Back to live listings',
-                  backTo: '/find-tenant',
-                  sourceIntent: housingIntentValues.findRoom,
-                } as InquiryDetailsRouteState,
-              })
-            }
-            variant="ghost"
-          >
-            View inquiry
+        <div className="feed-card-actions">
+          <Button onClick={handleViewDetails} variant="secondary">
+            {showInlineDetails ? 'Hide details' : 'View details'}
           </Button>
-        ) : null}
+          {existingInquiry ? (
+            <Button
+              onClick={() =>
+                navigate(`/find-tenant/inquiries/${existingInquiry.id}`, {
+                  state: {
+                    inquiry: existingInquiry,
+                    backLabel: 'Back to live listings',
+                    backTo: '/find-tenant',
+                    sourceIntent: housingIntentValues.findRoom,
+                  } as InquiryDetailsRouteState,
+                })
+              }
+              variant="ghost"
+            >
+              View inquiry
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {showInlineDetails ? (
@@ -644,6 +673,8 @@ function HostListingCard({
   onToggleHold: (listing: Listing) => void
   onViewDetails: (listing: Listing) => void
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+
   return (
     <Card className="host-listing-card">
       {renderListingCoverImage(listing, {
@@ -674,49 +705,79 @@ function HostListingCard({
         <span>Created {formatShortDate(listing.createdAt)}</span>
       </div>
 
-      <div className="host-listing-actions">
-        <Button className="listing-action-button listing-action-details" onClick={() => onViewDetails(listing)} variant="secondary">
-          Show details
-        </Button>
-        <Button className="listing-action-button listing-action-edit" onClick={() => onEdit(listing)} variant="secondary">
-          Edit
-        </Button>
-        {listing.status === 'PAUSED' ? (
-          <Button
-            className="listing-action-button listing-action-resume"
-            disabled={busyAction === `PUBLISHED-${listing.id}`}
-            onClick={() => onResume(listing)}
-            variant="ghost"
-          >
-            {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming...' : 'Resume listing'}
-          </Button>
-        ) : listing.status === 'PUBLISHED' ? (
-          <Button
-            className="listing-action-button listing-action-hold"
-            disabled={busyAction === `PAUSED-${listing.id}`}
-            onClick={() => onToggleHold(listing)}
-            variant="ghost"
-          >
-            {busyAction === `PAUSED-${listing.id}` ? 'Updating...' : 'Put on hold'}
-          </Button>
-        ) : null}
+      {/* Native-feeling card actions: primary CTA + ⋯ context menu */}
+      <div className="host-listing-card-actions">
         <Button
-          className="listing-action-button listing-action-rented"
-          disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
-          onClick={() => onMarkAsRented(listing)}
-          variant="ghost"
+          className="host-listing-primary-action"
+          onClick={() => onViewDetails(listing)}
+          variant="secondary"
         >
-          {busyAction === `FILLED-${listing.id}` ? 'Updating...' : listing.status === 'FILLED' ? 'Marked as rented' : 'Mark as rented'}
+          View details
         </Button>
-        <Button
-          className="listing-action-button listing-action-delete"
-          disabled={busyAction === `ARCHIVED-${listing.id}`}
-          onClick={() => onArchive(listing)}
-          variant="ghost"
+        <button
+          aria-expanded={isMenuOpen}
+          aria-label="More actions"
+          className={`circle-button host-listing-menu-trigger${isMenuOpen ? ' active' : ''}`}
+          onClick={() => setIsMenuOpen((prev) => !prev)}
+          type="button"
         >
-          {busyAction === `ARCHIVED-${listing.id}` ? 'Removing...' : 'Delete'}
-        </Button>
+          <MoreHorizontal size={18} />
+        </button>
       </div>
+
+      {isMenuOpen && (
+        <div className="host-listing-menu" role="menu">
+          <button
+            onClick={() => { onEdit(listing); setIsMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            <PencilLine size={16} />
+            Edit listing
+          </button>
+          {listing.status === 'PAUSED' ? (
+            <button
+              disabled={busyAction === `PUBLISHED-${listing.id}`}
+              onClick={() => { onResume(listing); setIsMenuOpen(false) }}
+              role="menuitem"
+              type="button"
+            >
+              {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming…' : 'Resume listing'}
+            </button>
+          ) : listing.status === 'PUBLISHED' ? (
+            <button
+              disabled={busyAction === `PAUSED-${listing.id}`}
+              onClick={() => { onToggleHold(listing); setIsMenuOpen(false) }}
+              role="menuitem"
+              type="button"
+            >
+              {busyAction === `PAUSED-${listing.id}` ? 'Updating…' : 'Put on hold'}
+            </button>
+          ) : null}
+          <button
+            disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
+            onClick={() => { onMarkAsRented(listing); setIsMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            {busyAction === `FILLED-${listing.id}`
+              ? 'Updating…'
+              : listing.status === 'FILLED'
+                ? 'Already marked as rented'
+                : 'Mark as rented'}
+          </button>
+          <button
+            className="host-menu-destructive"
+            disabled={busyAction === `ARCHIVED-${listing.id}`}
+            onClick={() => { onArchive(listing); setIsMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            <Trash2 size={16} />
+            {busyAction === `ARCHIVED-${listing.id}` ? 'Removing…' : 'Delete listing'}
+          </button>
+        </div>
+      )}
     </Card>
   )
 }
@@ -740,6 +801,7 @@ function PostedRoomListingCard({
   onToggleHold: (listing: Listing) => void
   onViewDetails: (listing: Listing) => void
 }) {
+  const [isPostedMenuOpen, setIsPostedMenuOpen] = useState(false)
   const listingHeading =
     listing.locality && listing.city ? `${listing.locality}, ${listing.city}` : formatListingLocation(listing)
   const listingSubheading = [listing.propertyType, listing.occupancyType]
@@ -811,49 +873,78 @@ function PostedRoomListingCard({
         </div>
       ) : null}
 
-      <div className="inquiry-actions">
-        <Button onClick={() => onViewDetails(listing)} variant="secondary">
-          Show details
-        </Button>
-        <Button className="listing-action-edit" onClick={() => onEdit(listing)} variant="ghost">
-          Edit
-        </Button>
-        {listing.status === 'PAUSED' ? (
-          <Button
-            className="listing-action-resume"
-            disabled={busyAction === `PUBLISHED-${listing.id}`}
-            onClick={() => onResume(listing)}
-            variant="ghost"
-          >
-            {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming...' : 'Resume listing'}
-          </Button>
-        ) : listing.status === 'PUBLISHED' ? (
-          <Button
-            className="listing-action-hold"
-            disabled={busyAction === `PAUSED-${listing.id}`}
-            onClick={() => onToggleHold(listing)}
-            variant="ghost"
-          >
-            {busyAction === `PAUSED-${listing.id}` ? 'Updating...' : 'Put on hold'}
-          </Button>
-        ) : null}
+      <div className="host-listing-card-actions">
         <Button
-          className="listing-action-rented"
-          disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
-          onClick={() => onMarkAsRented(listing)}
-          variant="ghost"
+          className="host-listing-primary-action"
+          onClick={() => onViewDetails(listing)}
+          variant="secondary"
         >
-          {busyAction === `FILLED-${listing.id}` ? 'Updating...' : listing.status === 'FILLED' ? 'Marked as rented' : 'Mark as rented'}
+          View details
         </Button>
-        <Button
-          className="listing-action-delete"
-          disabled={busyAction === `ARCHIVED-${listing.id}`}
-          onClick={() => onArchive(listing)}
-          variant="ghost"
+        <button
+          aria-expanded={isPostedMenuOpen}
+          aria-label="More actions"
+          className={`circle-button host-listing-menu-trigger${isPostedMenuOpen ? ' active' : ''}`}
+          onClick={() => setIsPostedMenuOpen((prev) => !prev)}
+          type="button"
         >
-          {busyAction === `ARCHIVED-${listing.id}` ? 'Removing...' : 'Delete'}
-        </Button>
+          <MoreHorizontal size={18} />
+        </button>
       </div>
+
+      {isPostedMenuOpen && (
+        <div className="host-listing-menu" role="menu">
+          <button
+            onClick={() => { onEdit(listing); setIsPostedMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            <PencilLine size={16} />
+            Edit listing
+          </button>
+          {listing.status === 'PAUSED' ? (
+            <button
+              disabled={busyAction === `PUBLISHED-${listing.id}`}
+              onClick={() => { onResume(listing); setIsPostedMenuOpen(false) }}
+              role="menuitem"
+              type="button"
+            >
+              {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming…' : 'Resume listing'}
+            </button>
+          ) : listing.status === 'PUBLISHED' ? (
+            <button
+              disabled={busyAction === `PAUSED-${listing.id}`}
+              onClick={() => { onToggleHold(listing); setIsPostedMenuOpen(false) }}
+              role="menuitem"
+              type="button"
+            >
+              {busyAction === `PAUSED-${listing.id}` ? 'Updating…' : 'Put on hold'}
+            </button>
+          ) : null}
+          <button
+            disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
+            onClick={() => { onMarkAsRented(listing); setIsPostedMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            {busyAction === `FILLED-${listing.id}`
+              ? 'Updating…'
+              : listing.status === 'FILLED'
+                ? 'Already marked as rented'
+                : 'Mark as rented'}
+          </button>
+          <button
+            className="host-menu-destructive"
+            disabled={busyAction === `ARCHIVED-${listing.id}`}
+            onClick={() => { onArchive(listing); setIsPostedMenuOpen(false) }}
+            role="menuitem"
+            type="button"
+          >
+            <Trash2 size={16} />
+            {busyAction === `ARCHIVED-${listing.id}` ? 'Removing…' : 'Delete listing'}
+          </button>
+        </div>
+      )}
     </Card>
   )
 }
@@ -5281,36 +5372,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               </div>
 
               <div className="live-feed-toolbar">
-                <div className="live-feed-summary">
-                  <strong>Search and filter published listings</strong>
-                  <span>Keep the common filters visible, then open advanced filters only when you need more precision.</span>
-                </div>
-                <div className="listing-filter-toolbar-actions">
-                  <span className="listing-filter-status">
-                    {rankedPublicListings.length} result{rankedPublicListings.length === 1 ? '' : 's'}
-                  </span>
-                  <div className="listing-toolbar-actions">
-                    <Button
-                      className="listing-toolbar-clear"
-                      icon={<SlidersHorizontal size={16} />}
-                      onClick={() => setShowAdvancedPublicFilters((current) => !current)}
-                      variant="ghost"
-                    >
-                      {showAdvancedPublicFilters
-                        ? 'Hide advanced'
-                        : activeAdvancedPublicFiltersCount > 0
-                          ? `Advanced (${activeAdvancedPublicFiltersCount})`
-                          : 'Advanced'}
-                    </Button>
-                    {hasActivePublicListingFilters ? (
-                      <Button className="listing-toolbar-clear" onClick={clearPublicListingFilters} variant="ghost">
-                        Clear all
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="housing-search-row listing-search-shell">
-                  <label className="listing-search-field" htmlFor="find-room-search">
+                {/* Search bar row — inline with result count + controls */}
+                <div className="listing-search-bar-row">
+                  <label className="listing-search-field listing-search-field-grow" htmlFor="find-room-search">
                     <Search size={18} />
                     <input
                       id="find-room-search"
@@ -5319,81 +5383,94 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                       value={searchQuery}
                     />
                   </label>
+                  <div className="listing-search-controls">
+                    <span className="listing-filter-status listing-filter-status-compact">
+                      {rankedPublicListings.length}
+                    </span>
+                    <button
+                      className={`listing-filter-chip listing-advanced-toggle${showAdvancedPublicFilters ? ' active' : ''}`}
+                      onClick={() => setShowAdvancedPublicFilters((current) => !current)}
+                      type="button"
+                    >
+                      <SlidersHorizontal size={15} />
+                      {activeAdvancedPublicFiltersCount > 0 ? `Filters (${activeAdvancedPublicFiltersCount})` : 'Filters'}
+                    </button>
+                    {hasActivePublicListingFilters ? (
+                      <button
+                        className="listing-filter-chip listing-clear-chip"
+                        onClick={clearPublicListingFilters}
+                        type="button"
+                      >
+                        <X size={14} />
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="listing-filter-quick-grid">
-                  <div className="listing-filter-group listing-filter-group-compact">
-                    <span className="muted">City</span>
-                    <div className="listing-filter-chip-row">
-                      <button
-                        aria-pressed={publicListingFilters.city === ''}
-                        className={`listing-filter-chip${publicListingFilters.city === '' ? ' active' : ''}`}
-                        onClick={() => setPublicListingFilters((current) => ({ ...current, city: '' }))}
-                        type="button"
-                      >
-                        All cities
-                      </button>
-                      {quickPublicCityOptions.map((city) => (
-                        <button
-                          aria-pressed={publicListingFilters.city === city}
-                          className={`listing-filter-chip${publicListingFilters.city === city ? ' active' : ''}`}
-                          key={city}
-                          onClick={() => setPublicListingFilters((current) => ({ ...current, city }))}
-                          type="button"
-                        >
-                          {city}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                {/* Flat single-row filter strip — all groups inline, separated by a dot */}
+                <div className="listing-filter-bar">
+                  <button
+                    aria-pressed={publicListingFilters.city === ''}
+                    className={`listing-filter-chip${publicListingFilters.city === '' ? ' active' : ''}`}
+                    onClick={() => setPublicListingFilters((current) => ({ ...current, city: '' }))}
+                    type="button"
+                  >
+                    All cities
+                  </button>
+                  {quickPublicCityOptions.map((city) => (
+                    <button
+                      aria-pressed={publicListingFilters.city === city}
+                      className={`listing-filter-chip${publicListingFilters.city === city ? ' active' : ''}`}
+                      key={city}
+                      onClick={() => setPublicListingFilters((current) => ({ ...current, city }))}
+                      type="button"
+                    >
+                      {city}
+                    </button>
+                  ))}
 
-                  <div className="listing-filter-group listing-filter-group-compact">
-                    <span className="muted">Budget</span>
-                    <div className="listing-filter-chip-row">
-                      {publicListingBudgetFilters.map((filterOption) => (
-                        <button
-                          aria-pressed={publicListingFilters.budget === filterOption.value}
-                          className={`listing-filter-chip${publicListingFilters.budget === filterOption.value ? ' active' : ''}`}
-                          key={filterOption.value}
-                          onClick={() =>
-                            setPublicListingFilters((current) => ({
-                              ...current,
-                              budget: filterOption.value,
-                            }))
-                          }
-                          type="button"
-                        >
-                          {filterOption.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <span className="listing-filter-divider" aria-hidden="true" />
 
-                  <div className="listing-filter-group listing-filter-group-compact">
-                    <span className="muted">Owner trust</span>
-                    <div className="listing-filter-chip-row">
-                      <button
-                        aria-pressed={!publicListingFilters.verifiedOnly}
-                        className={`listing-filter-chip${!publicListingFilters.verifiedOnly ? ' active' : ''}`}
-                        onClick={() =>
-                          setPublicListingFilters((current) => ({ ...current, verifiedOnly: false }))
-                        }
-                        type="button"
-                      >
-                        All owners
-                      </button>
-                      <button
-                        aria-pressed={publicListingFilters.verifiedOnly}
-                        className={`listing-filter-chip${publicListingFilters.verifiedOnly ? ' active' : ''}`}
-                        onClick={() =>
-                          setPublicListingFilters((current) => ({ ...current, verifiedOnly: true }))
-                        }
-                        type="button"
-                      >
-                        Verified only
-                      </button>
-                    </div>
-                  </div>
+                  {publicListingBudgetFilters.map((filterOption) => (
+                    <button
+                      aria-pressed={publicListingFilters.budget === filterOption.value}
+                      className={`listing-filter-chip${publicListingFilters.budget === filterOption.value ? ' active' : ''}`}
+                      key={filterOption.value}
+                      onClick={() =>
+                        setPublicListingFilters((current) => ({
+                          ...current,
+                          budget: filterOption.value,
+                        }))
+                      }
+                      type="button"
+                    >
+                      {filterOption.label}
+                    </button>
+                  ))}
+
+                  <span className="listing-filter-divider" aria-hidden="true" />
+
+                  <button
+                    aria-pressed={!publicListingFilters.verifiedOnly}
+                    className={`listing-filter-chip${!publicListingFilters.verifiedOnly ? ' active' : ''}`}
+                    onClick={() =>
+                      setPublicListingFilters((current) => ({ ...current, verifiedOnly: false }))
+                    }
+                    type="button"
+                  >
+                    All owners
+                  </button>
+                  <button
+                    aria-pressed={publicListingFilters.verifiedOnly}
+                    className={`listing-filter-chip${publicListingFilters.verifiedOnly ? ' active' : ''}`}
+                    onClick={() =>
+                      setPublicListingFilters((current) => ({ ...current, verifiedOnly: true }))
+                    }
+                    type="button"
+                  >
+                    Verified only
+                  </button>
                 </div>
 
                 {showAdvancedPublicFilters ? (
@@ -6029,6 +6106,18 @@ function formatListingLocation(listing: Listing) {
   return [listing.city, listing.locality].filter(Boolean).join(', ') || listing.locationName || 'Location pending'
 }
 
+/** Short version for cards: locality, city only. Falls back to first 2 segments of the full Google address. */
+function formatListingLocationShort(listing: Listing) {
+  if (listing.locality || listing.city) {
+    return [listing.locality, listing.city].filter(Boolean).join(', ')
+  }
+  if (listing.locationName) {
+    const parts = listing.locationName.split(',').map((p) => p.trim()).filter(Boolean)
+    return parts.slice(0, 2).join(', ')
+  }
+  return 'Location pending'
+}
+
 function formatPriceLine(listing: Listing) {
   return listing.rentAmount ? `${formatMoney(listing.rentAmount)} / month` : 'Rent pending'
 }
@@ -6525,5 +6614,5 @@ function buildMailtoLink(email: string, listingTitle?: string) {
 function isDesktopViewport() {
   return typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(min-width: 720px)').matches
+    window.matchMedia('(min-width: 960px)').matches
 }

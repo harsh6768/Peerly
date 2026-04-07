@@ -1,5 +1,5 @@
-import { House, Search, UserRound } from 'lucide-react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 import { useAppAuth } from '../context/AppAuthContext'
@@ -12,16 +12,17 @@ const desktopLinks = [
   { to: '/profile', label: 'Profile' },
 ]
 
-const mobileLinks = [
-  { to: '/', label: 'Home', icon: House },
-  { to: '/find-tenant', label: 'Housing', icon: Search },
-  { to: '/profile', label: 'Profile', icon: UserRound },
-]
-
 export function AppShell() {
   const { configured, isLoading, isSyncing, signInWithGoogle, user } = useAppAuth()
   const { intent, setIntent } = useHousingIntent()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const inboxTo = intent === housingIntentValues.tenantReplacement
+    ? '/find-tenant/host/inquiries'
+    : '/find-tenant/inquiries'
+
+  const postTo = user ? '/find-tenant/host' : '/profile'
 
   return (
     <div className="app-shell">
@@ -99,26 +100,89 @@ export function AppShell() {
               </>
             )}
           </div>
+
+          {/* Mobile-only: intent toggle + auth — hidden on desktop via CSS */}
+          <div className="mobile-header-actions">
+            {user ? (
+              <div
+                aria-label="Housing intent"
+                className="toggle-wrap mobile-intent-toggle"
+                data-intent={intent}
+              >
+                <button
+                  className={`toggle-pill${intent === housingIntentValues.findRoom ? ' active' : ''}`}
+                  onClick={() => {
+                    setIntent(housingIntentValues.findRoom)
+                    navigate('/find-tenant')
+                  }}
+                  type="button"
+                >
+                  Find room
+                </button>
+                <button
+                  className={`toggle-pill${intent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
+                  onClick={() => {
+                    setIntent(housingIntentValues.tenantReplacement)
+                    navigate('/find-tenant/host')
+                  }}
+                  type="button"
+                >
+                  Replace tenant
+                </button>
+              </div>
+            ) : (
+              <Button
+                className="mobile-signin-btn"
+                disabled={!configured || isLoading || isSyncing}
+                onClick={() => void signInWithGoogle()}
+              >
+                Sign in
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
       <main className="page-main">
-        <Outlet />
+        <div className="page-route-enter" key={location.pathname}>
+          <Outlet />
+        </div>
       </main>
 
       <AppFooter />
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {mobileLinks.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={`${to}-${label}`}
-            className={({ isActive }) => (isActive ? 'active' : '')}
-            to={to}
-          >
-            <Icon size={20} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        <NavLink
+          className={({ isActive }) => (isActive ? 'active' : '')}
+          end
+          to="/find-tenant"
+        >
+          <Search size={20} />
+          <span>Browse</span>
+        </NavLink>
+        <NavLink
+          className={({ isActive }) => (isActive ? 'active' : '')}
+          to={postTo}
+        >
+          <PlusSquare size={20} />
+          <span>Post</span>
+        </NavLink>
+        <NavLink
+          className={({ isActive }) =>
+            (isActive || location.pathname.includes('/inquiries') ? 'active' : '')
+          }
+          to={inboxTo}
+        >
+          <MessageCircle size={20} />
+          <span>Inbox</span>
+        </NavLink>
+        <NavLink
+          className={({ isActive }) => (isActive ? 'active' : '')}
+          to="/profile"
+        >
+          <UserRound size={20} />
+          <span>Profile</span>
+        </NavLink>
       </nav>
     </div>
   )

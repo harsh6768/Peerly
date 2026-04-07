@@ -1,4 +1,5 @@
 import { ArrowRight, Home, HousePlus, Search, ShieldCheck } from 'lucide-react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
@@ -41,8 +42,15 @@ const workflowSteps = [
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { user } = useAppAuth()
+  const { user, isLoading } = useAppAuth()
   const { setIntent } = useHousingIntent()
+
+  // Authenticated users should land on the feed directly, not a marketing page
+  useEffect(() => {
+    if (!isLoading && user) {
+      navigate('/find-tenant', { replace: true })
+    }
+  }, [user, isLoading, navigate])
 
   function openHousingIntent(intent: (typeof intentCards)[number]['intent']) {
     if (!user && intent === housingIntentValues.tenantReplacement) {
