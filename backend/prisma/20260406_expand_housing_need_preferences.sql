@@ -21,11 +21,7 @@ ON "HousingNeedNearby"("name");
 CREATE UNIQUE INDEX IF NOT EXISTS "HousingNeedNearby_housingNeedId_name_key"
 ON "HousingNeedNearby"("housingNeedId", "name");
 
-DO $$
-BEGIN
+
   ALTER TABLE "HousingNeedNearby"
   ADD CONSTRAINT "HousingNeedNearby_housingNeedId_fkey"
   FOREIGN KEY ("housingNeedId") REFERENCES "HousingNeed"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;

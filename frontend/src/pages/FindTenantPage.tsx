@@ -240,6 +240,27 @@ type HousingNeedForm = {
   notes: string
 }
 
+type HousingNeedStatus = 'OPEN' | 'MATCHED' | 'CLOSED' | 'ARCHIVED'
+
+type HousingNeed = {
+  id: string
+  city: string
+  locality: string | null
+  preferredPropertyType: string
+  preferredOccupancy: string
+  maxRentAmount: number | null
+  maxDepositAmount: number | null
+  maxMaintenanceAmount: number | null
+  preferredAmenities: string[]
+  moveInDate: string
+  urgencyLevel: string
+  notes: string | null
+  status: HousingNeedStatus
+  createdAt: string
+  updatedAt: string
+  nearbyPlaces: Array<{ id: string; name: string; type: string }>
+}
+
 type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE'
 type ListingMatchSummary = {
   matchScore: number
@@ -2722,6 +2743,19 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     : null
   const [publicListings, setPublicListings] = useState<Listing[]>([])
   const [myListings, setMyListings] = useState<Listing[]>([])
+  const [myHousingNeeds, setMyHousingNeeds] = useState<HousingNeed[]>([])
+  const [expandedNeedId, setExpandedNeedId] = useState<string | null>(null)
+  const [editingNeedId, setEditingNeedId] = useState<string | null>(null)
+  const [editNeedDraft, setEditNeedDraft] = useState<{
+    city: string; locality: string; maxRentAmount: string; maxDepositAmount: string
+    maxMaintenanceAmount: string; preferredPropertyType: string; preferredOccupancy: string
+    preferredAmenities: string[]; moveInDate: string; urgencyLevel: string; notes: string; status: HousingNeedStatus
+  }>({
+    city: '', locality: '', maxRentAmount: '', maxDepositAmount: '', maxMaintenanceAmount: '',
+    preferredPropertyType: '', preferredOccupancy: '', preferredAmenities: [],
+    moveInDate: '', urgencyLevel: '', notes: '', status: 'OPEN',
+  })
+  const [isSavingNeedEdit, setIsSavingNeedEdit] = useState(false)
   const [requesterInquiries, setRequesterInquiries] = useState<ListingInquiry[]>([])
   const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -2973,6 +3007,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     () => filterListingInquiries(requesterInquiries, 'ACTIVE').length,
     [requesterInquiries],
   )
+  const activeHousingNeedsCount = useMemo(
+    () => myHousingNeeds.filter((n) => n.status === 'OPEN' || n.status === 'MATCHED').length,
+    [myHousingNeeds],
+  )
   const filteredRequesterInquiries = useMemo(
     () => filterListingInquiries(requesterInquiries, requesterInquiryFilter),
     [requesterInquiries, requesterInquiryFilter],
@@ -3041,6 +3079,15 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   useEffect(() => {
     void loadHousingData()
   }, [sessionToken, user?.id])
+
+  // Fresh fetch from /housing-needs/mine every time "Your room posts" tab is opened.
+  useEffect(() => {
+    if (!shouldShowSeekerPostedListings || !sessionToken || !user) return
+    apiRequest<HousingNeed[]>('/housing-needs/mine', { token: sessionToken })
+      .then((data) => setMyHousingNeeds(Array.isArray(data) ? data : []))
+      .catch(() => {/* silently ignore — stale data still shown */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldShowSeekerPostedListings])
 
   useEffect(() => {
     if (
@@ -3113,26 +3160,23 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setPublicListings(normalizeListings(publicListingsPayload))
 
       if (sessionToken && user) {
-        const [myListingsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
+        const [myListingsPayload, myHousingNeedsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
           await Promise.all([
           apiRequest<Listing[]>(
             `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
-            {
-              token: sessionToken,
-            },
+            { token: sessionToken },
           ),
-          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=requester', {
-            token: sessionToken,
-          }),
-          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
-            token: sessionToken,
-          }),
+          apiRequest<HousingNeed[]>('/housing-needs/mine', { token: sessionToken }),
+          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=requester', { token: sessionToken }),
+          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', { token: sessionToken }),
           ])
         setMyListings(normalizeListings(myListingsPayload))
+        setMyHousingNeeds(Array.isArray(myHousingNeedsPayload) ? myHousingNeedsPayload : [])
         setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
         setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
         setMyListings([])
+        setMyHousingNeeds([])
         setRequesterInquiries([])
         setOwnerInquiries([])
       }
@@ -4056,72 +4100,381 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     )
   }
 
+  function startEditingNeed(need: HousingNeed) {
+    setEditingNeedId(need.id)
+    setExpandedNeedId(need.id)
+    setEditNeedDraft({
+      city: need.city,
+      locality: need.locality ?? '',
+      maxRentAmount: need.maxRentAmount != null ? String(need.maxRentAmount) : '',
+      maxDepositAmount: need.maxDepositAmount != null ? String(need.maxDepositAmount) : '',
+      maxMaintenanceAmount: need.maxMaintenanceAmount != null ? String(need.maxMaintenanceAmount) : '',
+      preferredPropertyType: need.preferredPropertyType,
+      preferredOccupancy: need.preferredOccupancy,
+      preferredAmenities: [...need.preferredAmenities],
+      moveInDate: need.moveInDate ? need.moveInDate.split('T')[0] : '',
+      urgencyLevel: need.urgencyLevel,
+      notes: need.notes ?? '',
+      status: need.status,
+    })
+  }
+
+  async function saveNeedEdit(needId: string) {
+    if (!sessionToken) return
+    setIsSavingNeedEdit(true)
+    try {
+      const payload: Record<string, unknown> = {
+        city: editNeedDraft.city,
+        preferredPropertyType: editNeedDraft.preferredPropertyType,
+        preferredOccupancy: editNeedDraft.preferredOccupancy,
+        preferredAmenities: editNeedDraft.preferredAmenities,
+        urgencyLevel: editNeedDraft.urgencyLevel,
+        status: editNeedDraft.status,
+      }
+      if (editNeedDraft.locality) payload.locality = editNeedDraft.locality
+      if (editNeedDraft.maxRentAmount) payload.maxRentAmount = Number(editNeedDraft.maxRentAmount)
+      if (editNeedDraft.maxDepositAmount) payload.maxDepositAmount = Number(editNeedDraft.maxDepositAmount)
+      if (editNeedDraft.maxMaintenanceAmount) payload.maxMaintenanceAmount = Number(editNeedDraft.maxMaintenanceAmount)
+      if (editNeedDraft.moveInDate) payload.moveInDate = new Date(editNeedDraft.moveInDate).toISOString()
+      if (editNeedDraft.notes) payload.notes = editNeedDraft.notes
+      const updated = await apiRequest<HousingNeed>(`/housing-needs/${needId}`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify(payload),
+      })
+      setMyHousingNeeds((cur) => cur.map((n) => (n.id === needId ? updated : n)))
+      setEditingNeedId(null)
+    } catch {
+      // Silently retain draft on error
+    } finally {
+      setIsSavingNeedEdit(false)
+    }
+  }
+
   function renderSeekerPostedListingsPanel() {
+    const housingNeedStatusTone = (status: HousingNeedStatus) => {
+      if (status === 'OPEN') return 'green'
+      if (status === 'MATCHED') return 'purple'
+      if (status === 'CLOSED') return 'gray'
+      return 'gray'
+    }
+
     return (
       <div className="hub-panel host-dashboard-panel">
         <div className="hub-panel-head">
           <div>
             <span className="muted">Your room posts</span>
-            <h2>Listings you have posted</h2>
+            <h2>Your room requirements</h2>
             <p className="panel-subtitle">
-              Review the room listings you created without leaving the find-room workspace. Your public discovery feed still stays separate.
+              These are the room needs you posted. Each post tells Cirvo what you are looking for so it can rank better matches first.
             </p>
           </div>
-          <div className="hub-panel-actions">
-            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeSeekerPostedListingsCount} active`}</Badge>
-            {user ? (
-              <Button onClick={() => startCreateListing(housingIntentValues.findRoom)} variant="secondary">
-                Post a room listing
-              </Button>
-            ) : null}
-          </div>
+          <Badge tone="green">{isLoading ? 'Loading' : `${activeHousingNeedsCount} active`}</Badge>
         </div>
-
-        {user ? (
-          <div className="host-listing-toolbar">
-            <div className="listing-filter-chip-row">
-              {hostListingFilters.map((filterOption) => (
-                <button
-                  aria-pressed={myListingFilter === filterOption.value}
-                  className={`listing-filter-chip${myListingFilter === filterOption.value ? ' active' : ''}`}
-                  key={`seeker-posted-${filterOption.value}`}
-                  onClick={() => setMyListingFilter(filterOption.value)}
-                  type="button"
-                >
-                  {filterOption.label} ({filterHostListings(seekerPostedListings, filterOption.value).length})
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         {!user ? (
           <Card className="feed-card">
             <strong>Sign in to see your room posts</strong>
             <p className="feed-copy">
-              Once you sign in, every room listing you create will be visible here with edit and status controls.
+              Once you sign in, every room requirement you have posted will appear here so you can manage and update it.
             </p>
-            <Button to="/profile" variant="secondary">
-              Open profile
-            </Button>
+            <Button to="/profile" variant="secondary">Open profile</Button>
           </Card>
-        ) : filteredSeekerPostedListings.length === 0 && !isLoading ? (
-          seekerPostedListingsEmptyState
+        ) : myHousingNeeds.length === 0 && !isLoading ? (
+          <Card className="feed-card">
+            <strong>No room requirements posted yet</strong>
+            <p className="feed-copy">
+              Go to <em>Your room need</em> and fill in your preferences — city, budget, move-in date, and what you are looking for. Once saved it will appear here.
+            </p>
+            <Button to="/find-tenant/needs" variant="secondary">Post your room need</Button>
+          </Card>
         ) : (
-          <div className="host-inquiry-grid">
-            {filteredSeekerPostedListings.map((listing) => (
-              <PostedRoomListingCard
-                busyAction={busyListingAction}
-                key={`seeker-posted-${listing.id}`}
-                listing={listing}
-                onArchive={(current) => requestListingStatusChange(current, 'ARCHIVED')}
-                onEdit={(current) => startEditingListing(current, housingIntentValues.findRoom)}
-                onMarkAsRented={(current) => requestListingStatusChange(current, 'FILLED')}
-                onResume={(current) => requestListingStatusChange(current, 'PUBLISHED')}
-                onToggleHold={(current) => requestListingStatusChange(current, 'PAUSED')}
-                onViewDetails={openSeekerPostedListingDetails}
-              />
-            ))}
+          <div className="room-posts-grid">
+            {myHousingNeeds.map((need) => {
+              const isExpanded = expandedNeedId === need.id
+              const isEditing = editingNeedId === need.id
+              const allChips = [
+                need.preferredPropertyType ? formatEnum(need.preferredPropertyType) : null,
+                need.preferredOccupancy ? formatEnum(need.preferredOccupancy) : null,
+                ...need.preferredAmenities.map(formatEnum),
+              ].filter(Boolean) as string[]
+              const summaryChips = allChips.slice(0, 4)
+              const extraChips = allChips.length - summaryChips.length
+
+              return (
+                <Card className={`room-post-card need-post-card${isExpanded ? ' need-post-card--expanded' : ''}`} key={need.id}>
+                  {/* ── Collapsed header ── */}
+                  <div className="need-post-head">
+                    <div className="need-post-location">
+                      <MapPin size={14} />
+                      <strong>{need.locality ? `${need.locality}, ${need.city}` : need.city}</strong>
+                    </div>
+                    <Badge tone={housingNeedStatusTone(need.status)}>
+                      {need.status === 'OPEN' ? 'Active' : need.status === 'MATCHED' ? 'Matched' : need.status === 'CLOSED' ? 'Closed' : 'Archived'}
+                    </Badge>
+                  </div>
+
+                  {/* ── Summary facts (always visible) ── */}
+                  <div className="need-post-facts">
+                    {need.maxRentAmount ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Max rent</span>
+                        <strong>{formatMoney(need.maxRentAmount)} / mo</strong>
+                      </div>
+                    ) : null}
+                    {need.maxDepositAmount ? (
+                      <div className="listing-details-fact">
+                        <span className="muted">Max deposit</span>
+                        <strong>{formatMoney(need.maxDepositAmount)}</strong>
+                      </div>
+                    ) : null}
+                    <div className="listing-details-fact">
+                      <span className="muted">Move-in</span>
+                      <strong>{formatShortDate(need.moveInDate)}</strong>
+                    </div>
+                  </div>
+
+                  {summaryChips.length > 0 ? (
+                    <div className="nearby-place-chip-row compact">
+                      {summaryChips.map((chip) => (
+                        <span className="nearby-place-chip static" key={`need-${need.id}-${chip}`}>{chip}</span>
+                      ))}
+                      {extraChips > 0 && !isExpanded ? (
+                        <span className="nearby-place-chip static muted">+{extraChips} more</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* ── Expanded details / edit form ── */}
+                  {isExpanded && (
+                    <div className="need-post-expanded">
+                      {isEditing ? (
+                        <div className="need-edit-form">
+                          <div className="need-edit-section-label">Edit your room requirement</div>
+
+                          <div className="need-edit-grid">
+                            <label className="need-edit-field">
+                              <span>City</span>
+                              <input
+                                className="input"
+                                value={editNeedDraft.city}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, city: e.target.value }))}
+                                placeholder="City"
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Locality / area</span>
+                              <input
+                                className="input"
+                                value={editNeedDraft.locality}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, locality: e.target.value }))}
+                                placeholder="e.g. Koramangala"
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Max rent (₹ / mo)</span>
+                              <input
+                                className="input"
+                                type="number"
+                                value={editNeedDraft.maxRentAmount}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, maxRentAmount: e.target.value }))}
+                                placeholder="e.g. 20000"
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Max deposit (₹)</span>
+                              <input
+                                className="input"
+                                type="number"
+                                value={editNeedDraft.maxDepositAmount}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, maxDepositAmount: e.target.value }))}
+                                placeholder="e.g. 50000"
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Max maintenance (₹)</span>
+                              <input
+                                className="input"
+                                type="number"
+                                value={editNeedDraft.maxMaintenanceAmount}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, maxMaintenanceAmount: e.target.value }))}
+                                placeholder="e.g. 2000"
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Move-in date</span>
+                              <input
+                                className="input"
+                                type="date"
+                                value={editNeedDraft.moveInDate}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, moveInDate: e.target.value }))}
+                              />
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Property type</span>
+                              <select
+                                className="input"
+                                value={editNeedDraft.preferredPropertyType}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, preferredPropertyType: e.target.value }))}
+                              >
+                                <option value="">Any</option>
+                                <option value="apartment">Apartment</option>
+                                <option value="independent_house">Independent house</option>
+                                <option value="pg">PG</option>
+                                <option value="villa">Villa</option>
+                              </select>
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Occupancy</span>
+                              <select
+                                className="input"
+                                value={editNeedDraft.preferredOccupancy}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, preferredOccupancy: e.target.value }))}
+                              >
+                                <option value="">Any</option>
+                                <option value="single">Single</option>
+                                <option value="double">Double sharing</option>
+                                <option value="triple">Triple sharing</option>
+                              </select>
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Urgency</span>
+                              <select
+                                className="input"
+                                value={editNeedDraft.urgencyLevel}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, urgencyLevel: e.target.value }))}
+                              >
+                                <option value="flexible">Flexible</option>
+                                <option value="within_a_month">Within a month</option>
+                                <option value="within_a_week">Within a week</option>
+                                <option value="immediate">Immediate</option>
+                              </select>
+                            </label>
+                            <label className="need-edit-field">
+                              <span>Status</span>
+                              <select
+                                className="input"
+                                value={editNeedDraft.status}
+                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, status: e.target.value as HousingNeedStatus }))}
+                              >
+                                <option value="OPEN">Active</option>
+                                <option value="MATCHED">Matched</option>
+                                <option value="CLOSED">Closed</option>
+                                <option value="ARCHIVED">Archived</option>
+                              </select>
+                            </label>
+                          </div>
+
+                          <label className="need-edit-field need-edit-field--full">
+                            <span>Notes</span>
+                            <textarea
+                              className="input"
+                              rows={3}
+                              value={editNeedDraft.notes}
+                              onChange={(e) => setEditNeedDraft((d) => ({ ...d, notes: e.target.value }))}
+                              placeholder="Any additional details about what you are looking for…"
+                            />
+                          </label>
+
+                          <div className="need-edit-actions">
+                            <Button
+                              variant="secondary"
+                              onClick={() => setEditingNeedId(null)}
+                              disabled={isSavingNeedEdit}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="primary"
+                              onClick={() => saveNeedEdit(need.id)}
+                              disabled={isSavingNeedEdit}
+                            >
+                              {isSavingNeedEdit ? 'Saving…' : 'Save changes'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="need-post-full-details">
+                          {need.maxMaintenanceAmount ? (
+                            <div className="need-post-facts">
+                              <div className="listing-details-fact">
+                                <span className="muted">Max maintenance</span>
+                                <strong>{formatMoney(need.maxMaintenanceAmount)} / mo</strong>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {need.urgencyLevel ? (
+                            <div className="need-detail-row">
+                              <span className="muted">Urgency</span>
+                              <span>{formatEnum(need.urgencyLevel)}</span>
+                            </div>
+                          ) : null}
+
+                          {allChips.length > 4 ? (
+                            <div>
+                              <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 6 }}>All preferences</p>
+                              <div className="nearby-place-chip-row compact">
+                                {allChips.map((chip) => (
+                                  <span className="nearby-place-chip static" key={`full-${need.id}-${chip}`}>{chip}</span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {need.nearbyPlaces?.length > 0 ? (
+                            <div>
+                              <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 6 }}>Nearby places wanted</p>
+                              <div className="nearby-place-chip-row compact">
+                                {need.nearbyPlaces.map((place) => (
+                                  <span className="nearby-place-chip static" key={place.id}>{place.name}</span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {need.notes ? (
+                            <p className="feed-copy need-post-notes">{need.notes}</p>
+                          ) : null}
+
+                          <div className="need-detail-row need-detail-row--meta">
+                            <span className="muted" style={{ fontSize: '0.78rem' }}>Last updated {formatShortDate(need.updatedAt)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Footer ── */}
+                  <div className="need-post-footer">
+                    <span className="muted" style={{ fontSize: '0.78rem' }}>Posted {formatShortDate(need.createdAt)}</span>
+                    <div className="need-post-footer-actions">
+                      <button
+                        className="need-show-more-btn"
+                        onClick={() => {
+                          if (isExpanded) {
+                            setExpandedNeedId(null)
+                            setEditingNeedId(null)
+                          } else {
+                            setExpandedNeedId(need.id)
+                          }
+                        }}
+                      >
+                        {isExpanded ? 'Hide details' : 'Show details'}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      {isExpanded && !isEditing ? (
+                        <Button variant="secondary" onClick={() => startEditingNeed(need)}>
+                          Edit
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
@@ -5296,7 +5649,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           activeInquiryCount={activeRequesterInquiriesCount}
           activeNeedCount={activeRoomNeedCount}
           liveListingCount={rankedPublicListings.length}
-          postedListingCount={activeSeekerPostedListingsCount}
+          postedListingCount={activeHousingNeedsCount}
           user={user}
         />
 
@@ -5628,8 +5981,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             )
           ) : shouldShowSeekerPostedListings ? (
             renderFindRoomPage(
-              'See the room posts you have already created.',
-              'Use this view to manage your own room listings while keeping the main feed focused on discovery.',
+              'Rooms you have applied for.',
+              'Every listing you sent an inquiry for is tracked here — check status, contact the owner, or re-open the listing.',
               renderSeekerPostedListingsPanel(),
             )
           ) : shouldShowRequesterInquiries ? (
@@ -5794,7 +6147,7 @@ function FindRoomSectionChips({
     {
       key: 'posts',
       label: 'Your room posts',
-      meta: user ? (postedListingCount > 0 ? `${postedListingCount} active` : 'See your listings') : 'Sign in to host',
+      meta: user ? (postedListingCount > 0 ? `${postedListingCount} active` : 'Post your needs') : 'Sign in to post',
       to: user ? '/find-tenant/posts' : '/profile',
       tone: 'violet',
     },
