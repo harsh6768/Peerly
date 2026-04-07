@@ -803,173 +803,6 @@ function HostListingCard({
   )
 }
 
-function PostedRoomListingCard({
-  listing,
-  busyAction,
-  onArchive,
-  onEdit,
-  onMarkAsRented,
-  onResume,
-  onToggleHold,
-  onViewDetails,
-}: {
-  listing: Listing
-  busyAction: string | null
-  onArchive: (listing: Listing) => void
-  onEdit: (listing: Listing) => void
-  onMarkAsRented: (listing: Listing) => void
-  onResume: (listing: Listing) => void
-  onToggleHold: (listing: Listing) => void
-  onViewDetails: (listing: Listing) => void
-}) {
-  const [isPostedMenuOpen, setIsPostedMenuOpen] = useState(false)
-  const listingHeading =
-    listing.locality && listing.city ? `${listing.locality}, ${listing.city}` : formatListingLocation(listing)
-  const listingSubheading = [listing.propertyType, listing.occupancyType]
-    .filter((value): value is string => Boolean(value))
-    .map((value) => formatEnum(value))
-    .join(' · ')
-
-  return (
-    <Card className="listing-inquiry-card posted-room-listing-card">
-      <div className="inquiry-card-top">
-        <div>
-          <strong>{listingHeading}</strong>
-          <p>{listingSubheading || listing.title}</p>
-        </div>
-        <div className="listing-card-badges">
-          <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
-          {listing.status === 'PUBLISHED' ? <Badge tone="purple">Live in feed</Badge> : null}
-        </div>
-      </div>
-
-      <div className="inquiry-meta-row">
-        <span>{formatMoveInLabel(listing.moveInDate)}</span>
-        <span>{formatPriceLine(listing)}</span>
-      </div>
-
-      {listing.depositAmount || listing.maintenanceAmount ? (
-        <div className="inquiry-meta-row">
-          <span>
-            {listing.depositAmount ? `Deposit ${formatMoney(listing.depositAmount)}` : 'Deposit pending'}
-          </span>
-          <span>
-            {listing.maintenanceAmount
-              ? `Maintenance ${formatMoney(listing.maintenanceAmount)}`
-              : 'Maintenance pending'}
-          </span>
-        </div>
-      ) : null}
-
-      {listing.amenities.length > 0 ? (
-        <div className="listing-details-section">
-          <strong>Amenities</strong>
-          <div className="nearby-place-chip-row compact">
-            {listing.amenities.map((amenity) => (
-              <span className="nearby-place-chip static" key={`${listing.id}-posted-amenity-${amenity}`}>
-                {amenity}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {listing.nearbyPlaces.length > 0 ? (
-        <div className="listing-details-section">
-          <strong>Nearby workplaces</strong>
-          <div className="nearby-place-chip-row compact">
-            {listing.nearbyPlaces.map((place) => (
-              <span className="nearby-place-chip static" key={`${listing.id}-posted-${place.type}-${place.name}`}>
-                {place.name} · {place.type === 'tech_park' ? 'Tech park' : 'Office'}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {listing.description ? (
-        <div className="listing-details-section">
-          <strong>Description</strong>
-          <p className="feed-copy">{listing.description}</p>
-        </div>
-      ) : null}
-
-      <div className="host-listing-card-actions">
-        <Button
-          className="host-listing-primary-action"
-          onClick={() => onViewDetails(listing)}
-          variant="secondary"
-        >
-          View details
-        </Button>
-        <button
-          aria-expanded={isPostedMenuOpen}
-          aria-label="More actions"
-          className={`circle-button host-listing-menu-trigger${isPostedMenuOpen ? ' active' : ''}`}
-          onClick={() => setIsPostedMenuOpen((prev) => !prev)}
-          type="button"
-        >
-          <MoreHorizontal size={18} />
-        </button>
-      </div>
-
-      {isPostedMenuOpen && (
-        <div className="host-listing-menu" role="menu">
-          <button
-            onClick={() => { onEdit(listing); setIsPostedMenuOpen(false) }}
-            role="menuitem"
-            type="button"
-          >
-            <PencilLine size={16} />
-            Edit listing
-          </button>
-          {listing.status === 'PAUSED' ? (
-            <button
-              disabled={busyAction === `PUBLISHED-${listing.id}`}
-              onClick={() => { onResume(listing); setIsPostedMenuOpen(false) }}
-              role="menuitem"
-              type="button"
-            >
-              {busyAction === `PUBLISHED-${listing.id}` ? 'Resuming…' : 'Resume listing'}
-            </button>
-          ) : listing.status === 'PUBLISHED' ? (
-            <button
-              disabled={busyAction === `PAUSED-${listing.id}`}
-              onClick={() => { onToggleHold(listing); setIsPostedMenuOpen(false) }}
-              role="menuitem"
-              type="button"
-            >
-              {busyAction === `PAUSED-${listing.id}` ? 'Updating…' : 'Put on hold'}
-            </button>
-          ) : null}
-          <button
-            disabled={busyAction === `FILLED-${listing.id}` || listing.status === 'FILLED'}
-            onClick={() => { onMarkAsRented(listing); setIsPostedMenuOpen(false) }}
-            role="menuitem"
-            type="button"
-          >
-            {busyAction === `FILLED-${listing.id}`
-              ? 'Updating…'
-              : listing.status === 'FILLED'
-                ? 'Already marked as rented'
-                : 'Mark as rented'}
-          </button>
-          <button
-            className="host-menu-destructive"
-            disabled={busyAction === `ARCHIVED-${listing.id}`}
-            onClick={() => { onArchive(listing); setIsPostedMenuOpen(false) }}
-            role="menuitem"
-            type="button"
-          >
-            <Trash2 size={16} />
-            {busyAction === `ARCHIVED-${listing.id}` ? 'Removing…' : 'Delete listing'}
-          </button>
-        </div>
-      )}
-    </Card>
-  )
-}
-
 function ListingActionDialog({
   action,
   busyAction,
@@ -2924,13 +2757,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       ),
     [listingIntentAssignments, myListings],
   )
-  const seekerPostedListings = useMemo(
-    () =>
-      myListings.filter(
-        (listing) => getListingIntentForDisplay(listing.id, listingIntentAssignments) === housingIntentValues.findRoom,
-      ),
-    [listingIntentAssignments, myListings],
-  )
   const activePublicListingFilterTokens = useMemo(() => {
     const tokens: Array<{ key: PublicListingFilterKey; label: string }> = []
 
@@ -2987,17 +2813,9 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     () => filterHostListings(hostModeListings, myListingFilter),
     [hostModeListings, myListingFilter],
   )
-  const filteredSeekerPostedListings = useMemo(
-    () => filterHostListings(seekerPostedListings, myListingFilter),
-    [myListingFilter, seekerPostedListings],
-  )
   const activeHostListingsCount = useMemo(
     () => filterHostListings(hostModeListings, 'ACTIVE').length,
     [hostModeListings],
-  )
-  const activeSeekerPostedListingsCount = useMemo(
-    () => filterHostListings(seekerPostedListings, 'ACTIVE').length,
-    [seekerPostedListings],
   )
   const pausedHostListingsCount = useMemo(
     () => filterHostListings(hostModeListings, 'PAUSED').length,
@@ -3562,17 +3380,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     })
   }
 
-  function openSeekerPostedListingDetails(listing: Listing) {
-    navigate(`/find-tenant/listings/${listing.id}`, {
-      state: {
-        listing,
-        backLabel: 'Back to your room posts',
-        backTo: '/find-tenant/posts',
-        sourceIntent: housingIntentValues.findRoom,
-      } as ListingDetailsRouteState,
-    })
-  }
-
   function openOwnerInquiryDetails(inquiry: ListingInquiry) {
     navigate(`/find-tenant/host/inquiries/${inquiry.id}`, {
       state: {
@@ -3984,26 +3791,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         <strong>No {formatHostListingFilterLabel(myListingFilter).toLowerCase()} listings right now</strong>
         <p className="feed-copy">
           Switch the status filter to review a different group of listings, including archived posts when needed.
-        </p>
-      </Card>
-    )
-
-  const seekerPostedListingsEmptyState =
-    seekerPostedListings.length === 0 ? (
-      <Card className="feed-card">
-        <strong>You have not posted a room listing yet</strong>
-        <p className="feed-copy">
-          When you publish a room post, it will appear here so you can edit it, pause it, or mark it as rented later.
-        </p>
-        <Button onClick={() => startCreateListing(housingIntentValues.findRoom)} variant="secondary">
-          Post a room listing
-        </Button>
-      </Card>
-    ) : (
-      <Card className="feed-card">
-        <strong>No {formatHostListingFilterLabel(myListingFilter).toLowerCase()} room posts right now</strong>
-        <p className="feed-copy">
-          Switch the status filter to review a different set of your room posts, including rented and archived ones.
         </p>
       </Card>
     )
