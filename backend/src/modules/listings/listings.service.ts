@@ -1,5 +1,18 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { HousingNeedStatus, ListingInquiryStatus, ListingStatus, ListingType, MessageType, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  HousingNeedStatus,
+  ListingInquiryStatus,
+  ListingStatus,
+  ListingType,
+  MessageType,
+  Prisma,
+} from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import {
@@ -11,6 +24,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { CreateListingDto } from './dto/create-listing.dto';
+import { ListListingsQueryDto } from './dto/list-listings-query.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
 type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE';
@@ -26,6 +40,15 @@ type ListingWithRelations = Prisma.ListingGetPayload<{
   include: typeof listingInclude;
 }>;
 
+export type ListingsPageResponse = {
+  items: Array<
+    ListingWithRelations & {
+      matchSummary?: ListingMatchSummary;
+    }
+  >;
+  nextCursor: string | null;
+};
+
 type HousingNeedForScoring = Prisma.HousingNeedGetPayload<{
   include: {
     nearbyPlaces: true;
@@ -36,86 +59,188 @@ type HousingNeedForScoring = Prisma.HousingNeedGetPayload<{
 export class ListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(
-    city?: string,
-    status?: ListingStatus,
-    nearby?: string,
-    ownerUserId?: string,
-    includeArchived = false,
-    session?: AuthenticatedSession,
-  ) {
-    const trimmedNearby = nearby?.trim();
-    const listings = await this.prisma.listing.findMany({
-      where: {
-        ...buildWhere({
-          city,
-          ...(ownerUserId ? {} : { status: status ?? ListingStatus.PUBLISHED }),
-          type: ListingType.tenant_replacement,
-          ownerUserId,
-        }),
-        ...(ownerUserId
-          ? status
-            ? { status }
-            : includeArchived
-              ? {}
-              : {
-                  status: {
-                    not: ListingStatus.ARCHIVED,
-                  },
-                }
-          : {}),
-        ...(trimmedNearby
-          ? {
-              nearbyPlaces: {
-                some: {
-                  name: trimmedNearby,
-                },
-              },
-            }
-          : {}),
-      },
-      include: listingInclude,
-      orderBy: {
-        ...(ownerUserId ? { updatedAt: 'desc' } : { createdAt: 'desc' }),
-      },
-    });
+  async findAll(query: ListListingsQueryDto, session?: AuthenticatedSession): Promise<ListingsPageResponse> {
+    const listingType = query.type ?? ListingType.tenant_replacement;
+    const ownerUserId = query.ownerUserId?.trim();
 
     if (ownerUserId) {
-      return listings;
+      return this.findAllForOwner(listingType, query);
     }
+
+    return this.findAllPublicPaginated(listingType, query, session);
+  }
+
+  private async findAllForOwner(listingType: ListingType, query: ListListingsQueryDto): Promise<ListingsPageResponse> {
+    const ownerUserId = query.ownerUserId!.trim();
+    const trimmedNearby = query.nearby?.trim();
+    const where: Prisma.ListingWhereInput = {
+      type: listingType,
+      ownerUserId,
+      ...(query.status
+        ? { status: query.status }
+        : query.includeArchived
+          ? {}
+          : {
+              status: {
+                not: ListingStatus.ARCHIVED,
+              },
+            }),
+      ...(query.city ? { city: query.city } : {}),
+      ...(trimmedNearby
+        ? {
+            nearbyPlaces: {
+              some: {
+                name: trimmedNearby,
+              },
+            },
+          }
+        : {}),
+      ...(query.propertyType ? { propertyType: query.propertyType } : {}),
+      ...(query.occupancyType ? { occupancyType: query.occupancyType } : {}),
+      ...((query.rentMin !== undefined || query.rentMax !== undefined)
+        ? {
+            rentAmount: {
+              ...(query.rentMin !== undefined ? { gte: query.rentMin } : {}),
+              ...(query.rentMax !== undefined ? { lte: query.rentMax } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const listings = await this.prisma.listing.findMany({
+      where,
+      include: listingInclude,
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      take: 300,
+    });
+
+    return { items: listings, nextCursor: null };
+  }
+
+  private async findAllPublicPaginated(
+    listingType: ListingType,
+    query: ListListingsQueryDto,
+    session?: AuthenticatedSession,
+  ): Promise<ListingsPageResponse> {
+    if (query.excludeOwnerUserId) {
+      if (!session || session.user.id !== query.excludeOwnerUserId) {
+        throw new ForbiddenException('excludeOwnerUserId is only allowed for your own user id.');
+      }
+    }
+
+    const limit = Math.min(query.limit ?? 30, 50);
+    const trimmedNearby = query.nearby?.trim();
+    const statusFilter = query.status ?? ListingStatus.PUBLISHED;
+
+    const where: Prisma.ListingWhereInput = {
+      type: listingType,
+      status: statusFilter,
+      ...(query.city ? { city: query.city } : {}),
+      ...(trimmedNearby
+        ? {
+            nearbyPlaces: {
+              some: {
+                name: trimmedNearby,
+              },
+            },
+          }
+        : {}),
+      ...(query.propertyType ? { propertyType: query.propertyType } : {}),
+      ...(query.occupancyType ? { occupancyType: query.occupancyType } : {}),
+      ...((query.rentMin !== undefined || query.rentMax !== undefined)
+        ? {
+            rentAmount: {
+              ...(query.rentMin !== undefined ? { gte: query.rentMin } : {}),
+              ...(query.rentMax !== undefined ? { lte: query.rentMax } : {}),
+            },
+          }
+        : {}),
+      ...(query.excludeOwnerUserId
+        ? {
+            ownerUserId: {
+              not: query.excludeOwnerUserId,
+            },
+          }
+        : {}),
+    };
+
+    let cursorRow: { id: string; createdAt: Date } | null = null;
+    if (query.cursor) {
+      cursorRow = await this.prisma.listing.findFirst({
+        where: {
+          id: query.cursor,
+          ...where,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+        },
+      });
+      if (!cursorRow) {
+        throw new BadRequestException('Invalid listing cursor.');
+      }
+    }
+
+    const pagedWhere: Prisma.ListingWhereInput =
+      cursorRow
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { createdAt: { lt: cursorRow.createdAt } },
+                  {
+                    AND: [{ createdAt: cursorRow.createdAt }, { id: { lt: cursorRow.id } }],
+                  },
+                ],
+              },
+            ],
+          }
+        : where;
+
+    const rows = await this.prisma.listing.findMany({
+      where: pagedWhere,
+      include: listingInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1]!.id : null;
 
     const activeHousingNeed = session ? await this.findActiveHousingNeed(session.user.id) : null;
 
     if (!activeHousingNeed) {
-      return [...listings].sort((left, right) => {
+      const sorted = [...page].sort((left, right) => {
         const rightScore = this.calculateGenericListingScore(right);
         const leftScore = this.calculateGenericListingScore(left);
-
         if (rightScore !== leftScore) {
           return rightScore - leftScore;
         }
-
         return right.createdAt.getTime() - left.createdAt.getTime();
       });
+      return { items: sorted, nextCursor };
     }
 
-    return listings
-      .map((listing) => {
-        const matchSummary = this.calculateListingMatchSummary(listing, activeHousingNeed);
+    const enriched = page.map((listing) => {
+      const matchSummary = this.calculateListingMatchSummary(listing, activeHousingNeed);
+      return {
+        ...listing,
+        matchSummary,
+      };
+    });
 
-        return {
-          ...listing,
-          matchSummary,
-        };
-      })
-      .filter((listing) => listing.matchSummary.matchScore >= 30)
-      .sort((left, right) => {
-        if (right.matchSummary.finalScore !== left.matchSummary.finalScore) {
-          return right.matchSummary.finalScore - left.matchSummary.finalScore;
-        }
+    const sorted = [...enriched].sort((left, right) => {
+      if (right.matchSummary.finalScore !== left.matchSummary.finalScore) {
+        return right.matchSummary.finalScore - left.matchSummary.finalScore;
+      }
+      return right.createdAt.getTime() - left.createdAt.getTime();
+    });
 
-        return right.createdAt.getTime() - left.createdAt.getTime();
-      });
+    return { items: sorted, nextCursor };
   }
 
   async findById(id: string) {

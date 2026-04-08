@@ -30,10 +30,12 @@ import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
+import { DatePickerInput } from '../components/DatePickerInput'
 import { LocationSummaryCard, PlaceAutocompleteField } from '../components/PlaceAutocompleteField'
 import { useAppAuth } from '../context/AppAuthContext'
 import { housingIntentValues, useHousingIntent, type HousingIntent } from '../context/HousingIntentContext'
 import { apiRequest } from '../lib/api'
+import { asListingsPage } from '../lib/listingsResponse'
 import {
   cleanupUploadedListingImages,
   type ListingImageUploadPayload,
@@ -513,7 +515,7 @@ function SearchListingCard({
           {formatMoveInLabel(listing.moveInDate)}
         </span>
         {matchSummary ? (
-          <span className="feed-fit-score">{matchSummary.matchScore}% fit</span>
+          <span className="feed-fit-score">{formatMatchFitPercent(matchSummary)}% fit</span>
         ) : null}
       </div>
 
@@ -548,7 +550,9 @@ function SearchListingCard({
             </span>
           ))}
           {matchSummary.reasons.length > 2 ? (
-            <span className="listing-match-reason-pill muted">+{matchSummary.reasons.length - 2} more</span>
+            <span className="listing-match-reason-pill listing-match-reason-pill--more">
+              +{matchSummary.reasons.length - 2} more
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -1185,11 +1189,10 @@ function ListingInquiryPanel({
       <div className="form-grid two-column">
         <div className="field">
           <label htmlFor="listing-inquiry-move-in">Preferred move-in date</label>
-          <input
+          <DatePickerInput
             id="listing-inquiry-move-in"
             min={getTodayDateInputValue()}
-            onChange={(event) => onChange((current) => ({ ...current, preferredMoveInDate: event.target.value }))}
-            type="date"
+            onChange={(v) => onChange((current) => ({ ...current, preferredMoveInDate: v }))}
             value={values.preferredMoveInDate}
           />
         </div>
@@ -2567,7 +2570,7 @@ export function FindTenantOwnerInquiryDetailsPage() {
 
 function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const { sessionToken, user } = useAppAuth()
-  const { setIntent } = useHousingIntent()
+  const { intent, setIntent } = useHousingIntent()
   const navigate = useNavigate()
   const location = useLocation()
   const { editListingId } = useParams<{ editListingId?: string }>()
@@ -2896,7 +2899,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
   useEffect(() => {
     void loadHousingData()
-  }, [sessionToken, user?.id])
+  }, [sessionToken, user?.id, intent])
 
   // Fresh fetch from /housing-needs/mine every time "Your room posts" tab is opened.
   useEffect(() => {
@@ -2972,25 +2975,41 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       setIsLoading(true)
       setFeedback(null)
 
-      const publicListingsPayload = await apiRequest<Listing[]>('/listings?status=PUBLISHED', {
+      const pubParams = new URLSearchParams()
+      pubParams.set('status', 'PUBLISHED')
+      pubParams.set('limit', '50')
+      if (sessionToken && user && intent === housingIntentValues.findRoom) {
+        pubParams.set('excludeOwnerUserId', user.id)
+      }
+
+      const publicRaw = await apiRequest<unknown>(`/listings?${pubParams.toString()}`, {
         token: sessionToken,
       })
-      setPublicListings(normalizeListings(publicListingsPayload))
+      const publicPage = asListingsPage<Listing>(publicRaw)
+      setPublicListings(normalizeListings(publicPage.items))
 
       if (sessionToken && user) {
-        const [myListingsPayload, myHousingNeedsPayload, requesterInquiriesPayload, ownerInquiriesPayload] =
-          await Promise.all([
-          apiRequest<Listing[]>(
-            `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
-            { token: sessionToken },
-          ),
-          apiRequest<HousingNeed[]>('/housing-needs/mine', { token: sessionToken }),
-          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=requester', { token: sessionToken }),
-          apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', { token: sessionToken }),
-          ])
-        setMyListings(normalizeListings(myListingsPayload))
+        const myRaw = await apiRequest<unknown>(
+          `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
+          { token: sessionToken },
+        )
+        const myPage = asListingsPage<Listing>(myRaw)
+        setMyListings(normalizeListings(myPage.items))
+
+        const myHousingNeedsPayload = await apiRequest<HousingNeed[]>('/housing-needs/mine', {
+          token: sessionToken,
+        })
         setMyHousingNeeds(Array.isArray(myHousingNeedsPayload) ? myHousingNeedsPayload : [])
+
+        const requesterInquiriesPayload = await apiRequest<ListingInquiry[]>(
+          '/listing-inquiries?scope=requester',
+          { token: sessionToken },
+        )
         setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
+
+        const ownerInquiriesPayload = await apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
+          token: sessionToken,
+        })
         setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
       } else {
         setMyListings([])
@@ -4090,11 +4109,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                             </label>
                             <label className="need-edit-field">
                               <span>Move-in date</span>
-                              <input
-                                className="input"
-                                type="date"
+                              <DatePickerInput
+                                className="need-edit-date"
+                                onChange={(v) => setEditNeedDraft((d) => ({ ...d, moveInDate: v }))}
                                 value={editNeedDraft.moveInDate}
-                                onChange={(e) => setEditNeedDraft((d) => ({ ...d, moveInDate: e.target.value }))}
                               />
                             </label>
                             <label className="need-edit-field">
@@ -4523,11 +4541,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
               <div className="field">
                 <label htmlFor="listing-move-in-date">Move-in date</label>
-                <input
+                <DatePickerInput
                   id="listing-move-in-date"
                   min={getTodayDateInputValue()}
-                  onChange={(event) => setReplaceTenantForm((current) => ({ ...current, moveInDate: event.target.value }))}
-                  type="date"
+                  onChange={(v) => setReplaceTenantForm((current) => ({ ...current, moveInDate: v }))}
                   value={replaceTenantForm.moveInDate}
                 />
               </div>
@@ -5027,11 +5044,8 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 </label>
                 <label className="field">
                   <span>Move-in date</span>
-                  <input
-                    onChange={(event) =>
-                      setHousingNeedForm((current) => ({ ...current, moveInDate: event.target.value }))
-                    }
-                    type="date"
+                  <DatePickerInput
+                    onChange={(v) => setHousingNeedForm((current) => ({ ...current, moveInDate: v }))}
                     value={housingNeedForm.moveInDate}
                   />
                 </label>
@@ -6264,6 +6278,17 @@ function formatPriceLine(listing: Listing) {
 
 function formatMoveInLabel(moveInDate: string | null) {
   return moveInDate ? `Move in ${formatShortDate(moveInDate)}` : 'Move-in pending'
+}
+
+/** Display % uses blended final score (same signal as feed ranking), not raw component sum. */
+function formatMatchFitPercent(summary: ListingMatchSummary): number {
+  const raw =
+    typeof summary.finalScore === 'number' && !Number.isNaN(summary.finalScore)
+      ? summary.finalScore
+      : typeof summary.matchScore === 'number'
+        ? summary.matchScore
+        : 0
+  return Math.max(0, Math.min(100, Math.round(raw)))
 }
 
 function getListingInquiryStatusTone(status: ListingInquiryStatus) {

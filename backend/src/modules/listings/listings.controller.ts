@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Headers, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ListingStatus } from '@prisma/client';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 
 import { AppSessionGuard } from '../auth/app-session.guard';
 import { CurrentSession } from '../auth/current-session.decorator';
@@ -8,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { DeleteListingImageUploadsDto } from './dto/delete-listing-image-uploads.dto';
+import { ListListingsQueryDto } from './dto/list-listings-query.dto';
 import { ListingsService } from './listings.service';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
@@ -19,31 +19,18 @@ export class ListingsController {
     private readonly authService: AuthService,
   ) {}
 
-  @ApiOperation({ summary: 'List published tenant replacement listings' })
-  @ApiQuery({ name: 'city', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: ListingStatus })
-  @ApiQuery({ name: 'nearby', required: false })
-  @ApiQuery({ name: 'ownerUserId', required: false })
-  @ApiQuery({ name: 'includeArchived', required: false, type: Boolean })
+  @ApiOperation({
+    summary:
+      'List listings (paginated). Returns { items, nextCursor }. Public browse defaults to limit=30; pass filters (property, occupancy, rent) for server-side filtering.',
+  })
   @Get()
   async findAll(
-    @Query('city') city?: string,
-    @Query('status') status?: ListingStatus,
-    @Query('nearby') nearby?: string,
-    @Query('ownerUserId') ownerUserId?: string,
-    @Query('includeArchived') includeArchived?: string,
+    @Query() query: ListListingsQueryDto,
     @Headers('authorization') authorization?: string,
   ) {
     const session = await this.resolveOptionalSession(authorization);
 
-    return this.listingsService.findAll(
-      city,
-      status,
-      nearby,
-      ownerUserId,
-      includeArchived === 'true',
-      session,
-    );
+    return this.listingsService.findAll(query, session);
   }
 
   @ApiOperation({ summary: 'Get a replacement tenant listing by id' })

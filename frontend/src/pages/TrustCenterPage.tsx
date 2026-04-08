@@ -16,6 +16,7 @@ import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { apiRequest } from '../lib/api'
+import { asListingsPage } from '../lib/listingsResponse'
 import { useAppAuth, type AppUser } from '../context/AppAuthContext'
 
 type VerificationResponse = {
@@ -260,23 +261,26 @@ export function TrustCenterPage() {
     }
 
     try {
-      const [verificationPayload, metricsPayload, listingsPayload, moderationPayload] = await Promise.all([
-        apiRequest<VerificationResponse>('/verification/me', {
-          token: sessionToken,
-        }),
-        apiRequest<VerificationMetrics>('/verification/metrics'),
-        apiRequest<ListingPreview[]>('/listings'),
-        user?.isAdmin
-          ? apiRequest<ModerationQueueResponse>('/reports/moderation-queue', {
-              token: sessionToken,
-            })
-          : Promise.resolve(null),
-      ])
-
+      const verificationPayload = await apiRequest<VerificationResponse>('/verification/me', {
+        token: sessionToken,
+      })
       setVerification(verificationPayload)
+
+      const metricsPayload = await apiRequest<VerificationMetrics>('/verification/metrics')
       setMetrics(metricsPayload)
-      setListings(listingsPayload.slice(0, 4))
-      setModerationQueue(moderationPayload)
+
+      const listingsRaw = await apiRequest<unknown>('/listings?limit=4')
+      const listingsPage = asListingsPage<ListingPreview>(listingsRaw)
+      setListings(listingsPage.items.slice(0, 4))
+
+      if (user?.isAdmin) {
+        const moderationPayload = await apiRequest<ModerationQueueResponse>('/reports/moderation-queue', {
+          token: sessionToken,
+        })
+        setModerationQueue(moderationPayload)
+      } else {
+        setModerationQueue(null)
+      }
     } catch (loadError) {
       setFeedback({
         tone: 'error',

@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -13,8 +15,17 @@ import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/th
 import { useAuth } from '../lib/auth'
 
 export function ProfileScreen() {
-  const { user, isLoading, isSyncing, error, signInWithGoogle, signOut, configured } = useAuth()
+  const { user, isLoading, isSyncing, error, signInWithGoogle, signOut, configured, updateProfile } =
+    useAuth()
   const insets = useSafeAreaInsets()
+  const [phoneDraft, setPhoneDraft] = useState('')
+  const [phoneSavedHint, setPhoneSavedHint] = useState(false)
+
+  useEffect(() => {
+    if (user?.phone !== undefined) {
+      setPhoneDraft(user.phone ?? '')
+    }
+  }, [user?.phone])
 
   async function handleSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -100,12 +111,42 @@ export function ProfileScreen() {
           <Text style={styles.infoLabel}>Email</Text>
           <Text style={styles.infoValue}>{user.email}</Text>
         </View>
-        {user.phone ? (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Phone</Text>
-            <Text style={styles.infoValue}>{user.phone}</Text>
-          </View>
-        ) : null}
+        <View style={styles.phoneBlock}>
+          <Text style={styles.phoneLabel}>Phone (for enquiries)</Text>
+          <Text style={styles.phoneHint}>
+            Hosts see this when you send an inquiry in Find room. Required before messaging.
+          </Text>
+          <TextInput
+            keyboardType="phone-pad"
+            onChangeText={(t) => {
+              setPhoneDraft(t)
+              setPhoneSavedHint(false)
+            }}
+            placeholder="e.g. +91 98765 43210"
+            placeholderTextColor={colors.textTertiary}
+            style={styles.phoneInput}
+            value={phoneDraft}
+          />
+          <Button
+            disabled={isSyncing || phoneDraft.trim() === (user.phone ?? '').trim()}
+            fullWidth
+            loading={isSyncing}
+            onPress={() => {
+              void (async () => {
+                try {
+                  await updateProfile({ phone: phoneDraft.trim() })
+                  setPhoneSavedHint(true)
+                } catch {
+                  // error surfaced via auth context
+                }
+              })()
+            }}
+            variant="secondary"
+          >
+            Save phone number
+          </Button>
+          {phoneSavedHint ? <Text style={styles.savedNote}>Saved. You can send enquiries now.</Text> : null}
+        </View>
         {user.verificationType ? (
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Verification</Text>
@@ -195,6 +236,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  phoneBlock: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  phoneLabel: { fontSize: fontSizes.sm, fontWeight: fontWeights.semibold, color: colors.textPrimary },
+  phoneHint: { fontSize: fontSizes.xs, color: colors.textSecondary, lineHeight: 18 },
+  phoneInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    fontSize: fontSizes.base,
+    color: colors.textPrimary,
+    backgroundColor: colors.white,
+  },
+  savedNote: { fontSize: fontSizes.xs, color: '#16a34a', fontWeight: fontWeights.medium },
   infoLabel: { fontSize: fontSizes.sm, color: colors.textSecondary, fontWeight: fontWeights.medium },
   infoValue: { fontSize: fontSizes.sm, color: colors.textPrimary, fontWeight: fontWeights.medium, flex: 1, textAlign: 'right' },
   signOutRow: { marginTop: spacing.sm },

@@ -8,7 +8,10 @@ This repository now uses a simple workspace structure:
 
 - `frontend/` for the React + Vite app
 - `backend/` for the NestJS + Prisma API
+- `mobile/` for the Expo (React Native) app
 - `docs/` for product and architecture references
+
+**Production deploy checklist (EC2, Netlify, Supabase URLs, EAS iOS):** [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Current MVP focus
 

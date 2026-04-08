@@ -14,6 +14,7 @@ import {
   FindTenantRequesterInquiriesPage,
 } from './pages/FindTenantPage'
 import { HomePage } from './pages/HomePage'
+import { NotificationsPage } from './pages/NotificationsPage'
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route index element={<HomePage />} />
         <Route path="/auth" element={<TrustCenterPage />} />
         <Route path="/profile" element={<TrustCenterPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/find-tenant" element={<FindTenantPage />} />
         <Route path="/find-tenant/needs" element={<FindTenantNeedsPage />} />
         <Route path="/find-tenant/posts" element={<FindTenantPostedListingsPage />} />

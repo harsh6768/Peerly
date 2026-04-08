@@ -1,3 +1,5 @@
+import * as AuthSession from 'expo-auth-session'
+import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import {
   createContext,
@@ -52,6 +54,7 @@ type AuthContextValue = {
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
+  updateProfile: (updates: { phone: string }) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -171,13 +174,79 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return
     }
 
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { skipBrowserRedirect: true },
-    })
+    setIsSyncing(true)
+    setError(null)
 
-    if (signInError) {
-      setError(signInError.message)
+    try {
+      // Must match Supabase → Authentication → URL Configuration → Redirect URLs.
+      // Production checklist: repo root DEPLOYMENT.md §3. Expo Go: exp://… ; standalone/TestFlight: cirvo://… (app.json scheme).
+      const redirectTo = AuthSession.makeRedirectUri({ path: '/' })
+      if (__DEV__) {
+        console.warn(
+          '[OAuth] Paste this exact redirect URL into Supabase Redirect URLs if login opens the website:',
+          redirectTo,
+        )
+      }
+
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      })
+
+      if (oauthError) {
+        setError(oauthError.message)
+        return
+      }
+
+      if (!data?.url) {
+        setError('Could not start Google sign-in.')
+        return
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
+
+      if (result.type !== 'success' || !result.url) {
+        return
+      }
+
+      const callbackUrl = result.url
+      const hashIdx = callbackUrl.indexOf('#')
+      const searchParams =
+        hashIdx >= 0
+          ? new URLSearchParams(callbackUrl.slice(hashIdx + 1))
+          : new URL(callbackUrl).searchParams
+
+      let accessToken = searchParams.get('access_token')
+      let refreshToken = searchParams.get('refresh_token')
+
+      if (!accessToken || !refreshToken) {
+        const code = new URL(callbackUrl).searchParams.get('code')
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          if (exchangeError) {
+            setError(exchangeError.message)
+          }
+          return
+        }
+        setError('Could not complete sign-in. Add redirect URL in Supabase (see app scheme).')
+        return
+      }
+
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+
+      if (sessionError) {
+        setError(sessionError.message)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed.')
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -203,6 +272,28 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await hydrateSession(sessionToken)
   }
 
+  async function updateProfile(updates: { phone: string }) {
+    if (!sessionToken) {
+      throw new Error('Sign in to update your profile.')
+    }
+    setIsSyncing(true)
+    setError(null)
+    try {
+      const updated = await apiRequest<AppUser>('/auth/profile', {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({ phone: updates.phone }),
+      })
+      setUser(updated)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not update profile.'
+      setError(message)
+      throw err
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -215,6 +306,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         signInWithGoogle,
         signOut,
         refreshSession,
+        updateProfile,
       }}
     >
       {children}

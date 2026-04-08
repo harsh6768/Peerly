@@ -13,6 +13,7 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { useAppAuth } from '../context/AppAuthContext'
 import { apiRequest } from '../lib/api'
+import { asListingsPage } from '../lib/listingsResponse'
 import { cleanupUploadedListingImages, type ListingImageUploadPayload, uploadListingImageToCloudinary } from '../lib/cloudinary'
 import { majorCities, otherCityOptionValue } from '../lib/majorCities'
 
@@ -231,12 +232,11 @@ export function SendItemPage() {
     try {
       setIsLoading(true)
       setFeedback(null)
-      const [requestsPayload, routesPayload] = await Promise.all([
-        apiRequest<SendRequestListing[]>('/listings?status=PUBLISHED&type=send_request'),
-        apiRequest<TravelerRoute[]>('/traveler-routes?status=PUBLISHED'),
-      ])
+      const requestsRaw = await apiRequest<unknown>('/listings?status=PUBLISHED&type=send_request&limit=100')
+      const requestsPage = asListingsPage<SendRequestListing>(requestsRaw)
+      setSendRequests(normalizeSendRequestListings(requestsPage.items))
 
-      setSendRequests(normalizeSendRequestListings(requestsPayload))
+      const routesPayload = await apiRequest<TravelerRoute[]>('/traveler-routes?status=PUBLISHED')
       setTravelerRoutes(routesPayload)
     } catch (error) {
       setFeedback({

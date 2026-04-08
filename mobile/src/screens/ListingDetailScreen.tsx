@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Dimensions,
+  FlatList,
+  Linking,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,9 +17,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
+import { ListingImage } from '../components/ListingImage'
 import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/theme'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { buildGoogleMapsOpenUrl } from '../lib/googleMaps'
+import { getListingHeroUri, getListingThumbUri } from '../lib/listingImages'
+import { matchFitDisplayPercent } from '../lib/matchDisplay'
 import type { Listing } from '../lib/types'
 import type { RootStackScreenProps } from '../navigation/types'
 
@@ -40,6 +48,8 @@ export function ListingDetailScreen({ route, navigation }: Props) {
   const [isLoading, setIsLoading] = useState(!passedListing)
   const [error, setError] = useState<string | null>(null)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const heroListRef = useRef<FlatList<Listing['images'][number]>>(null)
+  const heroWidth = Dimensions.get('window').width
 
   const [showInquiryForm, setShowInquiryForm] = useState(false)
   const [inquiryMessage, setInquiryMessage] = useState('')
@@ -55,9 +65,64 @@ export function ListingDetailScreen({ route, navigation }: Props) {
       .finally(() => setIsLoading(false))
   }, [listingId, passedListing, sessionToken])
 
+  useEffect(() => {
+    setActiveImageIndex(0)
+  }, [listing?.id])
+
+  useEffect(() => {
+    if (user && listing && user.id === listing.owner.id) {
+      setShowInquiryForm(false)
+    }
+  }, [user, listing])
+
+  function goToProfileForPhone() {
+    navigation.navigate('Main', { screen: 'Profile' })
+  }
+
+  const isOwnListing = !!(user && listing && user.id === listing.owner.id)
+
+  function handleStartInquiry() {
+    if (!user) {
+      navigation.navigate('Auth')
+      return
+    }
+    if (isOwnListing) {
+      return
+    }
+    if (!user.phone?.trim()) {
+      Alert.alert(
+        'Add your phone number',
+        'Hosts need a phone or WhatsApp number to reach you after you enquire. Add it in Profile first.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open profile', onPress: goToProfileForPhone },
+        ],
+      )
+      return
+    }
+    setShowInquiryForm(true)
+  }
+
   async function submitInquiry() {
     if (!user) {
       navigation.navigate('Auth')
+      return
+    }
+
+    if (isOwnListing) {
+      Alert.alert('Your listing', 'You cannot send an inquiry on your own property.')
+      return
+    }
+
+    if (!user.phone?.trim()) {
+      Alert.alert(
+        'Phone required',
+        'Add your phone number in Profile before sending an inquiry.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open profile', onPress: goToProfileForPhone },
+        ],
+      )
       return
     }
 
@@ -105,7 +170,6 @@ export function ListingDetailScreen({ route, navigation }: Props) {
     )
   }
 
-  const coverImage = listing.images.find((img) => img.isCover) ?? listing.images[0]
   const location = [listing.locationName, listing.locality, listing.city]
     .filter(Boolean)
     .join(', ')
@@ -118,12 +182,52 @@ export function ListingDetailScreen({ route, navigation }: Props) {
       >
         {listing.images.length > 0 ? (
           <View>
-            <Image
-              resizeMode="cover"
-              source={{ uri: listing.images[activeImageIndex]?.detailUrl || listing.images[activeImageIndex]?.imageUrl }}
-              style={styles.heroImage}
+            <FlatList
+              ref={heroListRef}
+              data={listing.images}
+              decelerationRate="fast"
+              getItemLayout={(_, index) => ({
+                index,
+                length: heroWidth,
+                offset: heroWidth * index,
+              })}
+              horizontal
+              keyExtractor={(item) => item.id}
+              onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                const x = e.nativeEvent.contentOffset.x
+                const idx = Math.round(x / heroWidth)
+                if (idx >= 0 && idx < listing.images.length) {
+                  setActiveImageIndex(idx)
+                }
+              }}
+              onScrollToIndexFailed={({ index }) => {
+                setTimeout(() => {
+                  heroListRef.current?.scrollToIndex({ index, animated: false })
+                }, 400)
+              }}
+              pagingEnabled
+              renderItem={({ item }) => (
+                <View style={{ width: heroWidth }}>
+                  <ListingImage
+                    accessibilityLabel="Listing photo"
+                    style={styles.heroSlideImage}
+                    uri={getListingHeroUri(item)}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
             />
-            {listing.images.length > 1 && (
+            {listing.images.length > 1 ? (
+              <View style={styles.heroDots}>
+                {listing.images.map((_, idx) => (
+                  <View
+                    key={listing.images[idx].id}
+                    style={[styles.heroDot, idx === activeImageIndex && styles.heroDotActive]}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {listing.images.length > 1 ? (
               <ScrollView
                 contentContainerStyle={styles.thumbnailRow}
                 horizontal
@@ -134,17 +238,20 @@ export function ListingDetailScreen({ route, navigation }: Props) {
                   <TouchableOpacity
                     key={img.id}
                     activeOpacity={0.8}
-                    onPress={() => setActiveImageIndex(idx)}
+                    onPress={() => {
+                      setActiveImageIndex(idx)
+                      heroListRef.current?.scrollToIndex({ animated: true, index: idx })
+                    }}
                   >
-                    <Image
-                      resizeMode="cover"
-                      source={{ uri: img.thumbnailUrl || img.imageUrl }}
+                    <ListingImage
+                      accessibilityLabel={`Photo ${idx + 1}`}
                       style={[styles.thumbnail, idx === activeImageIndex && styles.thumbnailActive]}
+                      uri={getListingThumbUri(img)}
                     />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            )}
+            ) : null}
           </View>
         ) : null}
 
@@ -168,6 +275,61 @@ export function ListingDetailScreen({ route, navigation }: Props) {
 
           {location ? (
             <Text style={styles.location}>{location}</Text>
+          ) : null}
+          {listing.locationName ? (
+            <Text style={styles.locationDetail}>{listing.locationName}</Text>
+          ) : null}
+          {listing.latitude != null && listing.longitude != null ? (
+            <View style={styles.mapBtnWrap}>
+              <Button
+                fullWidth
+                onPress={() =>
+                  void Linking.openURL(
+                    buildGoogleMapsOpenUrl(listing.latitude as number, listing.longitude as number),
+                  )
+                }
+                variant="secondary"
+              >
+                Open in Maps
+              </Button>
+            </View>
+          ) : null}
+
+          {listing.matchSummary ? (
+            <View style={styles.matchBox}>
+              <View style={styles.matchTopRow}>
+                <Text style={styles.matchFit}>{matchFitDisplayPercent(listing.matchSummary)}% fit</Text>
+                <Badge
+                  tone={
+                    listing.matchSummary.label === 'BEST_MATCH'
+                      ? 'green'
+                      : listing.matchSummary.label === 'GOOD_MATCH'
+                        ? 'primary'
+                        : 'gray'
+                  }
+                >
+                  {listing.matchSummary.label === 'BEST_MATCH'
+                    ? 'Best match'
+                    : listing.matchSummary.label === 'GOOD_MATCH'
+                      ? 'Good match'
+                      : 'Possible match'}
+                </Badge>
+              </View>
+              <Text style={styles.matchSub}>
+                Based on your room need — budget, location, and preferences.
+              </Text>
+              {listing.matchSummary.reasons.length > 0 ? (
+                <View style={styles.matchReasons}>
+                  {listing.matchSummary.reasons.slice(0, 5).map((reason) => (
+                    <View key={reason} style={styles.matchReasonPill}>
+                      <Text numberOfLines={2} style={styles.matchReasonText}>
+                        {reason}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
           ) : null}
 
           <View style={styles.metaRow}>
@@ -249,7 +411,7 @@ export function ListingDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {showInquiryForm && (
+        {showInquiryForm && !isOwnListing && (
           <View style={styles.inquiryForm}>
             <Text style={styles.inquiryFormTitle}>Send inquiry</Text>
             <Text style={styles.inquiryFormLabel}>Message to host *</Text>
@@ -293,18 +455,26 @@ export function ListingDetailScreen({ route, navigation }: Props) {
 
       {!showInquiryForm && (
         <View style={[styles.cta, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Button
-            fullWidth
-            onPress={() => {
-              if (!user) {
-                navigation.navigate('Auth')
-                return
-              }
-              setShowInquiryForm(true)
-            }}
-          >
-            Enquire about this room
-          </Button>
+          {isOwnListing ? (
+            <>
+              <Text style={styles.ownListingHint}>
+                This is your listing. You cannot send an inquiry on your own property. Manage leads from your inbox.
+              </Text>
+              <Button
+                fullWidth
+                onPress={() =>
+                  navigation.navigate('Main', { screen: 'HostInquiries' })
+                }
+                variant="secondary"
+              >
+                Open inbox
+              </Button>
+            </>
+          ) : (
+            <Button fullWidth onPress={handleStartInquiry}>
+              Enquire about this room
+            </Button>
+          )}
         </View>
       )}
     </View>
@@ -315,7 +485,57 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: colors.urgent, fontSize: fontSizes.base, textAlign: 'center', padding: spacing.lg },
-  heroImage: { width: '100%', height: 280, backgroundColor: colors.bgLight },
+  heroSlideImage: { width: '100%', height: 280, backgroundColor: colors.bgLight },
+  heroDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
+  },
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  heroDotActive: {
+    backgroundColor: colors.primary,
+    width: 18,
+  },
+  matchBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.bgLight,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  matchTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  matchFit: {
+    fontSize: fontSizes.lg,
+    fontWeight: fontWeights.bold,
+    color: colors.primary,
+  },
+  matchSub: { fontSize: fontSizes.xs, color: colors.textSecondary, lineHeight: 18 },
+  matchReasons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  matchReasonPill: {
+    maxWidth: '100%',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(108, 99, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(108, 99, 255, 0.22)',
+  },
+  matchReasonText: { fontSize: fontSizes.xs, color: colors.primaryDark, fontWeight: fontWeights.semibold },
   thumbnails: { backgroundColor: colors.white },
   thumbnailRow: { padding: spacing.sm, gap: spacing.xs },
   thumbnail: {
@@ -331,6 +551,13 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', gap: spacing.xs, flexShrink: 0, marginLeft: spacing.sm },
   title: { fontSize: fontSizes.xl, fontWeight: fontWeights.semibold, color: colors.textPrimary, marginBottom: spacing.xs },
   location: { fontSize: fontSizes.base, color: colors.textSecondary, marginBottom: spacing.sm },
+  locationDetail: {
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 20,
+  },
+  mapBtnWrap: { marginBottom: spacing.md },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md },
   metaChip: {
     paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2,
@@ -375,4 +602,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, fontSize: fontSizes.base, color: colors.textPrimary, backgroundColor: colors.white,
   },
   formActions: { gap: spacing.sm, marginTop: spacing.md },
+  ownListingHint: {
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
 })

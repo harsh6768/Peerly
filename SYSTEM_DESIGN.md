@@ -97,6 +97,15 @@
 
 ---
 
+## User notifications (in-app inbox)
+
+- **Storage:** Per-user notification rows in PostgreSQL (not device-local only); support cursor-based list API and unread counts; index `(userId, createdAt)` (and patterns needed for unread).
+- **Write path:** Domain events (e.g. new inquiry) create notification rows in the same transactional flow or via a small internal helper; optional idempotency key for retries.
+- **Read path:** Read-heavy; paginate; small list DTOs; full entity fetch on navigation.
+- **Push (phase 2):** FCM / Web Push as **delivery** only; inbox remains source of truth after app open.
+
+---
+
 ## Future Enhancements
 - Personalized ranking
 - Behavior-based recommendations

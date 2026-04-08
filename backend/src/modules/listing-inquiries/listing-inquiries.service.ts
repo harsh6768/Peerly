@@ -12,11 +12,13 @@ import {
   ListingType,
   MessageType,
   Prisma,
+  UserNotificationType,
 } from '@prisma/client';
 
 import { listingInclude, toOptionalDate } from '../../common/query-helpers';
 import type { AuthenticatedSession } from '../auth/auth.types';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateListingInquiryDto } from './dto/create-listing-inquiry.dto';
 import { UpdateListingInquiryOwnerNotesDto } from './dto/update-listing-inquiry-owner-notes.dto';
 import { UpdateListingInquiryStatusDto } from './dto/update-listing-inquiry-status.dto';
@@ -74,7 +76,10 @@ type InquiryScope = 'owner' | 'requester';
 
 @Injectable()
 export class ListingInquiriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   findAllForSession(
     session: AuthenticatedSession,
@@ -182,7 +187,7 @@ export class ListingInquiriesService {
     const trimmedMessage = trimToOptional(dto.message);
     const trimmedVisitNote = trimToOptional(dto.preferredVisitNote);
 
-    return this.prisma.listingInquiry.create({
+    const created = await this.prisma.listingInquiry.create({
       data: {
         listingId: dto.listingId,
         requesterUserId: session.user.id,
@@ -211,6 +216,25 @@ export class ListingInquiriesService {
       },
       include: inquiryInclude,
     });
+
+    try {
+      await this.notificationsService.createForUser(
+        listing.ownerUserId,
+        UserNotificationType.INQUIRY_RECEIVED,
+        {
+          title: `New inquiry on ${listing.title}`,
+          audience: 'owner',
+          listingId: listing.id,
+          inquiryId: created.id,
+          listingTitle: listing.title,
+        },
+        `inquiry-received:${created.id}`,
+      );
+    } catch {
+      // Non-blocking: inquiry is already created
+    }
+
+    return created;
   }
 
   async updateStatus(
@@ -278,6 +302,27 @@ export class ListingInquiriesService {
           : {}),
       },
     });
+
+    try {
+      const listingTitle =
+        inquiry.listing && typeof inquiry.listing === 'object' && 'title' in inquiry.listing
+          ? String((inquiry.listing as { title: string }).title)
+          : 'your listing';
+      await this.notificationsService.createForUser(
+        inquiry.requesterUserId,
+        UserNotificationType.INQUIRY_STATUS_UPDATED,
+        {
+          title: `Inquiry updated (${dto.status})`,
+          audience: 'seeker',
+          inquiryId: id,
+          listingId: inquiry.listingId,
+          listingTitle,
+          status: dto.status,
+        },
+      );
+    } catch {
+      // Non-blocking
+    }
 
     return this.findByIdForSession(id, session);
   }
@@ -375,6 +420,59 @@ export class ListingInquiriesService {
           : {}),
       },
     });
+
+    const listingTitle =
+      inquiry.listing && typeof inquiry.listing === 'object' && 'title' in inquiry.listing
+        ? String((inquiry.listing as { title: string }).title)
+        : 'Listing';
+
+    let notifyUserId: string | undefined;
+    switch (dto.action) {
+      case 'CONFIRM':
+        notifyUserId = inquiry.listingOwnerUserId;
+        break;
+      case 'CANCEL':
+        notifyUserId =
+          actorRole === 'owner' ? inquiry.requesterUserId : inquiry.listingOwnerUserId;
+        break;
+      case 'COMPLETE':
+        notifyUserId = inquiry.requesterUserId;
+        break;
+      default:
+        break;
+    }
+
+    if (notifyUserId) {
+      const titles: Record<string, string> = {
+        CONFIRM: 'Seeker confirmed the visit',
+        CANCEL: 'Visit was cancelled',
+        COMPLETE: 'Visit marked complete',
+      };
+      const audience: 'owner' | 'seeker' =
+        dto.action === 'CONFIRM'
+          ? 'owner'
+          : dto.action === 'COMPLETE'
+            ? 'seeker'
+            : actorRole === 'owner'
+              ? 'seeker'
+              : 'owner';
+      try {
+        await this.notificationsService.createForUser(
+          notifyUserId,
+          UserNotificationType.INQUIRY_VISIT_UPDATED,
+          {
+            title: titles[dto.action] ?? 'Visit update',
+            audience,
+            inquiryId: id,
+            listingId: inquiry.listingId,
+            listingTitle,
+            visitAction: dto.action,
+          },
+        );
+      } catch {
+        // Non-blocking
+      }
+    }
 
     return this.findByIdForSession(id, session);
   }

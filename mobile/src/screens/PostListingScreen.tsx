@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import * as ImagePicker from 'expo-image-picker'
+import { Image } from 'expo-image'
+import { useState } from 'react'
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,9 +14,14 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button } from '../components/Button'
+import { DatePickerField } from '../components/DatePickerField'
+import { LocationAutocompleteInput } from '../components/LocationAutocompleteInput'
 import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/theme'
+import { bangaloreCompanies, bangaloreTechParks } from '../lib/bangaloreNearby'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { cleanupUploadedListingImages, type ListingImageUploadPayload, uploadListingImageToCloudinary } from '../lib/cloudinary'
+import type { SelectedPlaceLocation } from '../lib/googleMaps'
 import type { RootStackScreenProps } from '../navigation/types'
 
 type Props = RootStackScreenProps<'PostListing'>
@@ -22,6 +29,7 @@ type Props = RootStackScreenProps<'PostListing'>
 type PropertyType = 'ROOM' | 'STUDIO' | 'APARTMENT' | 'PG' | 'HOUSE'
 type OccupancyType = 'SINGLE' | 'DOUBLE' | 'SHARED'
 type ContactMode = 'WHATSAPP' | 'CALL' | 'CHAT'
+type NearbyPlaceType = 'tech_park' | 'company'
 
 const propertyTypes: { label: string; value: PropertyType }[] = [
   { label: 'Room', value: 'ROOM' },
@@ -46,6 +54,9 @@ const majorCities = [
   'Bangalore', 'Mumbai', 'Delhi', 'Hyderabad', 'Pune',
   'Chennai', 'Gurgaon', 'Noida',
 ]
+
+/** Floating tab bar in RootNavigator: height 62 + margin above home indicator */
+const TAB_BAR_CLEARANCE = 74
 
 type PillProps = {
   label: string
@@ -101,11 +112,18 @@ function FieldLabel({ label, required }: { label: string; required?: boolean }) 
   )
 }
 
-export function PostListingScreen({ route, navigation }: Props) {
+export function PostListingScreen({ navigation }: Props) {
   const { sessionToken, user } = useAuth()
   const insets = useSafeAreaInsets()
   const [form, setForm] = useState<FormState>(defaultForm)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadedImages, setUploadedImages] = useState<ListingImageUploadPayload[]>([])
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [addressInput, setAddressInput] = useState('')
+  const [pinnedLocation, setPinnedLocation] = useState<SelectedPlaceLocation | null>(null)
+  const [nearbyPlaces, setNearbyPlaces] = useState<Array<{ name: string; type: NearbyPlaceType }>>([])
+  const [nearbyKind, setNearbyKind] = useState<NearbyPlaceType>('tech_park')
+  const [customNearby, setCustomNearby] = useState('')
 
   function update(key: keyof FormState, value: string | string[]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -118,6 +136,80 @@ export function PostListingScreen({ route, navigation }: Props) {
         ? prev.amenities.filter((a) => a !== amenity)
         : [...prev.amenities, amenity],
     }))
+  }
+
+  function addNearby(name: string, type: NearbyPlaceType) {
+    const trimmed = name.trim().replace(/\s+/g, ' ')
+    if (!trimmed) return
+    if (nearbyPlaces.length >= 5) {
+      Alert.alert('Limit', 'You can add up to 5 nearby workplaces.')
+      return
+    }
+    if (nearbyPlaces.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())) return
+    setNearbyPlaces((prev) => [...prev, { name: trimmed, type }])
+  }
+
+  function removeNearby(name: string) {
+    setNearbyPlaces((prev) => prev.filter((p) => p.name !== name))
+  }
+
+  async function pickPhotos() {
+    if (!sessionToken) return
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Please allow photo access to upload listing images.')
+      return
+    }
+    const remaining = 8 - uploadedImages.length
+    if (remaining <= 0) {
+      Alert.alert('Limit', 'You can upload up to 8 photos.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      selectionLimit: remaining,
+    })
+
+    if (result.canceled) return
+
+    setUploadingPhotos(true)
+    const uploadedIdsThisBatch: string[] = []
+    try {
+      const next = [...uploadedImages]
+      for (const asset of result.assets) {
+        const uploaded = await uploadListingImageToCloudinary(
+          asset.uri,
+          asset.mimeType ?? 'image/jpeg',
+          sessionToken,
+        )
+        uploadedIdsThisBatch.push(uploaded.providerAssetId)
+        next.push(uploaded)
+      }
+      setUploadedImages(next)
+    } catch (err) {
+      if (uploadedIdsThisBatch.length) {
+        await cleanupUploadedListingImages(uploadedIdsThisBatch, sessionToken)
+      }
+      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Could not upload images.')
+    } finally {
+      setUploadingPhotos(false)
+    }
+  }
+
+  function removeImageAt(index: number) {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function setAsCover(index: number) {
+    if (index === 0) return
+    setUploadedImages((prev) => {
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      return [item, ...next]
+    })
   }
 
   async function saveDraft() {
@@ -133,8 +225,32 @@ export function PostListingScreen({ route, navigation }: Props) {
       Alert.alert('City required', 'Please select the city for your listing.')
       return
     }
+    if (!form.locality.trim()) {
+      Alert.alert('Locality required', 'Please add locality / area (e.g. HSR Layout).')
+      return
+    }
     if (!form.rentAmount) {
       Alert.alert('Rent required', 'Please enter the monthly rent amount.')
+      return
+    }
+    if (!form.propertyType) {
+      Alert.alert('Property type', 'Please select a property type.')
+      return
+    }
+    if (!form.occupancyType) {
+      Alert.alert('Occupancy', 'Please select occupancy.')
+      return
+    }
+    if (!form.moveInDate.trim()) {
+      Alert.alert('Move-in date', 'Please enter move-in date (YYYY-MM-DD).')
+      return
+    }
+    if (!form.contactPhone.trim()) {
+      Alert.alert('Contact phone', 'Please add a contact phone number.')
+      return
+    }
+    if (uploadedImages.length < 2) {
+      Alert.alert('Photos required', 'Please add at least 2 photos for a published listing.')
       return
     }
     await submitListing('PUBLISHED')
@@ -149,14 +265,34 @@ export function PostListingScreen({ route, navigation }: Props) {
 
     setIsSubmitting(true)
     try {
+      const imagesPayload =
+        uploadedImages.length > 0
+          ? uploadedImages.map((img, index) => ({
+              assetProvider: img.assetProvider,
+              providerAssetId: img.providerAssetId,
+              imageUrl: img.imageUrl,
+              thumbnailUrl: img.thumbnailUrl,
+              detailUrl: img.detailUrl,
+              width: img.width,
+              height: img.height,
+              bytes: img.bytes,
+              sortOrder: index,
+              isCover: index === 0,
+            }))
+          : undefined
+
       await apiRequest('/listings', {
         method: 'POST',
         token: sessionToken,
         body: JSON.stringify({
-          ownerUserId: user.id,           // required by CreateListingDto
+          ownerUserId: user.id,
+          type: 'tenant_replacement',
           title: form.title.trim(),
           city: form.city || undefined,
           locality: form.locality.trim() || undefined,
+          locationName: pinnedLocation?.locationName ?? undefined,
+          latitude: pinnedLocation?.latitude,
+          longitude: pinnedLocation?.longitude,
           rentAmount: form.rentAmount ? Number(form.rentAmount) : undefined,
           depositAmount: form.depositAmount ? Number(form.depositAmount) : undefined,
           maintenanceAmount: form.maintenanceAmount ? Number(form.maintenanceAmount) : undefined,
@@ -167,6 +303,8 @@ export function PostListingScreen({ route, navigation }: Props) {
           contactPhone: form.contactPhone.trim() || undefined,
           description: form.description.trim() || undefined,
           contactMode: form.contactMode,
+          nearbyPlaces: nearbyPlaces.length > 0 ? nearbyPlaces : undefined,
+          images: imagesPayload,
           status,
         }),
       })
@@ -175,7 +313,18 @@ export function PostListingScreen({ route, navigation }: Props) {
         status === 'PUBLISHED'
           ? 'Your listing is now live.'
           : 'Your draft has been saved. Publish it when ready.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation.canGoBack()) {
+                navigation.goBack()
+              } else {
+                navigation.navigate('MyListings' as never)
+              }
+            },
+          },
+        ],
       )
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save listing.')
@@ -194,18 +343,73 @@ export function PostListingScreen({ route, navigation }: Props) {
     )
   }
 
+  const suggestionList = nearbyKind === 'tech_park' ? bangaloreTechParks : bangaloreCompanies
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + 120 },
+        ]}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
+        style={styles.scrollFlex}
       >
         <Text style={styles.pageTitle}>Post a listing</Text>
-        <Text style={styles.pageSubtitle}>Fill in the details to help tenants find your room.</Text>
+        <Text style={styles.pageSubtitle}>
+          Add photos, pin the address when possible, and tag nearby tech parks or offices (Bangalore-focused
+          suggestions).
+        </Text>
+
+        <View style={styles.section}>
+          <FieldLabel label="Photos" required={false} />
+          <Text style={styles.helper}>
+            Published listings need at least 2 photos (max 8). The first photo is the thumbnail — tap Set cover on
+            another photo to make it first.
+          </Text>
+          <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.photoRow}>
+            {uploadedImages.map((img, index) => (
+              <View key={img.providerAssetId} style={styles.photoWrap}>
+                <Image
+                  contentFit="cover"
+                  source={{ uri: img.detailUrl ?? img.imageUrl ?? img.thumbnailUrl }}
+                  style={styles.photoThumb}
+                />
+                {index === 0 ? (
+                  <View style={styles.coverBadge}>
+                    <Text style={styles.coverBadgeText}>Cover</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => setAsCover(index)}
+                    style={styles.setCoverBtn}
+                  >
+                    <Text style={styles.setCoverBtnText}>Set cover</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => removeImageAt(index)} style={styles.photoRemove}>
+                  <Text style={styles.photoRemoveText}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            {uploadedImages.length < 8 ? (
+              <TouchableOpacity
+                disabled={uploadingPhotos}
+                onPress={() => void pickPhotos()}
+                style={styles.addPhoto}
+              >
+                <Text style={styles.addPhotoText}>{uploadingPhotos ? '…' : '+'}</Text>
+                <Text style={styles.addPhotoHint}>Add</Text>
+              </TouchableOpacity>
+            ) : null}
+          </ScrollView>
+        </View>
 
         <View style={styles.section}>
           <FieldLabel label="Listing title" required />
@@ -233,7 +437,7 @@ export function PostListingScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.section}>
-          <FieldLabel label="Locality / area" />
+          <FieldLabel label="Locality / area" required />
           <TextInput
             onChangeText={(v) => update('locality', v)}
             placeholder="e.g. Indiranagar, HSR Layout"
@@ -241,6 +445,78 @@ export function PostListingScreen({ route, navigation }: Props) {
             style={styles.input}
             value={form.locality}
           />
+        </View>
+
+        <View style={styles.section}>
+          <FieldLabel label="Address (Google Maps)" />
+          <LocationAutocompleteInput
+            inputValue={addressInput}
+            onClear={() => {
+              setPinnedLocation(null)
+              setAddressInput('')
+            }}
+            onInputValueChange={setAddressInput}
+            onSelect={setPinnedLocation}
+            selected={pinnedLocation}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <FieldLabel label="Nearby tech parks / offices (Bangalore)" />
+          <Text style={styles.helper}>Pick suggestions or add your own (max 5).</Text>
+          <View style={styles.pillRow}>
+            <SelectPill
+              active={nearbyKind === 'tech_park'}
+              label="Tech park"
+              onPress={() => setNearbyKind('tech_park')}
+            />
+            <SelectPill
+              active={nearbyKind === 'company'}
+              label="Company"
+              onPress={() => setNearbyKind('company')}
+            />
+          </View>
+          <View style={styles.pillRow}>
+            {suggestionList.map((name) => (
+              <SelectPill
+                key={name}
+                active={nearbyPlaces.some((p) => p.name === name)}
+                label={name}
+                onPress={() => addNearby(name, nearbyKind)}
+              />
+            ))}
+          </View>
+          <View style={styles.customNearbyRow}>
+            <TextInput
+              onChangeText={setCustomNearby}
+              onSubmitEditing={() => {
+                addNearby(customNearby, nearbyKind)
+                setCustomNearby('')
+              }}
+              placeholder="Custom name"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { flex: 1 }]}
+              value={customNearby}
+            />
+            <Button onPress={() => { addNearby(customNearby, nearbyKind); setCustomNearby('') }} variant="secondary">
+              Add
+            </Button>
+          </View>
+          {nearbyPlaces.length > 0 ? (
+            <View style={styles.pillRow}>
+              {nearbyPlaces.map((p) => (
+                <TouchableOpacity
+                  key={p.name}
+                  onPress={() => removeNearby(p.name)}
+                  style={[styles.pill, styles.nearbyChip]}
+                >
+                  <Text style={styles.pillText}>
+                    {p.name} · {p.type === 'tech_park' ? 'Park' : 'Co.'} ✕
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
@@ -322,18 +598,16 @@ export function PostListingScreen({ route, navigation }: Props) {
         </View>
 
         <View style={styles.section}>
-          <FieldLabel label="Move-in date" />
-          <TextInput
-            onChangeText={(v) => update('moveInDate', v)}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
+          <FieldLabel label="Move-in date" required />
+          <DatePickerField
+            onChange={(v) => update('moveInDate', v)}
+            placeholder="Select move-in date"
             value={form.moveInDate}
           />
         </View>
 
         <View style={styles.section}>
-          <FieldLabel label="Contact phone" />
+          <FieldLabel label="Contact phone" required />
           <TextInput
             keyboardType="phone-pad"
             onChangeText={(v) => update('contactPhone', v)}
@@ -358,16 +632,21 @@ export function PostListingScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
 
-      <View style={[styles.actions, { paddingBottom: insets.bottom + spacing.sm }]}>
+      <View
+        style={[
+          styles.actions,
+          { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + spacing.sm },
+        ]}
+      >
         <Button
-          loading={isSubmitting}
+          loading={isSubmitting || uploadingPhotos}
           onPress={() => void publishListing()}
           style={{ flex: 1 }}
         >
           Publish
         </Button>
         <Button
-          loading={isSubmitting}
+          loading={isSubmitting || uploadingPhotos}
           onPress={() => void saveDraft()}
           style={{ flex: 1 }}
           variant="secondary"
@@ -380,14 +659,16 @@ export function PostListingScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgLight },
+  container: { flex: 1, backgroundColor: colors.canvas },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
   guestTitle: { fontSize: fontSizes.xl, fontWeight: fontWeights.bold, color: colors.textPrimary, textAlign: 'center' },
   guestText: { fontSize: fontSizes.base, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
   scroll: { padding: spacing.md },
+  scrollFlex: { flex: 1 },
   pageTitle: { fontSize: fontSizes.xxl, fontWeight: fontWeights.bold, color: colors.textPrimary, marginBottom: spacing.xs },
   pageSubtitle: { fontSize: fontSizes.base, color: colors.textSecondary, marginBottom: spacing.lg },
   section: { marginBottom: spacing.md },
+  helper: { fontSize: fontSizes.xs, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
   fieldLabel: { fontSize: fontSizes.sm, fontWeight: fontWeights.semibold, color: colors.textPrimary, marginBottom: spacing.xs },
   input: {
     height: 52, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
@@ -407,6 +688,60 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: colors.primaryLight, borderColor: 'rgba(108, 99, 255, 0.3)' },
   pillText: { fontSize: fontSizes.sm, fontWeight: fontWeights.medium, color: colors.textSecondary },
   pillTextActive: { color: colors.primaryDark, fontWeight: fontWeights.semibold },
+  nearbyChip: { backgroundColor: colors.bgLight },
+  customNearbyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  photoRow: { flexDirection: 'row', marginTop: spacing.sm },
+  photoWrap: { marginRight: spacing.sm, position: 'relative' },
+  photoThumb: { width: 120, height: 120, borderRadius: radius.md, backgroundColor: colors.bgLight },
+  coverBadge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    alignItems: 'center',
+  },
+  coverBadgeText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.white },
+  setCoverBtn: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(108, 99, 255, 0.92)',
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    alignItems: 'center',
+  },
+  setCoverBtnText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.white },
+  photoRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRemoveText: { color: colors.white, fontSize: 16, fontWeight: fontWeights.bold, lineHeight: 18 },
+  addPhoto: {
+    width: 120,
+    height: 120,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  addPhotoText: { fontSize: fontSizes.xl, color: colors.primary, fontWeight: fontWeights.bold },
+  addPhotoHint: { fontSize: fontSizes.xs, color: colors.textSecondary },
   actions: {
     flexDirection: 'row', gap: spacing.sm,
     padding: spacing.md, backgroundColor: colors.white,

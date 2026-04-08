@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigation } from '@react-navigation/native'
+import type { CompositeNavigationProp } from '@react-navigation/native'
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -13,13 +17,17 @@ import { EmptyState } from '../components/EmptyState'
 import { FilterBar, type FilterState } from '../components/FilterBar'
 import { ListingCard } from '../components/ListingCard'
 import { colors, fontSizes, fontWeights, spacing } from '../constants/theme'
+import { useFlow } from '../context/FlowContext'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { asListingsPage } from '../lib/listingsResponse'
 import type { Listing } from '../lib/types'
+import type { RootStackParamList, TabParamList } from '../navigation/types'
 
-// Backend GET /listings returns a plain Listing[]
-// Budget and property filters are applied client-side
-// (backend only accepts: city, status, nearby, ownerUserId)
+type FeedNav = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, 'Discover'>,
+  NativeStackNavigationProp<RootStackParamList>
+>
 
 const defaultFilters: FilterState = {
   city: '',
@@ -39,89 +47,131 @@ const majorCities = [
   'Noida',
 ]
 
-function applyClientFilters(listings: Listing[], filters: FilterState): Listing[] {
-  return listings.filter((listing) => {
-    // Budget filter (client-side)
-    if (filters.budget !== 'ANY') {
-      const rent = listing.rentAmount ?? 0
-      if (filters.budget === 'UNDER_20000' && rent >= 20000) return false
-      if (filters.budget === 'BETWEEN_20000_AND_30000' && (rent < 20000 || rent > 30000)) return false
-      if (filters.budget === 'BETWEEN_30000_AND_45000' && (rent < 30000 || rent > 45000)) return false
-      if (filters.budget === 'ABOVE_45000' && rent <= 45000) return false
-    }
-
-    // Property type filter (client-side)
-    if (filters.propertyType && listing.propertyType !== filters.propertyType) return false
-
-    // Occupancy filter (client-side)
-    if (filters.occupancyType && listing.occupancyType !== filters.occupancyType) return false
-
-    return true
-  })
+function budgetToRentRange(budget: FilterState['budget']): { rentMin?: number; rentMax?: number } {
+  switch (budget) {
+    case 'UNDER_20000':
+      return { rentMax: 19_999 }
+    case 'BETWEEN_20000_AND_30000':
+      return { rentMin: 20_000, rentMax: 30_000 }
+    case 'BETWEEN_30000_AND_45000':
+      return { rentMin: 30_000, rentMax: 45_000 }
+    case 'ABOVE_45000':
+      return { rentMin: 45_001 }
+    default:
+      return {}
+  }
 }
 
-export function FeedScreen({ navigation }: { navigation: { navigate: (screen: string, params?: unknown) => void } }) {
-  const { sessionToken } = useAuth()
+function buildListingsQuery(
+  filters: FilterState,
+  opts: { cursor?: string | null; excludeOwnerUserId?: string },
+) {
+  const params = new URLSearchParams({ status: 'PUBLISHED' })
+  params.set('limit', '20')
+  if (filters.city) params.set('city', filters.city)
+  if (filters.propertyType) params.set('propertyType', filters.propertyType)
+  if (filters.occupancyType) params.set('occupancyType', filters.occupancyType)
+  const { rentMin, rentMax } = budgetToRentRange(filters.budget)
+  if (rentMin !== undefined) params.set('rentMin', String(rentMin))
+  if (rentMax !== undefined) params.set('rentMax', String(rentMax))
+  if (opts.excludeOwnerUserId) params.set('excludeOwnerUserId', opts.excludeOwnerUserId)
+  if (opts.cursor) params.set('cursor', opts.cursor)
+  return params.toString()
+}
+
+export function FeedScreen() {
+  const navigation = useNavigation<FeedNav>()
+  const { flowMode } = useFlow()
+  const { sessionToken, user } = useAuth()
   const insets = useSafeAreaInsets()
 
-  const [allListings, setAllListings] = useState<Listing[]>([])
+  const [listings, setListings] = useState<Listing[]>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
-  const fetchListings = useCallback(
-    async (cityFilter: string) => {
+  const excludeOwner = flowMode === 'find_room' && user?.id ? user.id : undefined
+
+  const fetchPage = useCallback(
+    async (append: boolean, cursor: string | null) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
 
-      try {
-        const params = new URLSearchParams({ status: 'PUBLISHED' })
-        if (cityFilter) params.set('city', cityFilter)
+      const qs = buildListingsQuery(filters, {
+        cursor: append ? cursor : null,
+        excludeOwnerUserId: excludeOwner,
+      })
 
-        const data = await apiRequest<Listing[]>(`/listings?${params.toString()}`, {
-          token: sessionToken,
-        })
+      const data = await apiRequest<unknown>(`/listings?${qs}`, {
+        token: sessionToken,
+      })
 
-        if (!controller.signal.aborted) {
-          setAllListings(Array.isArray(data) ? data : [])
-          setError(null)
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setError(err instanceof Error ? err.message : 'Failed to load listings.')
-        }
+      if (controller.signal.aborted) return
+
+      const page = asListingsPage<Listing>(data)
+      if (append) {
+        setListings((prev) => [...prev, ...page.items])
+      } else {
+        setListings(page.items)
       }
+      setNextCursor(page.nextCursor)
+      setError(null)
     },
-    [sessionToken],
+    [excludeOwner, filters, sessionToken],
   )
-
-  useEffect(() => {
-    setIsLoading(true)
-    void fetchListings(filters.city).finally(() => setIsLoading(false))
-  }, [filters.city, fetchListings])
 
   function handleFilterChange(key: keyof FilterState, value: string) {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
+  useEffect(() => {
+    setIsLoading(true)
+    void fetchPage(false, null)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load listings.')
+      })
+      .finally(() => setIsLoading(false))
+  }, [fetchPage])
+
   async function handleRefresh() {
     setIsRefreshing(true)
-    await fetchListings(filters.city)
-    setIsRefreshing(false)
+    try {
+      await fetchPage(false, null)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load listings.')
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
-  const filteredListings = applyClientFilters(allListings, filters)
+  async function handleLoadMore() {
+    if (!nextCursor || loadingMore || isLoading) return
+    setLoadingMore(true)
+    try {
+      await fetchPage(true, nextCursor)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load more.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
-  const activeFilterCount = Object.entries(filters).filter(([k, v]) => {
-    if (k === 'budget') return v !== 'ANY'
-    return Boolean(v)
-  }).length
+  const activeFilterCount = useMemo(
+    () =>
+      Object.entries(filters).filter(([k, v]) => {
+        if (k === 'budget') return v !== 'ANY'
+        return Boolean(v)
+      }).length,
+    [filters],
+  )
 
-  if (isLoading) {
+  if (isLoading && listings.length === 0) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -131,7 +181,6 @@ export function FeedScreen({ navigation }: { navigation: { navigate: (screen: st
 
   return (
     <View style={styles.container}>
-      {/* Sticky filter toggle bar */}
       <View style={styles.searchBar}>
         <TouchableOpacity
           activeOpacity={0.8}
@@ -162,24 +211,27 @@ export function FeedScreen({ navigation }: { navigation: { navigate: (screen: st
         <View style={styles.center}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : filteredListings.length === 0 ? (
+      ) : listings.length === 0 ? (
         <EmptyState
-          description={
-            allListings.length > 0
-              ? 'No listings match your current filters. Try clearing some filters.'
-              : 'No listings available right now. Check back later.'
-          }
+          description="No listings match your filters right now. Try adjusting filters or check back later."
           title="No listings found"
         />
       ) : (
         <FlatList
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
-          data={filteredListings}
+          data={listings}
           keyExtractor={(item) => item.id}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.md }} />
+            ) : null
+          }
+          onEndReached={() => void handleLoadMore()}
+          onEndReachedThreshold={0.35}
           refreshControl={
             <RefreshControl
               colors={[colors.primary]}
-              onRefresh={handleRefresh}
+              onRefresh={() => void handleRefresh()}
               refreshing={isRefreshing}
               tintColor={colors.primary}
             />
@@ -195,12 +247,11 @@ export function FeedScreen({ navigation }: { navigation: { navigate: (screen: st
         />
       )}
 
-      {/* Result count footer */}
-      {!error && allListings.length > 0 && (
+      {!error && listings.length > 0 && (
         <View style={styles.resultBadge}>
           <Text style={styles.resultBadgeText}>
-            {filteredListings.length} listing{filteredListings.length !== 1 ? 's' : ''}
-            {activeFilterCount > 0 ? ` of ${allListings.length}` : ''}
+            {listings.length} listing{listings.length !== 1 ? 's' : ''}
+            {nextCursor ? ' · scroll for more' : ''}
           </Text>
         </View>
       )}
@@ -211,7 +262,7 @@ export function FeedScreen({ navigation }: { navigation: { navigate: (screen: st
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bgLight,
+    backgroundColor: colors.canvas,
   },
   center: {
     flex: 1,

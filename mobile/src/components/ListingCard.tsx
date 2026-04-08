@@ -1,13 +1,10 @@
-import {
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/theme'
+import { getListingCoverUri } from '../lib/listingImages'
+import { matchFitDisplayPercent } from '../lib/matchDisplay'
 import type { Listing } from '../lib/types'
 import { Badge } from './Badge'
+import { ListingImage } from './ListingImage'
 
 type Props = {
   listing: Listing
@@ -32,7 +29,7 @@ function getMatchLabel(label: string) {
 }
 
 export function ListingCard({ listing, onPress }: Props) {
-  const coverImage = listing.images.find((img) => img.isCover) ?? listing.images[0]
+  const coverUri = getListingCoverUri(listing.images)
   const location = [listing.locality, listing.city].filter(Boolean).join(', ')
   const propertyLabel = listing.propertyType
     ? listing.propertyType.charAt(0) + listing.propertyType.slice(1).toLowerCase()
@@ -43,12 +40,8 @@ export function ListingCard({ listing, onPress }: Props) {
 
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={styles.card}>
-      {coverImage ? (
-        <Image
-          resizeMode="cover"
-          source={{ uri: coverImage.thumbnailUrl || coverImage.imageUrl }}
-          style={styles.image}
-        />
+      {coverUri ? (
+        <ListingImage showPlaceholder={false} style={styles.image} uri={coverUri} />
       ) : (
         <View style={styles.imagePlaceholder}>
           <Text style={styles.imagePlaceholderText}>No photo</Text>
@@ -75,6 +68,26 @@ export function ListingCard({ listing, onPress }: Props) {
           <Text numberOfLines={1} style={styles.location}>
             {location}
           </Text>
+        ) : null}
+
+        {listing.matchSummary ? (
+          <View style={styles.matchBlock}>
+            <Text style={styles.fitScore}>{matchFitDisplayPercent(listing.matchSummary)}% fit</Text>
+            {listing.matchSummary.reasons.length > 0 ? (
+              <View style={styles.reasonRow}>
+                {listing.matchSummary.reasons.slice(0, 2).map((reason) => (
+                  <View key={reason} style={styles.reasonPill}>
+                    <Text numberOfLines={2} style={styles.reasonText}>
+                      {reason}
+                    </Text>
+                  </View>
+                ))}
+                {listing.matchSummary.reasons.length > 2 ? (
+                  <Text style={styles.reasonMore}>+{listing.matchSummary.reasons.length - 2} more</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         ) : null}
 
         <View style={styles.tags}>
@@ -158,6 +171,41 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.sm,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+  },
+  matchBlock: {
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  fitScore: {
+    fontSize: fontSizes.sm,
+    fontWeight: fontWeights.bold,
+    color: colors.primary,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reasonPill: {
+    maxWidth: '100%',
+    flexShrink: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(108, 99, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(108, 99, 255, 0.22)',
+  },
+  reasonText: {
+    fontSize: fontSizes.xs,
+    color: colors.primaryDark,
+    fontWeight: fontWeights.semibold,
+  },
+  reasonMore: {
+    fontSize: fontSizes.xs,
+    color: colors.textTertiary,
+    fontWeight: fontWeights.semibold,
   },
   tags: {
     flexDirection: 'row',

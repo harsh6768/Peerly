@@ -4,7 +4,7 @@ import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/th
 type BadgeTone = 'primary' | 'green' | 'amber' | 'red' | 'gray'
 
 const toneStyles: Record<BadgeTone, { bg: string; text: string }> = {
-  primary: { bg: 'rgba(108, 99, 255, 0.12)', text: colors.primaryDark },
+  primary: { bg: colors.primaryLight, text: colors.primaryDark },
   green: { bg: 'rgba(34, 197, 94, 0.12)', text: '#16a34a' },
   amber: { bg: 'rgba(245, 158, 11, 0.14)', text: '#b45309' },
   red: { bg: 'rgba(255, 107, 107, 0.14)', text: '#dc2626' },

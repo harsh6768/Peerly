@@ -358,7 +358,33 @@ Pipeline:
 
 ---
 
-## 8.3 Data Freshness
+## 8.3 Notifications & cross-platform inbox
+
+**Principle:** Notifications are **owned by the product**, not by a push provider. The **canonical** state lives in the **backend** so that users see the same inbox on **web** and **mobile** when signed in.
+
+### Layers
+
+| Layer | Role |
+|-------|--------|
+| **Server-stored notifications** | Persisted per user: type, payload (e.g. listing/inquiry ids), read state, timestamps. Powers in-app bell, list, history, and synced unread counts. |
+| **REST API** | List (cursor-paginated), unread count, mark read — consumed by **both** web and mobile. |
+| **Push (future)** | Optional: FCM / APNs / Web Push to **alert** when the app is backgrounded. Push does **not** replace the database; after open, clients still load the inbox from the API. |
+
+### Behavior
+
+- **Authenticated only:** Browsing without login stays unchanged; notifications require sign-in.
+- **Read state** is updated on the server so switching between **website and app** shows consistent unread status.
+- **Deep links:** Each notification should navigate to the relevant listing or inquiry detail.
+
+### Event examples (expand over time)
+
+- New inquiry on the user’s listing  
+- Inquiry status updates (when meaningful to the other party)  
+- Future: verification, listing lifecycle, system messages  
+
+---
+
+## 8.4 Data Freshness
 
 - Listings sorted by:
   - relevance
@@ -423,7 +449,8 @@ Pipeline:
 # 12. Future Roadmap
 
 - Personalized ranking
-- Push notifications
+- In-app notification inbox (web + mobile, server-backed, synced read state)
+- Push notifications (FCM / Web Push) as an add-on when the user is not in-app
 - Chat system
 - Premium listings
 - AI-based recommendations

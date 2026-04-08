@@ -1,8 +1,10 @@
-import { MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
+import { Bell, MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { AppFooter } from './AppFooter'
 import { Button } from './Button'
 import { useAppAuth } from '../context/AppAuthContext'
+import { apiRequest } from '../lib/api'
 import { housingIntentValues, useHousingIntent } from '../context/HousingIntentContext'
 import cirvoLogo from '../assets/cirvo_black.png'
 
@@ -13,7 +15,8 @@ const desktopLinks = [
 ]
 
 export function AppShell() {
-  const { configured, isLoading, isSyncing, signInWithGoogle, user } = useAppAuth()
+  const { configured, isLoading, isSyncing, sessionToken, signInWithGoogle, user } = useAppAuth()
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
   const { intent, setIntent } = useHousingIntent()
   const navigate = useNavigate()
   const location = useLocation()
@@ -23,6 +26,28 @@ export function AppShell() {
     : '/find-tenant/inquiries'
 
   const postTo = user ? '/find-tenant/host' : '/profile'
+
+  useEffect(() => {
+    if (!sessionToken) {
+      setUnreadNotifications(0)
+      return
+    }
+    const load = () => {
+      void apiRequest<{ unreadCount: number }>('/notifications/unread-count', { token: sessionToken })
+        .then((r) => setUnreadNotifications(r.unreadCount))
+        .catch(() => {
+          setUnreadNotifications(0)
+        })
+    }
+    void load()
+    const interval = window.setInterval(load, 60_000)
+    const onFocus = () => void load()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [sessionToken, location.pathname])
 
   return (
     <div className="app-shell">
@@ -81,6 +106,14 @@ export function AppShell() {
                     Tenant replacement
                   </button>
                 </div>
+                <NavLink aria-label="Notifications" className="header-notifications" to="/notifications">
+                  <Bell size={20} strokeWidth={2} />
+                  {unreadNotifications > 0 ? (
+                    <span className="header-notifications-badge">
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                    </span>
+                  ) : null}
+                </NavLink>
                 <NavLink className="header-user-chip" to="/profile">
                   <span className={`header-user-status${user.isVerified ? ' verified' : ''}`} />
                   <span>{user.name}</span>
@@ -104,6 +137,15 @@ export function AppShell() {
           {/* Mobile-only: intent toggle + auth — hidden on desktop via CSS */}
           <div className="mobile-header-actions">
             {user ? (
+              <>
+                <NavLink aria-label="Notifications" className="header-notifications" to="/notifications">
+                  <Bell size={20} strokeWidth={2} />
+                  {unreadNotifications > 0 ? (
+                    <span className="header-notifications-badge">
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                    </span>
+                  ) : null}
+                </NavLink>
               <div
                 aria-label="Housing intent"
                 className="toggle-wrap mobile-intent-toggle"
@@ -130,6 +172,7 @@ export function AppShell() {
                   Replace tenant
                 </button>
               </div>
+              </>
             ) : (
               <Button
                 className="mobile-signin-btn"

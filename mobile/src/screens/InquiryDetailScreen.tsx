@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,10 +10,13 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Badge } from '../components/Badge'
+import { Button } from '../components/Button'
+import { InquiryTimeline } from '../components/InquiryTimeline'
 import { colors, fontSizes, fontWeights, radius, spacing } from '../constants/theme'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import type { Inquiry } from '../lib/types'
+import { buildInquiryTimeline } from '../lib/inquiryTimeline'
+import type { Inquiry, ListingInquiryStatus } from '../lib/types'
 import type { RootStackScreenProps } from '../navigation/types'
 
 type Props = RootStackScreenProps<'InquiryDetail'>
@@ -27,7 +32,17 @@ function statusTone(status: string) {
   return map[status] ?? 'gray'
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, owner: boolean) {
+  if (owner) {
+    const map: Record<string, string> = {
+      NEW: 'New lead',
+      CONTACTED: 'Contacted',
+      SCHEDULED: 'Visit scheduled',
+      CLOSED: 'Closed',
+      DECLINED: 'Declined',
+    }
+    return map[status] ?? status
+  }
   const map: Record<string, string> = {
     NEW: 'Inquiry sent',
     CONTACTED: 'In review',
@@ -47,21 +62,68 @@ function Section({ label, value }: { label: string; value: string }) {
   )
 }
 
+function normalizePhoneForLink(phone: string | null) {
+  return (phone ?? '').replace(/[^\d+]/g, '')
+}
+
 export function InquiryDetailScreen({ route }: Props) {
   const { inquiryId } = route.params
-  const { sessionToken } = useAuth()
+  const { sessionToken, user } = useAuth()
   const insets = useSafeAreaInsets()
 
   const [inquiry, setInquiry] = useState<Inquiry | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [statusBusy, setStatusBusy] = useState(false)
+
+  const loadInquiry = useCallback(async () => {
+    if (!sessionToken) return
+    setError(null)
+    const data = await apiRequest<Inquiry>(`/listing-inquiries/${inquiryId}`, { token: sessionToken })
+    setInquiry(data)
+  }, [inquiryId, sessionToken])
 
   useEffect(() => {
-    void apiRequest<Inquiry>(`/listing-inquiries/${inquiryId}`, { token: sessionToken })
-      .then(setInquiry)
+    setIsLoading(true)
+    void loadInquiry()
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false))
-  }, [inquiryId, sessionToken])
+  }, [loadInquiry])
+
+  async function patchStatus(status: ListingInquiryStatus) {
+    if (!sessionToken || !inquiry) return
+    setStatusBusy(true)
+    try {
+      await apiRequest(`/listing-inquiries/${inquiry.id}/status`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify({ status }),
+      })
+      await loadInquiry()
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Could not update inquiry.')
+    } finally {
+      setStatusBusy(false)
+    }
+  }
+
+  function confirmDecline() {
+    Alert.alert(
+      'Decline inquiry?',
+      'The seeker will see this inquiry as declined.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Decline', style: 'destructive', onPress: () => void patchStatus('DECLINED') },
+      ],
+    )
+  }
+
+  function confirmClose() {
+    Alert.alert('Close inquiry?', 'You can still find it under the Closed filter in your inbox.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Close', onPress: () => void patchStatus('CLOSED') },
+    ])
+  }
 
   if (isLoading) {
     return (
@@ -79,10 +141,21 @@ export function InquiryDetailScreen({ route }: Props) {
     )
   }
 
+  const isOwnerView = user ? inquiry.listingOwnerUserId === user.id : false
+  const s = inquiry.status
+  const ownerShowContact = isOwnerView && s === 'NEW'
+  const ownerShowClose = isOwnerView && (s === 'CONTACTED' || s === 'SCHEDULED')
+  const ownerShowDecline = isOwnerView && (s === 'NEW' || s === 'CONTACTED' || s === 'SCHEDULED')
+  const seekerPhone = normalizePhoneForLink(inquiry.requester.phone)
+  const phoneDigits = (inquiry.requester.phone ?? '').replace(/\D/g, '')
+  const waLink = phoneDigits.length >= 8 ? `https://wa.me/${phoneDigits}` : null
+
   const location = [inquiry.listing.locality, inquiry.listing.city].filter(Boolean).join(', ')
   const rent = inquiry.listing.rentAmount
     ? `₹${inquiry.listing.rentAmount.toLocaleString('en-IN')}/mo`
     : 'Rent TBD'
+
+  const timelineEvents = buildInquiryTimeline(inquiry, isOwnerView ? 'owner' : 'requester')
 
   return (
     <ScrollView
@@ -91,7 +164,7 @@ export function InquiryDetailScreen({ route }: Props) {
     >
       {/* Status */}
       <View style={styles.statusRow}>
-        <Badge tone={statusTone(inquiry.status)}>{statusLabel(inquiry.status)}</Badge>
+        <Badge tone={statusTone(inquiry.status)}>{statusLabel(inquiry.status, isOwnerView)}</Badge>
         <Text style={styles.date}>
           {new Date(inquiry.createdAt).toLocaleDateString('en-IN', {
             day: 'numeric',
@@ -99,6 +172,10 @@ export function InquiryDetailScreen({ route }: Props) {
             year: 'numeric',
           })}
         </Text>
+      </View>
+
+      <View style={styles.card}>
+        <InquiryTimeline events={timelineEvents} />
       </View>
 
       {/* Listing summary */}
@@ -111,7 +188,7 @@ export function InquiryDetailScreen({ route }: Props) {
 
       {/* Inquiry details */}
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>Your inquiry</Text>
+        <Text style={styles.cardLabel}>{isOwnerView ? 'Message from seeker' : 'Your inquiry'}</Text>
         {inquiry.message ? (
           <Text style={styles.message}>{inquiry.message}</Text>
         ) : (
@@ -124,7 +201,7 @@ export function InquiryDetailScreen({ route }: Props) {
         <Text style={styles.cardLabel}>Details</Text>
         {inquiry.budgetAmount ? (
           <Section
-            label="Your budget"
+            label={isOwnerView ? 'Their budget' : 'Your budget'}
             value={`₹${inquiry.budgetAmount.toLocaleString('en-IN')}/mo`}
           />
         ) : null}
@@ -149,21 +226,90 @@ export function InquiryDetailScreen({ route }: Props) {
         ) : null}
       </View>
 
-      {/* Host info */}
+      {/* Counterparty */}
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>Host</Text>
-        <Text style={styles.cardTitle}>{inquiry.listingOwner.fullName}</Text>
-        {inquiry.listingOwner.companyName ? (
-          <Text style={styles.cardMeta}>{inquiry.listingOwner.companyName}</Text>
+        <Text style={styles.cardLabel}>{isOwnerView ? 'Seeker' : 'Host'}</Text>
+        <Text style={styles.cardTitle}>
+          {isOwnerView ? inquiry.requester.fullName : inquiry.listingOwner.fullName}
+        </Text>
+        {(isOwnerView ? inquiry.requester.companyName : inquiry.listingOwner.companyName) ? (
+          <Text style={styles.cardMeta}>
+            {isOwnerView ? inquiry.requester.companyName : inquiry.listingOwner.companyName}
+          </Text>
+        ) : null}
+        {isOwnerView && inquiry.requester.phone ? (
+          <Text style={styles.phoneLine}>{inquiry.requester.phone}</Text>
         ) : null}
         <View style={styles.verifyRow}>
-          {inquiry.listingOwner.isVerified ? (
+          {isOwnerView ? (
+            inquiry.requester.isVerified ? (
+              <Badge tone="green">Verified seeker</Badge>
+            ) : (
+              <Badge tone="gray">Unverified</Badge>
+            )
+          ) : inquiry.listingOwner.isVerified ? (
             <Badge tone="green">Verified host</Badge>
           ) : (
             <Badge tone="gray">Unverified</Badge>
           )}
         </View>
+        {isOwnerView && seekerPhone ? (
+          <View style={styles.contactLinks}>
+            <Text
+              onPress={() => void Linking.openURL(`tel:${seekerPhone}`)}
+              style={styles.linkText}
+            >
+              Call seeker
+            </Text>
+            {waLink ? (
+              <Text onPress={() => void Linking.openURL(waLink)} style={styles.linkText}>
+                WhatsApp
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
       </View>
+
+      {isOwnerView && (ownerShowContact || ownerShowClose || ownerShowDecline) ? (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Manage inquiry</Text>
+          <View style={styles.ownerActions}>
+            {ownerShowContact ? (
+              <Button
+                disabled={statusBusy}
+                fullWidth
+                loading={statusBusy}
+                onPress={() => void patchStatus('CONTACTED')}
+                variant="secondary"
+              >
+                Mark contacted
+              </Button>
+            ) : null}
+            {ownerShowClose ? (
+              <Button
+                disabled={statusBusy}
+                fullWidth
+                loading={statusBusy}
+                onPress={confirmClose}
+                variant="secondary"
+              >
+                Close inquiry
+              </Button>
+            ) : null}
+            {ownerShowDecline ? (
+              <Button
+                disabled={statusBusy}
+                fullWidth
+                loading={statusBusy}
+                onPress={confirmDecline}
+                variant="ghost"
+              >
+                Decline
+              </Button>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
     </ScrollView>
   )
 }
@@ -213,4 +359,12 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: fontSizes.sm, color: colors.textSecondary, fontWeight: fontWeights.medium },
   sectionValue: { fontSize: fontSizes.sm, color: colors.textPrimary, fontWeight: fontWeights.semibold },
   verifyRow: { marginTop: spacing.xs },
+  phoneLine: { fontSize: fontSizes.sm, fontWeight: fontWeights.semibold, color: colors.textPrimary, marginTop: spacing.xs },
+  contactLinks: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  linkText: { fontSize: fontSizes.sm, fontWeight: fontWeights.semibold, color: colors.primary },
+  ownerActions: { gap: spacing.sm, marginTop: spacing.sm },
 })

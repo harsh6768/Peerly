@@ -91,6 +91,27 @@ export type InquiryMessage = {
   sender: InquiryPerson | null
 }
 
+export type HousingNeedStatus = 'OPEN' | 'MATCHED' | 'CLOSED' | 'ARCHIVED'
+
+export type HousingNeed = {
+  id: string
+  city: string
+  locality: string | null
+  preferredPropertyType: string
+  preferredOccupancy: string
+  maxRentAmount: number | null
+  maxDepositAmount: number | null
+  maxMaintenanceAmount: number | null
+  preferredAmenities: string[]
+  moveInDate: string
+  urgencyLevel: string
+  notes: string | null
+  status: HousingNeedStatus
+  createdAt: string
+  updatedAt: string
+  nearbyPlaces: Array<{ id: string; name: string; type: string }>
+}
+
 export type Inquiry = {
   id: string
   listingId: string
@@ -102,6 +123,11 @@ export type Inquiry = {
   preferredOccupancy: string | null
   visitStatus: ListingVisitStatus
   status: ListingInquiryStatus
+  scheduledVisitAt?: string | null
+  scheduledVisitNote?: string | null
+  visitConfirmedAt?: string | null
+  visitCancelledAt?: string | null
+  visitCompletedAt?: string | null
   createdAt: string
   updatedAt: string
   listing: Listing
