@@ -48,6 +48,17 @@ Set for **Production** (and **Preview** if previews should hit a real API):
 
 Template: [`frontend/.env.production.example`](frontend/.env.production.example).
 
+### Why production still calls `localhost:4000` (or the wrong API)
+
+Vite **inlines** `VITE_*` values when **`npm run build` runs**. They are **not** read on each browser request. So:
+
+1. **Name must be exact:** `VITE_API_BASE_URL` (not `API_BASE_URL` or `VITE_BACKEND_URL`). Only names starting with `VITE_` are exposed to the client bundle.
+2. **Netlify:** Add variables under **Site configuration → Environment variables** for the right **Deploy context** (Production vs Preview). After changing them, use **Deploy → Trigger deploy** (clear cache if needed). An old deploy’s `dist/` will keep the old URL until you rebuild.
+3. **Monorepo:** Set **Base directory** to `frontend` (or equivalent), **Publish directory** to `frontend/dist`, and ensure the build runs from the folder that contains [`frontend/vite.config.ts`](frontend/vite.config.ts).
+4. **Local `.env`:** If you build a production bundle on your machine with `frontend/.env` pointing at `http://localhost:4000/api`, that value is what gets shipped. Production builds on Netlify should not rely on a committed local `.env` (those files are gitignored for a reason).
+
+On Netlify, `NETLIFY=true` is set during build; [`frontend/vite.config.ts`](frontend/vite.config.ts) fails the build if `VITE_API_BASE_URL` is missing or still points at localhost when that flag is present.
+
 ### Smoke test after deploy
 
 1. Open production URL → browse loads.

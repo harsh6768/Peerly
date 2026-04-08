@@ -1,3 +1,8 @@
+/**
+ * API origin is fixed at **build** time (`import.meta.env.VITE_*`). Netlify (and other hosts)
+ * must define `VITE_API_BASE_URL` for the build step, then redeploy — changing env without
+ * rebuilding leaves the old URL in `dist/` JS bundles.
+ */
 export const apiBaseUrl = resolveApiBaseUrl()
 
 type ApiRequestOptions = RequestInit & {
@@ -51,6 +56,8 @@ function resolveApiBaseUrl() {
   }
 
   throw new Error(
-    'VITE_API_BASE_URL must be configured. Point it to your backend API, for example http://localhost:4000/api or https://api.example.com/api.',
+    'VITE_API_BASE_URL is missing. For local dev: add it to frontend/.env (see .env.example). ' +
+      'For Netlify: Site → Environment variables → add VITE_API_BASE_URL, save, then Deploy → Trigger deploy ' +
+      '(Vite embeds this at build time, not at request time).',
   )
 }
