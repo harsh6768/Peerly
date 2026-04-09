@@ -41,6 +41,7 @@ Recommended reading order:
 8. [Backend TypeScript Guide](./docs/backend-typescript-guide.md)
 9. [Platform Deployment Guide](./docs/platform-deployment.md)
 10. [Supabase Google Auth with Netlify and EC2](./docs/supabase-google-auth-netlify.md)
+11. [EC2 to api.cirvo.in Complete Setup Guide](./docs/nginx_complete_setup.md)
 
 ## Local development
 
