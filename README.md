@@ -42,6 +42,7 @@ Recommended reading order:
 9. [Platform Deployment Guide](./docs/platform-deployment.md)
 10. [Supabase Google Auth with Netlify and EC2](./docs/supabase-google-auth-netlify.md)
 11. [EC2 to api.cirvo.in Complete Setup Guide](./docs/nginx_complete_setup.md)
+12. [Favicon Guide](./docs/favicon-guide.md)
 
 ## Local development
 
