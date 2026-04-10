@@ -364,6 +364,18 @@ const listingInquirySortOptions: Array<{ label: string; value: ListingInquirySor
   { label: 'Needs action first', value: 'NEW_FIRST' },
   { label: 'Oldest first', value: 'OLDEST' },
 ]
+
+function getHostListingFilterTone(value: HostListingFilter) {
+  if (value === 'ACTIVE' || value === 'PUBLISHED') return 'mint'
+  if (value === 'DRAFT' || value === 'ALL') return 'violet'
+  return 'amber'
+}
+
+function getInquiryFilterTone(value: ListingInquiryFilter) {
+  if (value === 'ACTIVE' || value === 'NEW' || value === 'CONTACTED') return 'mint'
+  if (value === 'ALL') return 'violet'
+  return 'amber'
+}
 const publicListingBudgetFilters: Array<{ label: string; value: PublicListingBudgetFilter }> = [
   { label: 'Any budget', value: 'ANY' },
   { label: 'Under 20k', value: 'UNDER_20000' },
@@ -712,7 +724,9 @@ function HostListingCard({
           <strong>{listing.title}</strong>
           <p>{formatListingLocation(listing)}</p>
         </div>
-        <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
+        <span className="host-listing-status-badge-desktop">
+          <Badge tone={getListingStatusTone(listing.status)}>{formatListingStatus(listing.status)}</Badge>
+        </span>
       </div>
 
       <div className="nearby-place-chip-row compact">
@@ -727,7 +741,10 @@ function HostListingCard({
 
       <div className="host-listing-meta">
         <span>{formatPriceLine(listing)}</span>
-        <span>Created {formatShortDate(listing.createdAt)}</span>
+        <span>
+          Created {formatShortDate(listing.createdAt)}
+          <span className="host-listing-status-inline-mobile"> · {formatListingStatus(listing.status)}</span>
+        </span>
       </div>
 
       {/* Native-feeling card actions: primary CTA + ⋯ context menu */}
@@ -2620,6 +2637,10 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [listingActionConfirmation, setListingActionConfirmation] =
     useState<ListingActionConfirmation | null>(null)
   const [myListingFilter, setMyListingFilter] = useState<HostListingFilter>('ACTIVE')
+  const [isHostFilterMenuOpenOnMobile, setIsHostFilterMenuOpenOnMobile] = useState(false)
+  const [isHostInquiryFilterMenuOpenOnMobile, setIsHostInquiryFilterMenuOpenOnMobile] = useState(false)
+  const [isRequesterInquiryFilterMenuOpenOnMobile, setIsRequesterInquiryFilterMenuOpenOnMobile] = useState(false)
+  const [isHostMetricsExpandedOnMobile, setIsHostMetricsExpandedOnMobile] = useState(false)
   const [requesterInquiryFilter, setRequesterInquiryFilter] = useState<ListingInquiryFilter>('ALL')
   const [ownerInquiryFilter, setOwnerInquiryFilter] = useState<ListingInquiryFilter>('ACTIVE')
   const [ownerInquirySort, setOwnerInquirySort] = useState<ListingInquirySort>('NEW_FIRST')
@@ -2996,10 +3017,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         const myPage = asListingsPage<Listing>(myRaw)
         setMyListings(normalizeListings(myPage.items))
 
-        const myHousingNeedsPayload = await apiRequest<HousingNeed[]>('/housing-needs/mine', {
-          token: sessionToken,
-        })
-        setMyHousingNeeds(Array.isArray(myHousingNeedsPayload) ? myHousingNeedsPayload : [])
+        if (shouldShowSeekerPostedListings) {
+          const myHousingNeedsPayload = await apiRequest<HousingNeed[]>('/housing-needs/mine', {
+            token: sessionToken,
+          })
+          setMyHousingNeeds(Array.isArray(myHousingNeedsPayload) ? myHousingNeedsPayload : [])
+        } else {
+          setMyHousingNeeds([])
+        }
 
         const requesterInquiriesPayload = await apiRequest<ListingInquiry[]>(
           '/listing-inquiries?scope=requester',
@@ -3826,38 +3851,91 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
             </p>
           </div>
           <div className="hub-panel-actions">
-            <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeHostListingsCount} active`}</Badge>
+            <span className="host-active-count-badge">
+              <Badge tone="purple">{isLoading || !user ? 'Loading' : `${activeHostListingsCount} active`}</Badge>
+            </span>
           </div>
         </div>
 
         {user ? (
-          <div className="host-metrics-grid">
-            <Card className="host-metric-card">
-              <span className="muted">Live listings</span>
-              <strong>{hostModeListings.filter((listing) => listing.status === 'PUBLISHED').length}</strong>
-              <p className="feed-copy">Currently visible in the public feed.</p>
-            </Card>
-            <Card className="host-metric-card">
-              <span className="muted">On hold</span>
-              <strong>{pausedHostListingsCount}</strong>
-              <p className="feed-copy">Temporarily hidden until you resume them.</p>
-            </Card>
-            <Card className="host-metric-card">
-              <span className="muted">Proposed visits</span>
-              <strong>{proposedVisitsCount}</strong>
-              <p className="feed-copy">Waiting for seeker confirmation.</p>
-            </Card>
-            <Card className="host-metric-card">
-              <span className="muted">Confirmed visits</span>
-              <strong>{confirmedVisitsCount}</strong>
-              <p className="feed-copy">Ready for in-person follow-up.</p>
-            </Card>
-          </div>
+          <>
+            <div className="host-metrics-mobile-summary">
+              <span className="muted">Active listings</span>
+              <strong>{activeHostListingsCount}</strong>
+              <button
+                aria-expanded={isHostMetricsExpandedOnMobile}
+                className="host-metrics-mobile-toggle"
+                onClick={() => setIsHostMetricsExpandedOnMobile((current) => !current)}
+                type="button"
+              >
+                {isHostMetricsExpandedOnMobile ? 'Hide metrics' : 'View metrics'}
+              </button>
+            </div>
+
+            <div className={`host-metrics-grid${isHostMetricsExpandedOnMobile ? ' mobile-open' : ''}`}>
+              <Card className="host-metric-card">
+                <span className="muted">Live listings</span>
+                <strong>{hostModeListings.filter((listing) => listing.status === 'PUBLISHED').length}</strong>
+                <p className="feed-copy">Currently visible in the public feed.</p>
+              </Card>
+              <Card className="host-metric-card">
+                <span className="muted">On hold</span>
+                <strong>{pausedHostListingsCount}</strong>
+                <p className="feed-copy">Temporarily hidden until you resume them.</p>
+              </Card>
+              <Card className="host-metric-card">
+                <span className="muted">Proposed visits</span>
+                <strong>{proposedVisitsCount}</strong>
+                <p className="feed-copy">Waiting for seeker confirmation.</p>
+              </Card>
+              <Card className="host-metric-card">
+                <span className="muted">Confirmed visits</span>
+                <strong>{confirmedVisitsCount}</strong>
+                <p className="feed-copy">Ready for in-person follow-up.</p>
+              </Card>
+            </div>
+          </>
         ) : null}
 
         {user ? (
           <div className="host-listing-toolbar">
-            <div className="listing-filter-chip-row">
+            <div className="host-mobile-filter-trigger">
+              <button
+                aria-expanded={isHostFilterMenuOpenOnMobile}
+                className={`host-mobile-filter-button host-mobile-filter-button-${getHostListingFilterTone(myListingFilter)}`}
+                onClick={() => setIsHostFilterMenuOpenOnMobile((current) => !current)}
+                type="button"
+              >
+                Filters · {formatHostListingFilterLabel(myListingFilter)}
+              </button>
+              {isHostFilterMenuOpenOnMobile ? (
+                <div className="host-mobile-filter-menu">
+                  <div className="mobile-filter-dialog-head">
+                    <strong>Select listing filter</strong>
+                    <button onClick={() => setIsHostFilterMenuOpenOnMobile(false)} type="button">Done</button>
+                  </div>
+                  <div className="host-mobile-filter-sheet">
+                    {hostListingFilters.map((filterOption) => (
+                      <button
+                        aria-pressed={myListingFilter === filterOption.value}
+                        className={`host-mobile-filter-option host-mobile-filter-option-${getHostListingFilterTone(filterOption.value)}${myListingFilter === filterOption.value ? ' active' : ''}`}
+                        key={filterOption.value}
+                        onClick={() => {
+                          setMyListingFilter(filterOption.value)
+                          setIsHostFilterMenuOpenOnMobile(false)
+                        }}
+                        type="button"
+                      >
+                        <span>{filterOption.label}</span>
+                        <strong>{filterHostListings(hostModeListings, filterOption.value).length}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="listing-filter-chip-row host-listing-filter-desktop">
               {hostListingFilters.map((filterOption) => (
                 <button
                   aria-pressed={myListingFilter === filterOption.value}
@@ -4319,7 +4397,58 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           </Card>
         ) : (
           <>
-            <div className="listing-filter-chip-row">
+            <div className="host-mobile-filter-trigger">
+              <button
+                aria-expanded={isHostInquiryFilterMenuOpenOnMobile}
+                className={`host-mobile-filter-button host-mobile-filter-button-${getInquiryFilterTone(ownerInquiryFilter)}`}
+                onClick={() => setIsHostInquiryFilterMenuOpenOnMobile((current) => !current)}
+                type="button"
+              >
+                Filters · {formatListingInquiryFilterLabel(ownerInquiryFilter)} · {listingInquirySortOptions.find((option) => option.value === ownerInquirySort)?.label ?? 'Needs action first'}
+              </button>
+              {isHostInquiryFilterMenuOpenOnMobile ? (
+                <div className="host-mobile-filter-menu">
+                  <div className="mobile-filter-dialog-head">
+                    <strong>Inquiry filters</strong>
+                    <button onClick={() => setIsHostInquiryFilterMenuOpenOnMobile(false)} type="button">Done</button>
+                  </div>
+                  <div className="mobile-filter-section">
+                    <span className="muted">Status</span>
+                    <div className="host-mobile-filter-sheet">
+                      {listingInquiryFilters.map((filterOption) => (
+                        <button
+                          aria-pressed={ownerInquiryFilter === filterOption.value}
+                          className={`host-mobile-filter-option host-mobile-filter-option-${getInquiryFilterTone(filterOption.value)}${ownerInquiryFilter === filterOption.value ? ' active' : ''}`}
+                          key={filterOption.value}
+                          onClick={() => setOwnerInquiryFilter(filterOption.value)}
+                          type="button"
+                        >
+                          <span>{filterOption.label}</span>
+                          <strong>{filterListingInquiries(ownerInquiries, filterOption.value).length}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mobile-filter-section">
+                    <span className="muted">Sort</span>
+                    <div className="host-mobile-filter-sheet">
+                      {listingInquirySortOptions.map((sortOption) => (
+                        <button
+                          aria-pressed={ownerInquirySort === sortOption.value}
+                          className={`host-mobile-filter-option host-mobile-filter-option-violet${ownerInquirySort === sortOption.value ? ' active' : ''}`}
+                          key={sortOption.value}
+                          onClick={() => setOwnerInquirySort(sortOption.value)}
+                          type="button"
+                        >
+                          <span>{sortOption.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="listing-filter-chip-row host-listing-filter-desktop">
               {listingInquiryFilters.map((filterOption) => (
                 <button
                   aria-pressed={ownerInquiryFilter === filterOption.value}
@@ -4333,7 +4462,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
               ))}
             </div>
 
-            <div className="listing-filter-chip-row listing-filter-chip-row-muted">
+            <div className="listing-filter-chip-row listing-filter-chip-row-muted host-listing-filter-desktop">
               {listingInquirySortOptions.map((sortOption) => (
                 <button
                   aria-pressed={ownerInquirySort === sortOption.value}
@@ -5309,7 +5438,42 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           </Card>
         ) : (
           <>
-            <div className="listing-filter-chip-row">
+            <div className="host-mobile-filter-trigger">
+              <button
+                aria-expanded={isRequesterInquiryFilterMenuOpenOnMobile}
+                className={`host-mobile-filter-button host-mobile-filter-button-${getInquiryFilterTone(requesterInquiryFilter)}`}
+                onClick={() => setIsRequesterInquiryFilterMenuOpenOnMobile((current) => !current)}
+                type="button"
+              >
+                Filters · {formatListingInquiryFilterLabel(requesterInquiryFilter)}
+              </button>
+              {isRequesterInquiryFilterMenuOpenOnMobile ? (
+                <div className="host-mobile-filter-menu">
+                  <div className="mobile-filter-dialog-head">
+                    <strong>Sent inquiry filters</strong>
+                    <button onClick={() => setIsRequesterInquiryFilterMenuOpenOnMobile(false)} type="button">Done</button>
+                  </div>
+                  <div className="host-mobile-filter-sheet">
+                    {listingInquiryFilters.map((filterOption) => (
+                      <button
+                        aria-pressed={requesterInquiryFilter === filterOption.value}
+                        className={`host-mobile-filter-option host-mobile-filter-option-${getInquiryFilterTone(filterOption.value)}${requesterInquiryFilter === filterOption.value ? ' active' : ''}`}
+                        key={filterOption.value}
+                        onClick={() => {
+                          setRequesterInquiryFilter(filterOption.value)
+                          setIsRequesterInquiryFilterMenuOpenOnMobile(false)
+                        }}
+                        type="button"
+                      >
+                        <span>{filterOption.label}</span>
+                        <strong>{filterListingInquiries(requesterInquiries, filterOption.value).length}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="listing-filter-chip-row host-listing-filter-desktop">
               {listingInquiryFilters.map((filterOption) => (
                 <button
                   aria-pressed={requesterInquiryFilter === filterOption.value}
@@ -5856,6 +6020,8 @@ function TenantReplacementSectionChips({
   user: ReturnType<typeof useAppAuth>['user']
 }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const [isMobileSelectorOpen, setIsMobileSelectorOpen] = useState(false)
   const sectionLinks = [
     {
       key: 'listings',
@@ -5883,36 +6049,97 @@ function TenantReplacementSectionChips({
     },
   ] as const
 
-  return (
-    <div className="tenant-section-chip-row" aria-label="Tenant replacement sections">
-      {sectionLinks.map((link) => {
-        const isActive =
-          user &&
-          (link.key === 'listings'
-            ? location.pathname === '/find-tenant/host'
-            : link.key === 'composer'
-              ? location.pathname.startsWith('/find-tenant/host/listings')
-              : location.pathname.startsWith('/find-tenant/host/inquiries'))
+  const activeSection = sectionLinks.find((link) => {
+    if (!user) {
+      return false
+    }
+    if (link.key === 'listings') {
+      return location.pathname === '/find-tenant/host'
+    }
+    if (link.key === 'composer') {
+      return location.pathname.startsWith('/find-tenant/host/listings')
+    }
+    return location.pathname.startsWith('/find-tenant/host/inquiries')
+  }) ?? sectionLinks[0]
 
-        return (
-          <NavLink
-            className={`tenant-section-chip tenant-section-chip-${link.tone}${isActive ? ' active' : ''}`}
-            key={link.label}
-            to={link.to}
-          >
-            <div className="tenant-section-chip-copy">
-              <strong>{link.label}</strong>
-              <span>{link.meta}</span>
+  return (
+    <>
+      <div className="tenant-section-mobile-selector">
+        <button
+          aria-expanded={isMobileSelectorOpen}
+          className={`tenant-section-mobile-button tenant-section-mobile-button-${activeSection.tone}`}
+          onClick={() => setIsMobileSelectorOpen((current) => !current)}
+          type="button"
+        >
+          {activeSection.label} · {activeSection.meta}
+        </button>
+        {isMobileSelectorOpen ? (
+          <div className="tenant-section-mobile-menu">
+            <div className="tenant-section-mobile-menu-head">
+              <strong>Switch section</strong>
+              <button onClick={() => setIsMobileSelectorOpen(false)} type="button">Done</button>
             </div>
-            {isActive ? (
-              <span className="tenant-section-chip-current">Current</span>
-            ) : link.alert ? (
-              <span className="tenant-section-chip-alert">{link.alert}</span>
-            ) : null}
-          </NavLink>
-        )
-      })}
-    </div>
+            <div className="host-mobile-filter-sheet">
+              {sectionLinks.map((link) => {
+                const isActive =
+                  Boolean(user) &&
+                  (link.key === 'listings'
+                    ? location.pathname === '/find-tenant/host'
+                    : link.key === 'composer'
+                      ? location.pathname.startsWith('/find-tenant/host/listings')
+                      : location.pathname.startsWith('/find-tenant/host/inquiries'))
+
+                return (
+                  <button
+                    aria-pressed={isActive}
+                    className={`host-mobile-filter-option host-mobile-filter-option-${link.tone}${isActive ? ' active' : ''}`}
+                    key={link.label}
+                    onClick={() => {
+                      navigate(link.to)
+                      setIsMobileSelectorOpen(false)
+                    }}
+                    type="button"
+                  >
+                    <span>{link.label}</span>
+                    <strong>{link.meta}</strong>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="tenant-section-chip-row tenant-section-chip-row-desktop" aria-label="Tenant replacement sections">
+        {sectionLinks.map((link) => {
+          const isActive =
+            user &&
+            (link.key === 'listings'
+              ? location.pathname === '/find-tenant/host'
+              : link.key === 'composer'
+                ? location.pathname.startsWith('/find-tenant/host/listings')
+                : location.pathname.startsWith('/find-tenant/host/inquiries'))
+
+          return (
+            <NavLink
+              className={`tenant-section-chip tenant-section-chip-${link.tone}${isActive ? ' active' : ''}`}
+              key={link.label}
+              to={link.to}
+            >
+              <div className="tenant-section-chip-copy">
+                <strong>{link.label}</strong>
+                <span>{link.meta}</span>
+              </div>
+              {isActive ? (
+                <span className="tenant-section-chip-current">Current</span>
+              ) : link.alert ? (
+                <span className="tenant-section-chip-alert">{link.alert}</span>
+              ) : null}
+            </NavLink>
+          )
+        })}
+      </div>
+    </>
   )
 }
 
