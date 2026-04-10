@@ -28,6 +28,32 @@ This document implements the production rollout checklist: EC2 API, Netlify web,
 
 Point uptime checks at `https://your-api-domain/health` (or `/health/ready` for stricter checks).
 
+### Housing needs API (`/api/housing-needs`) — 404 on save or list
+
+If the browser or `curl` shows **`Cannot GET /api/housing-needs`** or **`Cannot POST /api/housing-needs`**, the process behind your API domain is almost always an **outdated backend build** (this repo already registers [`HousingNeedsModule`](backend/src/app.module.ts) and exposes [`POST /api/housing-needs`](backend/src/modules/housing-needs/housing-needs.controller.ts)). Listings can work while housing-needs returns 404 if only part of the app was redeployed.
+
+**Fix on the API host (EC2):**
+
+1. Pull the latest code and install dependencies.
+2. `npm run build` in [`backend/`](backend/) (output: `backend/dist/`).
+3. Apply the database schema so `HousingNeed` exists: `npx prisma migrate deploy` (or `prisma db push` only if that matches how you manage prod).
+4. Restart the Node process (PM2, systemd, etc.).
+
+**Smoke tests** (replace with your API origin):
+
+```bash
+# Should return JSON (often `[]`), not 404
+curl -sS -o /dev/null -w "%{http_code}\n" "https://api.your-domain.com/api/housing-needs"
+
+# Authenticated create returns 400 (validation) or 201 — not 404
+curl -sS -X POST "https://api.your-domain.com/api/housing-needs" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <session_jwt>" \
+  -d '{}'
+```
+
+After the backend is current, the **Find room → Your room need** flow can create posts again.
+
 ## 2. Web (Netlify)
 
 ### Build
@@ -149,3 +175,48 @@ Production sign-in should use **standalone** builds (TestFlight / App Store), no
 ## 5. Environment separation
 
 Prefer separate Supabase projects or strict redirect lists for **staging** vs **production**. Never point production mobile builds at a dev API IP.
+
+## 6. Post-MVP reliability (P0)
+
+Use this section when you are live and want **observability** and **faster host response** without expanding product surface area first.
+
+### Inquiry notifications
+
+Hosts respond faster when they know a new enquiry arrived without opening the app.
+
+- **In-app:** the app already has a notifications surface; ensure new `listing-inquiry` events create rows users can open (see backend notifications module if present).
+- **Email:** on `POST` inquiry creation (or status change), enqueue an email to the listing owner (Resend or similar) with a deep link to `/find-tenant/host/inquiries/:id`.
+- **Digest:** optional daily summary if you want fewer emails.
+
+Keep templates short and link straight to the inquiry detail route.
+
+### Synthetic checks (test alerting without real traffic)
+
+Point an external monitor (UptimeRobot, Better Stack, Pingdom, etc.) at:
+
+| URL | Expect |
+|-----|--------|
+| `https://<web>/` | 200 |
+| `https://<api>/api/listings?status=PUBLISHED&limit=1` | 200 + JSON body |
+| `https://<api>/api/housing-needs` | 200 (may be `[]`) — **not** 404 after backend deploy |
+| `https://<api>/health` | 200 when exposed at server root (see [`backend/src/main.ts`](backend/src/main.ts); if you get 404, use `/api/...` checks only or align Nginx so `/health` reaches the app) |
+
+Optional GitHub Actions cron (replace URLs):
+
+```yaml
+on:
+  schedule: [{ cron: '*/15 * * * *' }]
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS -o /dev/null -w '%{http_code}\n' "https://api.example.com/api/listings?status=PUBLISHED&limit=1"
+```
+
+### Staging for alert testing
+
+To validate **alerting** (PagerDuty, Slack, email) without touching production users:
+
+- Deploy a **staging** API + web (second Netlify site, second subdomain, or path-based preview with stable URL).
+- Configure monitors against **staging** first; clone alert rules to **production** once firing is correct.
+- Use the same smoke checks as above against the staging base URLs.

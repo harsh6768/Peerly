@@ -55,6 +55,7 @@ async function bootstrap() {
     .addTag('verification')
     .addTag('listings')
     .addTag('listing-inquiries')
+    .addTag('housing-needs')
     .addTag('notifications')
     .build();
 

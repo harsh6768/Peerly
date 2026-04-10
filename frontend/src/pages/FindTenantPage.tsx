@@ -2920,16 +2920,27 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
   useEffect(() => {
     void loadHousingData()
-  }, [sessionToken, user?.id, intent])
+  }, [sessionToken, user?.id, intent, mode])
 
-  // Fresh fetch from /housing-needs/mine every time "Your room posts" tab is opened.
   useEffect(() => {
-    if (!shouldShowSeekerPostedListings || !sessionToken || !user) return
-    apiRequest<HousingNeed[]>('/housing-needs/mine', { token: sessionToken })
-      .then((data) => setMyHousingNeeds(Array.isArray(data) ? data : []))
-      .catch(() => {/* silently ignore — stale data still shown */})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldShowSeekerPostedListings])
+    const path = location.pathname
+    if (path.startsWith('/find-tenant/host')) {
+      if (intent !== housingIntentValues.tenantReplacement) {
+        setIntent(housingIntentValues.tenantReplacement)
+      }
+      return
+    }
+    if (
+      path === '/find-tenant' ||
+      path.startsWith('/find-tenant/needs') ||
+      path.startsWith('/find-tenant/posts') ||
+      path.startsWith('/find-tenant/inquiries')
+    ) {
+      if (intent !== housingIntentValues.findRoom) {
+        setIntent(housingIntentValues.findRoom)
+      }
+    }
+  }, [intent, location.pathname, setIntent])
 
   useEffect(() => {
     if (
