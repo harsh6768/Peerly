@@ -3856,10 +3856,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         <div className="hub-panel-head">
           <div>
             <span className="muted">Your listings</span>
-            <h2>Replacement listings</h2>
-            <p className="panel-subtitle">
-              Default view hides deleted listings. Use status filters to inspect drafts, rented posts, or archived records when needed.
-            </p>
           </div>
           <div className="hub-panel-actions">
             <span className="host-active-count-badge">
@@ -4533,10 +4529,14 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     const isFindRoomComposer = composerSourceIntent === housingIntentValues.findRoom
 
     return (
-      <div className="hub-panel host-composer-panel">
+      <div
+        className={`hub-panel host-composer-panel${isFindRoomComposer ? '' : ' host-composer-panel-replacement'}`}
+      >
         <div className="hub-panel-head">
           <div>
-            <span className="muted">{isFindRoomComposer ? 'Room post flow' : 'Listing flow'}</span>
+            <span className={`muted${isFindRoomComposer ? '' : ' host-composer-listing-flow-label'}`}>
+              {isFindRoomComposer ? 'Room post flow' : 'Listing flow'}
+            </span>
             <h2>
               {editingListingId
                 ? isFindRoomComposer
@@ -4546,11 +4546,11 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                   ? 'Create room post'
                   : 'Create replacement listing'}
             </h2>
-            <p className="panel-subtitle">
-              {isFindRoomComposer
-                ? 'Keep the room-post flow focused in its own page so you can publish without mixing it into the discovery feed.'
-                : 'Keep the publishing flow focused in its own page so you can move step by step without dashboard clutter.'}
-            </p>
+            {isFindRoomComposer ? (
+              <p className="panel-subtitle">
+                Keep the room-post flow focused in its own page so you can publish without mixing it into the discovery feed.
+              </p>
+            ) : null}
           </div>
           {editingListingId ? (
             <Button onClick={() => startCreateListing(composerSourceIntent)} variant="ghost">
@@ -5638,13 +5638,27 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     title: string,
     subtitle: string,
     content: ReactNode,
+    options?: {
+      compactHostListingsTitleOnMobile?: boolean
+      compactHostComposerTitleOnMobile?: boolean
+      compactHostInquiriesTitleOnMobile?: boolean
+    },
   ) {
     return (
       <>
-        <div className="section-head reveal tenant-section-head">
+        <div
+          className={[
+            'section-head reveal tenant-section-head',
+            options?.compactHostListingsTitleOnMobile ? 'tenant-host-listings-head' : '',
+            options?.compactHostComposerTitleOnMobile ? 'tenant-host-composer-head' : '',
+            options?.compactHostInquiriesTitleOnMobile ? 'tenant-host-inquiries-head' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           <div className="eyebrow">Tenant replacement</div>
           <h1 className="page-title">{title}</h1>
-          <p className="page-subtitle">{subtitle}</p>
+          {subtitle.trim() ? <p className="page-subtitle">{subtitle}</p> : null}
         </div>
 
         <TenantReplacementSectionChips
@@ -5976,33 +5990,24 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 )
               : renderTenantReplacementPage(
                   editingListingId ? 'Edit your replacement listing in a focused flow.' : 'Create a replacement listing in a dedicated workspace.',
-                  'Jump between sections from the colored chips on top, then complete the publishing flow without mixing it with dashboard cards.',
+                  '',
                   renderHostComposerPanel(),
+                  { compactHostComposerTitleOnMobile: true },
                 )
           ) : shouldShowHostInquiries ? (
             renderTenantReplacementPage(
               'Manage incoming inquiries in their own queue.',
-              'Keep seeker conversations, visit planning, and status updates separate from listing management for a cleaner workflow.',
+              '',
               renderHostInquiriesPanel(),
+              { compactHostInquiriesTitleOnMobile: true },
             )
           ) : (
-            <>
-              {renderTenantReplacementPage(
-                'Keep tenant replacement focused with separate workspaces.',
-                'Use the colored section chips to switch between listings, create flow, and inquiries without stacking everything on one page.',
-                renderHostListingsPanel(),
-              )}
-
-              <div className="housing-bottom-note">
-                <p>
-                  Cirvo is currently focused on housing, so the experience stays clear for seekers
-                  and hosts without mixing in unrelated workflows.
-                </p>
-                <Button icon={<PencilLine size={16} />} onClick={() => navigate('/profile')} variant="ghost">
-                  Open profile and verification
-                </Button>
-              </div>
-            </>
+            renderTenantReplacementPage(
+              'Keep tenant replacement focused with separate workspaces.',
+              '',
+              renderHostListingsPanel(),
+              { compactHostListingsTitleOnMobile: true },
+            )
           )}
         </div>
       </section>
@@ -6060,29 +6065,38 @@ function TenantReplacementSectionChips({
     },
   ] as const
 
-  const activeSection = sectionLinks.find((link) => {
-    if (!user) {
-      return false
-    }
-    if (link.key === 'listings') {
-      return location.pathname === '/find-tenant/host'
-    }
-    if (link.key === 'composer') {
-      return location.pathname.startsWith('/find-tenant/host/listings')
-    }
-    return location.pathname.startsWith('/find-tenant/host/inquiries')
-  }) ?? sectionLinks[0]
+  /** Mobile: listings live on the bottom nav; desktop chips unchanged. */
+  const mobileSectionLinks = sectionLinks.filter((link) => link.key !== 'listings')
+
+  const activeMobileSection =
+    mobileSectionLinks.find((link) => {
+      if (!user) {
+        return false
+      }
+      if (link.key === 'composer') {
+        return location.pathname.startsWith('/find-tenant/host/listings')
+      }
+      return location.pathname.startsWith('/find-tenant/host/inquiries')
+    }) ?? mobileSectionLinks[0]
+
+  const isHostListingsDashboard = location.pathname === '/find-tenant/host'
+  const isHostComposeRoute = location.pathname.startsWith('/find-tenant/host/listings')
+  const isHostInquiriesRoute = location.pathname.startsWith('/find-tenant/host/inquiries')
+  /** Mobile: hide chip sheet when bottom nav / desktop chips already encode the section. */
+  const showMobileSectionSelector =
+    !isHostListingsDashboard && !isHostComposeRoute && !isHostInquiriesRoute
 
   return (
     <>
+      {showMobileSectionSelector ? (
       <div className="tenant-section-mobile-selector">
         <button
           aria-expanded={isMobileSelectorOpen}
-          className={`tenant-section-mobile-button tenant-section-mobile-button-${activeSection.tone}`}
+          className={`tenant-section-mobile-button tenant-section-mobile-button-${activeMobileSection.tone}`}
           onClick={() => setIsMobileSelectorOpen((current) => !current)}
           type="button"
         >
-          {activeSection.label} · {activeSection.meta}
+          {activeMobileSection.label} · {activeMobileSection.meta}
         </button>
         {isMobileSelectorOpen ? (
           <div className="tenant-section-mobile-menu">
@@ -6091,14 +6105,12 @@ function TenantReplacementSectionChips({
               <button onClick={() => setIsMobileSelectorOpen(false)} type="button">Done</button>
             </div>
             <div className="host-mobile-filter-sheet">
-              {sectionLinks.map((link) => {
+              {mobileSectionLinks.map((link) => {
                 const isActive =
                   Boolean(user) &&
-                  (link.key === 'listings'
-                    ? location.pathname === '/find-tenant/host'
-                    : link.key === 'composer'
-                      ? location.pathname.startsWith('/find-tenant/host/listings')
-                      : location.pathname.startsWith('/find-tenant/host/inquiries'))
+                  (link.key === 'composer'
+                    ? location.pathname.startsWith('/find-tenant/host/listings')
+                    : location.pathname.startsWith('/find-tenant/host/inquiries'))
 
                 return (
                   <button
@@ -6120,6 +6132,7 @@ function TenantReplacementSectionChips({
           </div>
         ) : null}
       </div>
+      ) : null}
 
       <div className="tenant-section-chip-row tenant-section-chip-row-desktop" aria-label="Tenant replacement sections">
         {sectionLinks.map((link) => {

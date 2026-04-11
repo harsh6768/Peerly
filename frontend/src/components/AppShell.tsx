@@ -1,4 +1,4 @@
-import { Bell, MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
+import { Bell, LayoutGrid, MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { AppFooter } from './AppFooter'
@@ -25,7 +25,26 @@ export function AppShell() {
     ? '/find-tenant/host/inquiries'
     : '/find-tenant/inquiries'
 
-  const postTo = user ? '/find-tenant/host' : '/profile'
+  const postTo =
+    user && intent === housingIntentValues.tenantReplacement
+      ? '/find-tenant/host/listings/new'
+      : user
+        ? '/find-tenant/host'
+        : '/profile'
+
+  const mobileFirstTabTo =
+    intent === housingIntentValues.tenantReplacement
+      ? user
+        ? '/find-tenant/host'
+        : '/profile'
+      : '/find-tenant'
+
+  const isMobileFirstTabActive =
+    intent === housingIntentValues.tenantReplacement
+      ? user
+        ? location.pathname === '/find-tenant/host'
+        : location.pathname.startsWith('/profile')
+      : location.pathname === '/find-tenant'
 
   useEffect(() => {
     if (!sessionToken) {
@@ -196,15 +215,20 @@ export function AppShell() {
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavLink
-          className={({ isActive }) => (isActive ? 'active' : '')}
+          className={() => (isMobileFirstTabActive ? 'active' : '')}
           end
-          to="/find-tenant"
+          to={mobileFirstTabTo}
         >
-          <Search size={20} />
-          <span>Browse</span>
+          {intent === housingIntentValues.tenantReplacement ? <LayoutGrid size={20} /> : <Search size={20} />}
+          <span>{intent === housingIntentValues.tenantReplacement ? 'Listings' : 'Browse'}</span>
         </NavLink>
         <NavLink
-          className={({ isActive }) => (isActive ? 'active' : '')}
+          className={({ isActive }) => {
+            if (user && intent === housingIntentValues.tenantReplacement) {
+              return location.pathname.startsWith('/find-tenant/host/listings') ? 'active' : ''
+            }
+            return isActive ? 'active' : ''
+          }}
           to={postTo}
         >
           <PlusSquare size={20} />
