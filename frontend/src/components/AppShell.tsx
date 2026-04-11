@@ -302,7 +302,7 @@ export function AppShell() {
               to={inboxTo}
             >
               <MessageCircle size={20} />
-              <span>Inbox</span>
+              <span>Inquiry</span>
             </NavLink>
             <NavLink
               className={({ isActive }) => (isActive ? "active" : "")}
