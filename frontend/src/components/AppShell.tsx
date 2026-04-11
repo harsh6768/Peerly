@@ -6,211 +6,257 @@ import {
   PlusSquare,
   Search,
   UserRound,
-} from 'lucide-react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
-import { AppFooter } from './AppFooter'
-import { Button } from './Button'
-import { useAppAuth } from '../context/AppAuthContext'
-import { apiRequest } from '../lib/api'
-import { housingIntentValues, useHousingIntent } from '../context/HousingIntentContext'
-import cirvoLogo from '../assets/cirvo_black.png'
+} from "lucide-react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { AppFooter } from "./AppFooter";
+import { Button } from "./Button";
+import { useAppAuth } from "../context/AppAuthContext";
+import { apiRequest } from "../lib/api";
+import {
+  housingIntentValues,
+  useHousingIntent,
+} from "../context/HousingIntentContext";
+import cirvoLogo from "../assets/cirvo_black.png";
 
 const desktopLinks = [
-  { to: '/', label: 'Home' },
-  { to: '/find-tenant', label: 'Housing' },
-  { to: '/profile', label: 'Profile' },
-]
+  { to: "/", label: "Home" },
+  { to: "/find-tenant", label: "Housing" },
+  { to: "/profile", label: "Profile" },
+];
 
 export function AppShell() {
-  const { configured, isLoading, isSyncing, sessionToken, signInWithGoogle, user } = useAppAuth()
-  const [unreadNotifications, setUnreadNotifications] = useState(0)
-  const { intent, setIntent } = useHousingIntent()
-  const navigate = useNavigate()
-  const location = useLocation()
+  const {
+    configured,
+    isLoading,
+    isSyncing,
+    sessionToken,
+    signInWithGoogle,
+    user,
+  } = useAppAuth();
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const { intent, setIntent } = useHousingIntent();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const isTenantReplacement = intent === housingIntentValues.tenantReplacement
+  const isTenantReplacement = intent === housingIntentValues.tenantReplacement;
 
-  const inboxTo = isTenantReplacement ? '/find-tenant/host/inquiries' : '/find-tenant/inquiries'
+  const inboxTo = isTenantReplacement
+    ? "/find-tenant/host/inquiries"
+    : "/find-tenant/inquiries";
 
   /** Tenant replacement: compose new listing. Find room: room-need form (never /find-tenant/host — that path forces TR intent). */
   const postTo =
-    user && isTenantReplacement ? '/find-tenant/host/listings/new' : user ? '/find-tenant/needs' : '/profile'
+    user && isTenantReplacement
+      ? "/find-tenant/host/listings/new"
+      : user
+        ? "/find-tenant/needs"
+        : "/profile";
 
-  const findRoomPostsTo = user ? '/find-tenant/posts' : '/profile'
-  const findRoomInquiriesTo = user ? '/find-tenant/inquiries' : '/profile'
+  const findRoomPostsTo = user ? "/find-tenant/posts" : "/profile";
+  const findRoomInquiriesTo = user ? "/find-tenant/inquiries" : "/profile";
 
-  const mobileFirstTabTo =
-    isTenantReplacement ? (user ? '/find-tenant/host' : '/profile') : '/find-tenant'
+  const mobileFirstTabTo = isTenantReplacement
+    ? user
+      ? "/find-tenant/host"
+      : "/profile"
+    : "/find-tenant";
 
   const isMobileFirstTabActive = isTenantReplacement
     ? user
-      ? location.pathname === '/find-tenant/host'
-      : location.pathname.startsWith('/profile')
-    : location.pathname === '/find-tenant' || location.pathname.startsWith('/find-tenant/listings/')
+      ? location.pathname === "/find-tenant/host"
+      : location.pathname.startsWith("/profile")
+    : location.pathname === "/find-tenant" ||
+      location.pathname.startsWith("/find-tenant/listings/");
 
   const findRoomBrowseActive =
     !isTenantReplacement &&
-    (location.pathname === '/find-tenant' || location.pathname.startsWith('/find-tenant/listings/'))
+    (location.pathname === "/find-tenant" ||
+      location.pathname.startsWith("/find-tenant/listings/"));
+
+  const isHousingRoute = location.pathname.startsWith("/find-tenant");
 
   useEffect(() => {
     if (!sessionToken) {
-      setUnreadNotifications(0)
-      return
+      setUnreadNotifications(0);
+      return;
     }
     const load = () => {
-      void apiRequest<{ unreadCount: number }>('/notifications/unread-count', { token: sessionToken })
+      void apiRequest<{ unreadCount: number }>("/notifications/unread-count", {
+        token: sessionToken,
+      })
         .then((r) => setUnreadNotifications(r.unreadCount))
         .catch(() => {
-          setUnreadNotifications(0)
-        })
-    }
-    void load()
-    const interval = window.setInterval(load, 60_000)
-    const onFocus = () => void load()
-    window.addEventListener('focus', onFocus)
+          setUnreadNotifications(0);
+        });
+    };
+    void load();
+    const interval = window.setInterval(load, 60_000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
     return () => {
-      window.clearInterval(interval)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [sessionToken, location.pathname])
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [sessionToken, location.pathname]);
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <div className="header-inner">
-          <NavLink className="brand" to="/">
-            <span className="brand-mark brand-mark-header">
-              <img alt="Cirvo" className="brand-mark-image" src={cirvoLogo} />
-            </span>
-            <span className="brand-copy">
-              Cirvo
-              <small>Find room · Replace tenant</small>
-            </span>
-          </NavLink>
+      <div className="site-header-group">
+        <header className="site-header">
+          <div className="header-inner">
+            <NavLink className="brand" to="/">
+              <span className="brand-mark brand-mark-header">
+                <img alt="Cirvo" className="brand-mark-image" src={cirvoLogo} />
+              </span>
+              <span className="brand-copy">
+                Cirvo
+                <small>Find room · Replace tenant</small>
+              </span>
+            </NavLink>
 
-          <nav className="desktop-nav" aria-label="Primary navigation">
-            {desktopLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                className={({ isActive }) =>
-                  `nav-link${isActive ? ' active' : ''}`
-                }
-                to={link.to}
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className="desktop-actions">
-            {user ? (
-              <>
-                <div
-                  aria-label="Housing intent"
-                  className="toggle-wrap header-intent-toggle"
-                  data-intent={intent}
+            <nav className="desktop-nav" aria-label="Primary navigation">
+              {desktopLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  className={({ isActive }) =>
+                    `nav-link${isActive ? " active" : ""}`
+                  }
+                  to={link.to}
                 >
-                  <button
-                    className={`toggle-pill${!isTenantReplacement ? ' active' : ''}`}
-                    onClick={() => {
-                      setIntent(housingIntentValues.findRoom)
-                      navigate('/find-tenant')
-                    }}
-                    type="button"
-                  >
-                    Find room
-                  </button>
-                  <button
-                    className={`toggle-pill${isTenantReplacement ? ' active' : ''}`}
-                    onClick={() => {
-                      setIntent(housingIntentValues.tenantReplacement)
-                      navigate('/find-tenant/host')
-                    }}
-                    type="button"
-                  >
-                    Tenant replacement
-                  </button>
-                </div>
-                <NavLink aria-label="Notifications" className="header-notifications" to="/notifications">
-                  <Bell size={20} strokeWidth={2} />
-                  {unreadNotifications > 0 ? (
-                    <span className="header-notifications-badge">
-                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                    </span>
+                  {link.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            <div className="desktop-actions">
+              {user ? (
+                <>
+                  {isHousingRoute ? (
+                    <div
+                      aria-label="Housing intent"
+                      className="toggle-wrap header-intent-toggle"
+                      data-intent={intent}
+                    >
+                      <button
+                        className={`toggle-pill${!isTenantReplacement ? " active" : ""}`}
+                        onClick={() => {
+                          setIntent(housingIntentValues.findRoom);
+                          navigate("/find-tenant");
+                        }}
+                        type="button"
+                      >
+                        Find room
+                      </button>
+                      <button
+                        className={`toggle-pill${isTenantReplacement ? " active" : ""}`}
+                        onClick={() => {
+                          setIntent(housingIntentValues.tenantReplacement);
+                          navigate("/find-tenant/host");
+                        }}
+                        type="button"
+                      >
+                        Tenant replacement
+                      </button>
+                    </div>
                   ) : null}
-                </NavLink>
-                <NavLink className="header-user-chip" to="/profile">
-                  <span className={`header-user-status${user.isVerified ? ' verified' : ''}`} />
-                  <span>{user.name}</span>
-                </NavLink>
-              </>
-            ) : (
-              <>
-                <Button to="/profile" variant="ghost">
-                  Login
-                </Button>
+                  <NavLink
+                    aria-label="Notifications"
+                    className="header-notifications"
+                    to="/notifications"
+                  >
+                    <Bell size={20} strokeWidth={2} />
+                    {unreadNotifications > 0 ? (
+                      <span className="header-notifications-badge">
+                        {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                      </span>
+                    ) : null}
+                  </NavLink>
+                  <NavLink className="header-user-chip" to="/profile">
+                    <span
+                      className={`header-user-status${user.isVerified ? " verified" : ""}`}
+                    />
+                    <span>{user.name}</span>
+                  </NavLink>
+                </>
+              ) : (
+                <>
+                  <Button to="/profile" variant="ghost">
+                    Login
+                  </Button>
+                  <Button
+                    disabled={!configured || isLoading || isSyncing}
+                    onClick={() => void signInWithGoogle()}
+                  >
+                    Continue with Google
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* Mobile-only: intent toggle + auth — hidden on desktop via CSS */}
+            <div className="mobile-header-actions">
+              {user ? (
+                <>
+                  <NavLink
+                    aria-label="Notifications"
+                    className="header-notifications"
+                    to="/notifications"
+                  >
+                    <Bell size={20} strokeWidth={2} />
+                    {unreadNotifications > 0 ? (
+                      <span className="header-notifications-badge">
+                        {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                      </span>
+                    ) : null}
+                  </NavLink>
+                </>
+              ) : (
                 <Button
+                  className="mobile-signin-btn"
                   disabled={!configured || isLoading || isSyncing}
                   onClick={() => void signInWithGoogle()}
                 >
-                  Continue with Google
+                  Sign in
                 </Button>
-              </>
-            )}
+              )}
+            </div>
           </div>
+        </header>
 
-          {/* Mobile-only: intent toggle + auth — hidden on desktop via CSS */}
-          <div className="mobile-header-actions">
-            {user ? (
-              <>
-                <NavLink aria-label="Notifications" className="header-notifications" to="/notifications">
-                  <Bell size={20} strokeWidth={2} />
-                  {unreadNotifications > 0 ? (
-                    <span className="header-notifications-badge">
-                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                    </span>
-                  ) : null}
-                </NavLink>
-              <div
-                aria-label="Housing intent"
-                className="toggle-wrap mobile-intent-toggle"
-                data-intent={intent}
-              >
+        {user && isHousingRoute ? (
+          <div
+            aria-label="Housing workspace"
+            className="housing-intent-strip"
+            role="region"
+          >
+            <div className="housing-intent-strip-inner">
+              <div className="mobile-intent-toggle" data-intent={intent}>
                 <button
-                  className={`toggle-pill${!isTenantReplacement ? ' active' : ''}`}
+                  className={`toggle-pill${!isTenantReplacement ? " active" : ""}`}
                   onClick={() => {
-                    setIntent(housingIntentValues.findRoom)
-                    navigate('/find-tenant')
+                    setIntent(housingIntentValues.findRoom);
+                    navigate("/find-tenant");
                   }}
                   type="button"
                 >
                   Find room
                 </button>
                 <button
-                  className={`toggle-pill${isTenantReplacement ? ' active' : ''}`}
+                  className={`toggle-pill${isTenantReplacement ? " active" : ""}`}
                   onClick={() => {
-                    setIntent(housingIntentValues.tenantReplacement)
-                    navigate('/find-tenant/host')
+                    setIntent(housingIntentValues.tenantReplacement);
+                    navigate("/find-tenant/host");
                   }}
                   type="button"
                 >
                   Replace tenant
                 </button>
               </div>
-              </>
-            ) : (
-              <Button
-                className="mobile-signin-btn"
-                disabled={!configured || isLoading || isSyncing}
-                onClick={() => void signInWithGoogle()}
-              >
-                Sign in
-              </Button>
-            )}
+            </div>
           </div>
-        </div>
-      </header>
+        ) : null}
+      </div>
 
       <main className="page-main">
         <div className="page-route-enter" key={location.pathname}>
@@ -222,12 +268,12 @@ export function AppShell() {
 
       <nav
         aria-label="Mobile navigation"
-        className={`mobile-nav${isTenantReplacement ? '' : ' mobile-nav-find-room'}`}
+        className={`mobile-nav${isTenantReplacement ? "" : " mobile-nav-find-room"}`}
       >
         {isTenantReplacement ? (
           <>
             <NavLink
-              className={() => (isMobileFirstTabActive ? 'active' : '')}
+              className={() => (isMobileFirstTabActive ? "active" : "")}
               end
               to={mobileFirstTabTo}
             >
@@ -236,7 +282,10 @@ export function AppShell() {
             </NavLink>
             <NavLink
               className={() =>
-                user && location.pathname.startsWith('/find-tenant/host/listings') ? 'active' : ''
+                user &&
+                location.pathname.startsWith("/find-tenant/host/listings")
+                  ? "active"
+                  : ""
               }
               to={postTo}
             >
@@ -245,33 +294,50 @@ export function AppShell() {
             </NavLink>
             <NavLink
               className={({ isActive }) =>
-                isActive || location.pathname.startsWith('/find-tenant/host/inquiries') ? 'active' : ''
+                isActive ||
+                location.pathname.startsWith("/find-tenant/host/inquiries")
+                  ? "active"
+                  : ""
               }
               to={inboxTo}
             >
               <MessageCircle size={20} />
               <span>Inbox</span>
             </NavLink>
-            <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/profile">
+            <NavLink
+              className={({ isActive }) => (isActive ? "active" : "")}
+              to="/profile"
+            >
               <UserRound size={20} />
               <span>Profile</span>
             </NavLink>
           </>
         ) : (
           <>
-            <NavLink className={() => (findRoomBrowseActive ? 'active' : '')} to="/find-tenant">
+            <NavLink
+              className={() => (findRoomBrowseActive ? "active" : "")}
+              to="/find-tenant"
+            >
               <Search size={20} />
               <span>Browse</span>
             </NavLink>
             <NavLink
-              className={() => (location.pathname.startsWith('/find-tenant/needs') ? 'active' : '')}
+              className={() =>
+                location.pathname.startsWith("/find-tenant/needs")
+                  ? "active"
+                  : ""
+              }
               to={postTo}
             >
               <PlusSquare size={20} />
               <span>Room need</span>
             </NavLink>
             <NavLink
-              className={() => (location.pathname.startsWith('/find-tenant/posts') ? 'active' : '')}
+              className={() =>
+                location.pathname.startsWith("/find-tenant/posts")
+                  ? "active"
+                  : ""
+              }
               to={findRoomPostsTo}
             >
               <ClipboardList size={20} />
@@ -279,14 +345,19 @@ export function AppShell() {
             </NavLink>
             <NavLink
               className={() =>
-                location.pathname.startsWith('/find-tenant/inquiries') ? 'active' : ''
+                location.pathname.startsWith("/find-tenant/inquiries")
+                  ? "active"
+                  : ""
               }
               to={findRoomInquiriesTo}
             >
               <MessageCircle size={20} />
               <span>Inquiry</span>
             </NavLink>
-            <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/profile">
+            <NavLink
+              className={({ isActive }) => (isActive ? "active" : "")}
+              to="/profile"
+            >
               <UserRound size={20} />
               <span>Profile</span>
             </NavLink>
@@ -294,5 +365,5 @@ export function AppShell() {
         )}
       </nav>
     </div>
-  )
+  );
 }

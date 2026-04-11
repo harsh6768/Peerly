@@ -106,13 +106,21 @@ input:focus {
   position: relative;
 }
 
-.site-header {
+/* Sticky shell: main nav row + optional housing intent strip stay pinned together */
+.site-header-group {
   position: sticky;
   top: 0;
   z-index: 50;
   backdrop-filter: blur(18px);
   background: rgba(255, 255, 255, 0.85);
   border-bottom: 1px solid rgba(229, 231, 235, 0.8);
+}
+
+.site-header-group .site-header {
+  position: static;
+  border-bottom: none;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .header-inner,
@@ -214,6 +222,40 @@ input:focus {
 
 .mobile-intent-toggle .toggle-pill:active {
   opacity: 0.85;
+}
+
+/* Housing-only (Option C): intent below header on mobile — top bar stays brand + bell */
+.housing-intent-strip {
+  display: none;
+}
+
+.housing-intent-strip-inner {
+  width: min(var(--content-width), calc(100% - 2 * var(--content-padding)));
+  margin: 0 auto;
+}
+
+.housing-intent-strip .mobile-intent-toggle {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.housing-intent-strip .mobile-intent-toggle .toggle-pill {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 719px) {
+  .housing-intent-strip {
+    display: block;
+    padding: 6px 0 8px;
+    border-top: 1px solid rgba(229, 231, 235, 0.75);
+    border-bottom: none;
+    background: transparent;
+  }
+
+  .housing-intent-strip-inner {
+    padding: 0 var(--content-padding);
+  }
 }
 
 .mobile-signin-btn {
@@ -1478,16 +1520,19 @@ input:focus {
 
 .mobile-nav {
   position: fixed;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  width: min(calc(100% - 24px), 460px);
-  padding: 8px;
-  border-radius: 24px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: none;
+  padding: 8px max(12px, env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-right, 0px));
+  border-radius: 16px 16px 0 0;
   border: 1px solid rgba(229, 231, 235, 0.88);
+  border-bottom: none;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.1);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
@@ -1522,7 +1567,8 @@ input:focus {
 .mobile-nav.mobile-nav-find-room {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
-  padding: 6px 4px;
+  padding: 6px max(6px, env(safe-area-inset-left, 0px)) calc(6px + env(safe-area-inset-bottom, 0px))
+    max(6px, env(safe-area-inset-right, 0px));
 }
 
 .mobile-nav.mobile-nav-find-room a {
@@ -1909,6 +1955,7 @@ input:focus {
 
   .surface,
   .site-header,
+  .site-header-group,
   .mobile-nav {
     backdrop-filter: none;
   }
@@ -2036,10 +2083,9 @@ input:focus {
   }
 
   .mobile-nav {
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    width: calc(100% - 16px);
-    padding: 6px;
-    border-radius: 20px;
+    padding: 6px max(10px, env(safe-area-inset-left, 0px)) calc(6px + env(safe-area-inset-bottom, 0px))
+      max(10px, env(safe-area-inset-right, 0px));
+    border-radius: 14px 14px 0 0;
     gap: 4px;
   }
 
