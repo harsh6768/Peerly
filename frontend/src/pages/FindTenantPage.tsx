@@ -579,23 +579,6 @@ function SearchListingCard({
           <Button onClick={handleViewDetails} variant="secondary">
             {showInlineDetails ? 'Hide details' : 'View details'}
           </Button>
-          {existingInquiry ? (
-            <Button
-              onClick={() =>
-                navigate(`/find-tenant/inquiries/${existingInquiry.id}`, {
-                  state: {
-                    inquiry: existingInquiry,
-                    backLabel: 'Back to live listings',
-                    backTo: '/find-tenant',
-                    sourceIntent: housingIntentValues.findRoom,
-                  } as InquiryDetailsRouteState,
-                })
-              }
-              variant="ghost"
-            >
-              View inquiry
-            </Button>
-          ) : null}
         </div>
       </div>
 
@@ -4051,12 +4034,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     }
 
     return (
-      <div className="hub-panel host-dashboard-panel">
+      <div className="hub-panel host-dashboard-panel room-posts-hub-panel">
         <div className="hub-panel-head">
           <div>
             <span className="muted">Your room posts</span>
             <h2>Your room requirements</h2>
-            <p className="panel-subtitle">
+            <p className="panel-subtitle room-posts-panel-subtitle-desktop-only">
               These are the room needs you posted. Each post tells Cirvo what you are looking for so it can rank better matches first.
             </p>
           </div>
@@ -5425,12 +5408,12 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
 
   function renderRequesterInquiriesPanel() {
     return (
-      <div className="hub-panel host-dashboard-panel">
+      <div className="hub-panel host-dashboard-panel requester-inquiries-hub-panel">
         <div className="hub-panel-head">
           <div>
             <span className="muted">Your inquiries</span>
             <h2>Sent inquiries</h2>
-            <p className="panel-subtitle">
+            <p className="panel-subtitle requester-inquiries-panel-subtitle-desktop-only">
               Track the listings you expressed interest in, check their status, and contact the owner again when needed.
             </p>
           </div>
@@ -5618,16 +5601,18 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         <div className="section-head reveal tenant-section-head">
           <div className="eyebrow">Find room</div>
           <h1 className="page-title">{title}</h1>
-          <p className="page-subtitle">{subtitle}</p>
+          {subtitle.trim() ? <p className="page-subtitle">{subtitle}</p> : null}
         </div>
 
-        <FindRoomSectionChips
-          activeInquiryCount={activeRequesterInquiriesCount}
-          activeNeedCount={activeRoomNeedCount}
-          liveListingCount={rankedPublicListings.length}
-          postedListingCount={activeHousingNeedsCount}
-          user={user}
-        />
+        <div className="find-room-section-chips-desktop-only">
+          <FindRoomSectionChips
+            activeInquiryCount={activeRequesterInquiriesCount}
+            activeNeedCount={activeRoomNeedCount}
+            liveListingCount={rankedPublicListings.length}
+            postedListingCount={activeHousingNeedsCount}
+            user={user}
+          />
+        </div>
 
         <div className="tenant-route-stack">{content}</div>
       </>
@@ -5689,7 +5674,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 ? 'Your best room matches are ranked first.'
                 : 'Browse live rooms with a dedicated seeker workspace.',
               hasActiveRoomNeed
-                ? 'Cirvo is using your latest room need to rank better fits higher across the feed.'
+                ? ''
                 : 'Use the chips to move between live listings, your room-need post, your room posts, and the inquiries you have already sent.',
               <div className="hub-panel hub-panel-wide live-feed-panel">
               <div className="hub-panel-head live-feed-head">
@@ -5978,7 +5963,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
           ) : shouldShowRequesterInquiries ? (
             renderFindRoomPage(
               'Keep your room search and sent inquiries separate.',
-              'Review the listings you have already contacted without losing the main discovery feed.',
+              '',
               renderRequesterInquiriesPanel(),
             )
           ) : shouldShowHostComposer ? (

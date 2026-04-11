@@ -1518,6 +1518,36 @@ input:focus {
   transform: scale(0.96);
 }
 
+/* Find room: five bottom tabs (bar is hidden ≥720px) */
+.mobile-nav.mobile-nav-find-room {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px 4px;
+}
+
+.mobile-nav.mobile-nav-find-room a {
+  font-size: 0.58rem;
+  min-height: 48px;
+  padding-left: 2px;
+  padding-right: 2px;
+  letter-spacing: -0.02em;
+}
+
+/* Find room: section chips duplicate the mobile bottom tabs — keep chips on desktop only */
+@media (max-width: 719px) {
+  .find-room-section-chips-desktop-only {
+    display: none !important;
+  }
+
+  .requester-inquiries-panel-subtitle-desktop-only {
+    display: none !important;
+  }
+
+  .room-posts-panel-subtitle-desktop-only {
+    display: none !important;
+  }
+}
+
 .footer {
   width: 100%;
   margin-top: 24px;
@@ -3533,6 +3563,85 @@ input:focus {
     width: 100%;
   }
 
+  /* Seeker sent inquiries (/find-tenant/inquiries) — compact rent facts + smaller actions */
+  .requester-inquiry-card.listing-inquiry-card {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .requester-inquiry-card .inquiry-fact-grid {
+    align-items: start;
+    gap: 8px;
+  }
+
+  .requester-inquiry-card .listing-details-fact {
+    padding: 8px 10px;
+    border-radius: 12px;
+    gap: 4px;
+    min-width: 0;
+    max-width: min(100%, 220px);
+  }
+
+  .requester-inquiry-card .listing-details-fact .muted {
+    font-size: 0.65rem;
+  }
+
+  .requester-inquiry-card .listing-details-fact strong {
+    font-size: 0.92rem;
+    margin-top: 2px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .requester-inquiry-card .inquiry-card-top strong {
+    font-size: 1.06rem;
+    line-height: 1.25;
+  }
+
+  .requester-inquiry-card .inquiry-card-top p {
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+
+  .requester-inquiry-card .inquiry-meta-row {
+    font-size: 0.8rem;
+    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .requester-inquiry-card .listing-details-section > strong {
+    font-size: 0.9rem;
+  }
+
+  .requester-inquiry-card .feed-copy {
+    font-size: 0.86rem;
+    line-height: 1.5;
+  }
+
+  .requester-inquiry-card .inquiry-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    flex-wrap: unset;
+    align-items: stretch;
+  }
+
+  .requester-inquiry-card .inquiry-actions .button {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    font-size: 0.78rem;
+    padding: 7px 10px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .requester-inquiry-card .inquiry-actions .button:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
   /* Inquiry detail (e.g. /host/inquiries/:id) — sidebar contact + facts */
   .inquiry-counterpart-card.listing-inquiry-card {
     padding: 12px 14px;
@@ -4830,6 +4939,27 @@ input:focus {
 .live-feed-head,
 .room-seekers-head {
   align-items: flex-start;
+}
+
+/* Find room — sent inquiries: keep eyebrow + title left-aligned with the badge on the right */
+.requester-inquiries-hub-panel .hub-panel-head {
+  align-items: flex-start;
+}
+
+.requester-inquiries-hub-panel .hub-panel-head > div:first-of-type {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.requester-inquiries-hub-panel .hub-panel-head .muted,
+.requester-inquiries-hub-panel .hub-panel-head h2,
+.requester-inquiries-hub-panel .hub-panel-head .panel-subtitle {
+  text-align: left;
+}
+
+.requester-inquiries-hub-panel .hub-panel-head .badge {
+  flex-shrink: 0;
 }
 
 .panel-subtitle {
@@ -6588,6 +6718,28 @@ input:focus {
 }
 
 @media (max-width: 719px) {
+  /* /find-tenant/posts — left-align panel title block on mobile */
+  .room-posts-hub-panel .hub-panel-head {
+    align-items: flex-start;
+  }
+
+  .room-posts-hub-panel .hub-panel-head > div:first-of-type {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    width: 100%;
+  }
+
+  .room-posts-hub-panel .hub-panel-head .muted,
+  .room-posts-hub-panel .hub-panel-head h2 {
+    text-align: left;
+  }
+
+  .room-posts-hub-panel .hub-panel-head .badge {
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+
   .room-posts-grid {
     grid-template-columns: 1fr;
   }
@@ -6598,8 +6750,40 @@ input:focus {
     width: 100%;
   }
   .need-post-facts {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: start;
   }
+
+  /* Move-in (or third fact) on its own row — compact width, no empty half-row */
+  .need-post-card .need-post-facts .listing-details-fact:nth-child(3) {
+    grid-column: 1 / -1;
+    max-width: min(100%, 220px);
+  }
+
+  .need-post-card .need-post-facts .listing-details-fact {
+    padding: 8px 10px;
+    border-radius: 12px;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .need-post-card .need-post-facts .listing-details-fact .muted {
+    font-size: 0.65rem;
+  }
+
+  .need-post-card .need-post-facts .listing-details-fact strong {
+    font-size: 0.9rem;
+    margin-top: 2px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .need-post-card {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
   .need-edit-grid {
     grid-template-columns: 1fr;
   }

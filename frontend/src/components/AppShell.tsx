@@ -1,4 +1,12 @@
-import { Bell, LayoutGrid, MessageCircle, PlusSquare, Search, UserRound } from 'lucide-react'
+import {
+  Bell,
+  ClipboardList,
+  LayoutGrid,
+  MessageCircle,
+  PlusSquare,
+  Search,
+  UserRound,
+} from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { AppFooter } from './AppFooter'
@@ -21,30 +29,29 @@ export function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const inboxTo = intent === housingIntentValues.tenantReplacement
-    ? '/find-tenant/host/inquiries'
-    : '/find-tenant/inquiries'
+  const isTenantReplacement = intent === housingIntentValues.tenantReplacement
 
+  const inboxTo = isTenantReplacement ? '/find-tenant/host/inquiries' : '/find-tenant/inquiries'
+
+  /** Tenant replacement: compose new listing. Find room: room-need form (never /find-tenant/host — that path forces TR intent). */
   const postTo =
-    user && intent === housingIntentValues.tenantReplacement
-      ? '/find-tenant/host/listings/new'
-      : user
-        ? '/find-tenant/host'
-        : '/profile'
+    user && isTenantReplacement ? '/find-tenant/host/listings/new' : user ? '/find-tenant/needs' : '/profile'
+
+  const findRoomPostsTo = user ? '/find-tenant/posts' : '/profile'
+  const findRoomInquiriesTo = user ? '/find-tenant/inquiries' : '/profile'
 
   const mobileFirstTabTo =
-    intent === housingIntentValues.tenantReplacement
-      ? user
-        ? '/find-tenant/host'
-        : '/profile'
-      : '/find-tenant'
+    isTenantReplacement ? (user ? '/find-tenant/host' : '/profile') : '/find-tenant'
 
-  const isMobileFirstTabActive =
-    intent === housingIntentValues.tenantReplacement
-      ? user
-        ? location.pathname === '/find-tenant/host'
-        : location.pathname.startsWith('/profile')
-      : location.pathname === '/find-tenant'
+  const isMobileFirstTabActive = isTenantReplacement
+    ? user
+      ? location.pathname === '/find-tenant/host'
+      : location.pathname.startsWith('/profile')
+    : location.pathname === '/find-tenant' || location.pathname.startsWith('/find-tenant/listings/')
+
+  const findRoomBrowseActive =
+    !isTenantReplacement &&
+    (location.pathname === '/find-tenant' || location.pathname.startsWith('/find-tenant/listings/'))
 
   useEffect(() => {
     if (!sessionToken) {
@@ -105,7 +112,7 @@ export function AppShell() {
                   data-intent={intent}
                 >
                   <button
-                    className={`toggle-pill${intent === housingIntentValues.findRoom ? ' active' : ''}`}
+                    className={`toggle-pill${!isTenantReplacement ? ' active' : ''}`}
                     onClick={() => {
                       setIntent(housingIntentValues.findRoom)
                       navigate('/find-tenant')
@@ -115,7 +122,7 @@ export function AppShell() {
                     Find room
                   </button>
                   <button
-                    className={`toggle-pill${intent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
+                    className={`toggle-pill${isTenantReplacement ? ' active' : ''}`}
                     onClick={() => {
                       setIntent(housingIntentValues.tenantReplacement)
                       navigate('/find-tenant/host')
@@ -171,7 +178,7 @@ export function AppShell() {
                 data-intent={intent}
               >
                 <button
-                  className={`toggle-pill${intent === housingIntentValues.findRoom ? ' active' : ''}`}
+                  className={`toggle-pill${!isTenantReplacement ? ' active' : ''}`}
                   onClick={() => {
                     setIntent(housingIntentValues.findRoom)
                     navigate('/find-tenant')
@@ -181,7 +188,7 @@ export function AppShell() {
                   Find room
                 </button>
                 <button
-                  className={`toggle-pill${intent === housingIntentValues.tenantReplacement ? ' active' : ''}`}
+                  className={`toggle-pill${isTenantReplacement ? ' active' : ''}`}
                   onClick={() => {
                     setIntent(housingIntentValues.tenantReplacement)
                     navigate('/find-tenant/host')
@@ -213,43 +220,78 @@ export function AppShell() {
 
       <AppFooter />
 
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        <NavLink
-          className={() => (isMobileFirstTabActive ? 'active' : '')}
-          end
-          to={mobileFirstTabTo}
-        >
-          {intent === housingIntentValues.tenantReplacement ? <LayoutGrid size={20} /> : <Search size={20} />}
-          <span>{intent === housingIntentValues.tenantReplacement ? 'Listings' : 'Browse'}</span>
-        </NavLink>
-        <NavLink
-          className={({ isActive }) => {
-            if (user && intent === housingIntentValues.tenantReplacement) {
-              return location.pathname.startsWith('/find-tenant/host/listings') ? 'active' : ''
-            }
-            return isActive ? 'active' : ''
-          }}
-          to={postTo}
-        >
-          <PlusSquare size={20} />
-          <span>Post</span>
-        </NavLink>
-        <NavLink
-          className={({ isActive }) =>
-            (isActive || location.pathname.includes('/inquiries') ? 'active' : '')
-          }
-          to={inboxTo}
-        >
-          <MessageCircle size={20} />
-          <span>Inbox</span>
-        </NavLink>
-        <NavLink
-          className={({ isActive }) => (isActive ? 'active' : '')}
-          to="/profile"
-        >
-          <UserRound size={20} />
-          <span>Profile</span>
-        </NavLink>
+      <nav
+        aria-label="Mobile navigation"
+        className={`mobile-nav${isTenantReplacement ? '' : ' mobile-nav-find-room'}`}
+      >
+        {isTenantReplacement ? (
+          <>
+            <NavLink
+              className={() => (isMobileFirstTabActive ? 'active' : '')}
+              end
+              to={mobileFirstTabTo}
+            >
+              <LayoutGrid size={20} />
+              <span>Listings</span>
+            </NavLink>
+            <NavLink
+              className={() =>
+                user && location.pathname.startsWith('/find-tenant/host/listings') ? 'active' : ''
+              }
+              to={postTo}
+            >
+              <PlusSquare size={20} />
+              <span>Post</span>
+            </NavLink>
+            <NavLink
+              className={({ isActive }) =>
+                isActive || location.pathname.startsWith('/find-tenant/host/inquiries') ? 'active' : ''
+              }
+              to={inboxTo}
+            >
+              <MessageCircle size={20} />
+              <span>Inbox</span>
+            </NavLink>
+            <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/profile">
+              <UserRound size={20} />
+              <span>Profile</span>
+            </NavLink>
+          </>
+        ) : (
+          <>
+            <NavLink className={() => (findRoomBrowseActive ? 'active' : '')} to="/find-tenant">
+              <Search size={20} />
+              <span>Browse</span>
+            </NavLink>
+            <NavLink
+              className={() => (location.pathname.startsWith('/find-tenant/needs') ? 'active' : '')}
+              to={postTo}
+            >
+              <PlusSquare size={20} />
+              <span>Room need</span>
+            </NavLink>
+            <NavLink
+              className={() => (location.pathname.startsWith('/find-tenant/posts') ? 'active' : '')}
+              to={findRoomPostsTo}
+            >
+              <ClipboardList size={20} />
+              <span>Room posts</span>
+            </NavLink>
+            <NavLink
+              className={() =>
+                location.pathname.startsWith('/find-tenant/inquiries') ? 'active' : ''
+              }
+              to={findRoomInquiriesTo}
+            >
+              <MessageCircle size={20} />
+              <span>Inquiry</span>
+            </NavLink>
+            <NavLink className={({ isActive }) => (isActive ? 'active' : '')} to="/profile">
+              <UserRound size={20} />
+              <span>Profile</span>
+            </NavLink>
+          </>
+        )}
       </nav>
     </div>
   )
