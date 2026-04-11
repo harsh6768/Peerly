@@ -2108,10 +2108,6 @@ input:focus {
     padding: 16px;
   }
 
-  .trust-metrics-ribbon {
-    gap: 12px;
-  }
-
   /* ── Mobile: hide the brand sub-copy (intent toggle in header replaces it) ── */
   .brand-copy small {
     display: none;
@@ -2135,37 +2131,37 @@ input:focus {
     text-align: center;
   }
 
-  /* ── Mobile: trust metrics as horizontal scrolling chip strip ── */
-  .trust-metrics-ribbon {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x mandatory;
+  /* ── Mobile: trust / profile metric cards — 2-column grid (replaces horizontal strip) ── */
+  .trust-metrics-grid.trust-metrics-ribbon {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    padding-bottom: 4px;
-    margin: 0 calc(-1 * var(--content-padding));
-    padding-left: var(--content-padding);
-    padding-right: var(--content-padding);
+    margin: 0;
+    padding: 0;
+    overflow-x: visible;
+    scroll-snap-type: none;
   }
 
   .trust-metrics-ribbon .card {
-    flex: 0 0 auto;
-    width: 160px;
-    scroll-snap-align: start;
-    padding: 14px 16px;
+    min-width: 0;
+    padding: 12px 14px;
   }
 
   .trust-metrics-ribbon .card strong {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     display: block;
-    margin: 4px 0 6px;
+    margin: 4px 0 4px;
   }
 
   .trust-metrics-ribbon .card p {
-    font-size: 0.78rem;
-    line-height: 1.4;
+    font-size: 0.72rem;
+    line-height: 1.35;
     margin: 0;
+  }
+
+  .trust-metrics-ribbon .card .muted {
+    font-size: 0.68rem;
+    line-height: 1.3;
   }
 }
 
