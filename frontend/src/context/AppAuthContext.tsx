@@ -11,7 +11,7 @@ import {
 import { apiRequest } from '../lib/api'
 import { supabase, supabaseConfigReady } from '../lib/supabase'
 
-const appSessionStorageKey = 'trusted-network.app-session'
+const appSessionStorageKey = 'cirvo.app-session'
 
 export type AppUser = {
   id: string

@@ -38,7 +38,7 @@ Use [listing-image-upload-architecture.md](./listing-image-upload-architecture.m
 | DB `ListingImage` | `providerAssetId` **plus** `imageUrl`, `thumbnailUrl`, `detailUrl` | **Canonical:** `assetProvider`, `providerAssetId`, dimensions, order, cover. **Removed** persisted delivery URLs (migration after data wipe). |
 | API create/update payload | Client sends three URLs per image | Client sends **provider metadata only**; server validates `providerAssetId` + provider. |
 | Rendering | Components use stored thumbnail/detail URLs | **One helper** `getListingImageUrl(publicId, variant)` with fixed transforms (`f_auto`, `q_auto`, `c_limit`, `w_*`). |
-| Upload folder | `trusted-network/listings/{userId}` | `trusted-network/listings/{userId}/{listingId}`, **after** listing exists. |
+| Upload folder | `cirvo/listings/{userId}` | `cirvo/listings/{userId}/{listingId}`, **after** listing exists. |
 | Orphans | Upload-then-abandon leaves Cloudinary orphans | **On failed listing save:** best-effort cleanup for uploads in that session; **scheduler deferred**. |
 | S3 later | `assetProvider` already exists | Same pattern: key in DB, URL at read time. |
 

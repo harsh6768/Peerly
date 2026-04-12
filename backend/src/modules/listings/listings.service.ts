@@ -512,7 +512,7 @@ export class ListingsService {
       );
     }
 
-    let folder = `trusted-network/listings/${userId}`;
+    let folder = `cirvo/listings/${userId}`;
 
     if (listingId) {
       const listing = await this.prisma.listing.findFirst({
@@ -538,7 +538,7 @@ export class ListingsService {
         throw new BadRequestException('Images cannot be uploaded for archived or filled listings.');
       }
 
-      folder = `trusted-network/listings/${userId}/${listingId}`;
+      folder = `cirvo/listings/${userId}/${listingId}`;
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -566,7 +566,7 @@ export class ListingsService {
       );
     }
 
-    const folderPrefix = `trusted-network/listings/${userId}/`;
+    const folderPrefix = `cirvo/listings/${userId}/`;
     const invalidAssetIds = assetIds.filter((assetId) => !assetId.startsWith(folderPrefix));
 
     if (invalidAssetIds.length > 0) {

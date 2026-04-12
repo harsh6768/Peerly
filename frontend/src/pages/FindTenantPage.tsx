@@ -410,7 +410,7 @@ const popularOffices = [
   'Infosys',
   'TCS',
 ] as const
-const listingIntentStorageKey = 'trusted-network.listing-intents'
+const listingIntentStorageKey = 'cirvo.listing-intents'
 
 function readListingIntentAssignments(): Record<string, HousingIntent> {
   if (typeof window === 'undefined') {

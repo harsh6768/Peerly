@@ -8,7 +8,7 @@ export class CreateListingImageDto {
   @IsEnum(AssetProvider)
   assetProvider: AssetProvider;
 
-  @ApiProperty({ example: 'trusted-network/listings/userId/listingId/sample-cover' })
+  @ApiProperty({ example: 'cirvo/listings/userId/listingId/sample-cover' })
   @IsString()
   providerAssetId: string;
 

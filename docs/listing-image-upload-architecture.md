@@ -63,7 +63,7 @@ Delivery URLs are **not** persisted. The web app uses `getListingImageUrl(public
 |--------|-------------|
 | DB | Dropped `imageUrl`, `thumbnailUrl`, `detailUrl` (migration `20260410_listing_image_drop_delivery_urls.sql`). |
 | API | Listing create/update images: `providerAssetId` + `assetProvider` (+ optional dimensions). |
-| Upload folder | `trusted-network/listings/{userId}/{listingId}` (requires an existing listing row). |
+| Upload folder | `cirvo/listings/{userId}/{listingId}` (requires an existing listing row). |
 | Composer | Save draft or publish creates the row first; pending photos upload after `listingId` exists (web + mobile). |
 | Orphans | Cleanup on failed save where possible; scheduled draft purge **deferred** — see [SPRINT_SCALING_HOUSING.md](./SPRINT_SCALING_HOUSING.md). |
 
@@ -141,7 +141,7 @@ Rules:
 - requires app session bearer token
 - signs Cloudinary parameters
 - request body includes **`listingId`**; listing must belong to the signed-in user
-- uploads go under **`trusted-network/listings/{userId}/{listingId}`**
+- uploads go under **`cirvo/listings/{userId}/{listingId}`**
 
 ### Frontend
 
