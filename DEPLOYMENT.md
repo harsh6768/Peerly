@@ -2,6 +2,10 @@
 
 This document implements the production rollout checklist: EC2 API, Netlify web, Supabase Auth URLs, and iOS-first native builds.
 
+**Vendor link hub (Supabase, Cloudinary, Google Maps, Resend, Expo, etc.):** [docs/platforms-and-services.md](./docs/platforms-and-services.md).
+
+**Prisma schema changes on the API host (generate, build, PM2, recovery):** [docs/prisma-postgresql-migrations.md](./docs/prisma-postgresql-migrations.md).
+
 ## 1. Backend (EC2)
 
 ### Process

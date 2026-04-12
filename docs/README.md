@@ -20,6 +20,8 @@ This folder is the current working architecture reference for Trusted Network.
 14. [Housing scale-up sprint (images, APIs, caching)](./SPRINT_SCALING_HOUSING.md)
 15. [Listing image upload architecture](./listing-image-upload-architecture.md)
 16. [Maps and client config](./maps-and-client-config.md) — Places + Static Maps env vars, billing toggles, `GET /api/public-config`
+17. [Platforms and services](./platforms-and-services.md) — Third-party vendors and frameworks with documentation links
+18. [Prisma and PostgreSQL migrations](./prisma-postgresql-migrations.md) — schema changes, `prisma generate` / `migrate deploy` / PM2 restart, recovery script
 
 ## What these docs cover
 
@@ -41,3 +43,7 @@ These docs are written so frontend and backend can evolve independently without 
 The **housing scale-up** sprint doc and **listing image architecture** doc describe the canonical image model (public id in DB, URLs at read time) and related API changes.
 
 **Maps and client config** documents the shared Google Maps browser key, how to enable or disable Static Map previews (`STATIC_MAP_PREVIEW_ENABLED`, `VITE_GOOGLE_MAPS_STATIC_MAP_ENABLED`), and how public config complements optional `VITE_CLOUDINARY_CLOUD_NAME`.
+
+**Platforms and services** is a link hub for Netlify, the API host model (e.g. EC2 + Nginx), PostgreSQL/Prisma, Supabase, Cloudinary, Google Maps, Resend, Expo/EAS, and the main open-source frameworks.
+
+**Prisma and PostgreSQL migrations** explains what breaks when columns are added or removed without aligning the DB, client, and compiled API, documents the golden-rule commands after `schema.prisma` changes, and provides a PM2-friendly recovery script tailored to this NestJS backend (`dist/`, not Next.js `.next`).

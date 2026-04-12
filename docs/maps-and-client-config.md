@@ -1,6 +1,6 @@
 # Google Maps and web client config
 
-This note covers **Places autocomplete**, **Static Map previews** (listing location), and **`GET /api/public-config`** (Cloudinary delivery + static-map toggle). It complements [DEPLOYMENT.md](../DEPLOYMENT.md) and [listing-image-upload-architecture.md](./listing-image-upload-architecture.md).
+This note covers **Places autocomplete**, **Static Map previews** (listing location), and **`GET /api/public-config`** (Cloudinary delivery + static-map toggle). It complements [DEPLOYMENT.md](../DEPLOYMENT.md), [listing-image-upload-architecture.md](./listing-image-upload-architecture.md), and the vendor overview [platforms-and-services.md](./platforms-and-services.md).
 
 ## Google Maps API key (browser)
 

@@ -15,6 +15,10 @@ This repository now uses a simple workspace structure:
 
 **Maps (Places + Static Map), Cloudinary listing URLs, and `/api/public-config`:** [docs/maps-and-client-config.md](./docs/maps-and-client-config.md).
 
+**Vendors and platforms in use (with links):** [docs/platforms-and-services.md](./docs/platforms-and-services.md).
+
+**Prisma / PostgreSQL schema changes (generate, build, PM2, recovery script):** [docs/prisma-postgresql-migrations.md](./docs/prisma-postgresql-migrations.md).
+
 ## Current MVP focus
 
 - Find replacement tenants
@@ -46,6 +50,8 @@ Recommended reading order:
 11. [EC2 to api.cirvo.in Complete Setup Guide](./docs/nginx_complete_setup.md)
 12. [Favicon Guide](./docs/favicon-guide.md)
 13. [Maps and client config](./docs/maps-and-client-config.md) — Google Maps key, Static Map on/off, public config API
+14. [Platforms and services](./docs/platforms-and-services.md) — Netlify, EC2/API, Supabase, Cloudinary, Google Maps, Resend, Expo/EAS, stack links
+15. [Prisma and PostgreSQL migrations](./docs/prisma-postgresql-migrations.md) — golden rule after `schema.prisma` changes; one-command PM2 recovery (NestJS `dist/`, not `.next`)
 
 ## Local development
 
