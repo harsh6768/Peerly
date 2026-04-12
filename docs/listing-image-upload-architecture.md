@@ -55,7 +55,7 @@ For a multi-image gallery, a related table is the correct design.
 
 - `assetProvider`, `providerAssetId`, `width`, `height`, `bytes`, `isCover`, `sortOrder`
 
-Delivery URLs are **not** persisted. The web app uses `getListingImageUrl(publicId, variant)`; mobile uses the same transform pattern with `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME`.
+Delivery URLs are **not** persisted. The web app uses `getListingImageUrl(publicId, variant)`; mobile uses the same transform pattern with `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME`. Both map a legacy `trusted-network/…` prefix to `cirvo/…` when building the URL (after assets live under `cirvo/` in Cloudinary, e.g. rename, or for consistency with new uploads).
 
 ### Changelog (image track)
 
