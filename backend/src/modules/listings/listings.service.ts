@@ -28,18 +28,14 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { ListListingsQueryDto } from './dto/list-listings-query.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
-/** Default Cloudinary path segment before `/listings/{userId}/…`. Set `CLOUDINARY_LISTINGS_FOLDER_ROOT` on the server if you need a different root (e.g. `cirvo`). */
-const DEFAULT_LISTING_CLOUD_FOLDER_ROOT = 'cirvo';
+/** Fixed Cloudinary path segment before `/listings/{userId}/{listingId?}/…`. `CLOUDINARY_LISTINGS_FOLDER_ROOT` is ignored. */
+const LISTING_CLOUD_FOLDER_ROOT = 'cirvo';
 
 /** Legacy uploads still use this prefix; cleanup accepts both roots for the same user. */
 const LEGACY_LISTING_CLOUD_FOLDER_ROOT = 'trusted-network';
 
 function listingCloudFolderRoot(): string {
-  const fromEnv = process.env.CLOUDINARY_LISTINGS_FOLDER_ROOT?.trim();
-  if (fromEnv) {
-    return fromEnv.replace(/^\/+|\/+$/g, '');
-  }
-  return DEFAULT_LISTING_CLOUD_FOLDER_ROOT;
+  return LISTING_CLOUD_FOLDER_ROOT;
 }
 
 type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE';

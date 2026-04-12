@@ -67,7 +67,7 @@ Expect something like: `{"cloudinaryCloudName":"…","staticMapPreviewEnabled":t
 
 ## Listing images (Cloudinary) — quick cross-reference
 
-- **Uploads**: backend signing uses `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and optional `CLOUDINARY_LISTINGS_FOLDER_ROOT` (see [DEPLOYMENT.md](../DEPLOYMENT.md)).
+- **Uploads**: backend signing uses `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`; listing folder root is fixed **`cirvo`** (see [DEPLOYMENT.md](../DEPLOYMENT.md)).
 - **Display URLs**: ideally set **`VITE_CLOUDINARY_CLOUD_NAME`** on the frontend build to match the backend cloud name; otherwise the client relies on **`cloudinaryCloudName`** from public config after one request.
 
 Full image pipeline: [listing-image-upload-architecture.md](./listing-image-upload-architecture.md).

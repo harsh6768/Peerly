@@ -23,7 +23,7 @@ This document implements the production rollout checklist: EC2 API, Netlify web,
 | `TRUST_PROXY` | Set to `1` when behind a reverse proxy so client IP / secure cookies behave correctly. |
 | `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name (uploads + returned on public config for web image URLs). |
 | `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary credentials for signed uploads and asset deletion. |
-| `CLOUDINARY_LISTINGS_FOLDER_ROOT` | Optional. First segment of listing image paths in Cloudinary (`{root}/listings/{userId}/…`). Default **`cirvo`**. Do not set to `trusted-network` unless you are intentionally keeping the legacy prefix. |
+| `CLOUDINARY_LISTINGS_FOLDER_ROOT` | **Ignored.** New listing uploads always use **`cirvo/listings/{userId}/{listingId}/…`**. Remove any old value from `.env` to avoid confusion. Cleanup still allows legacy **`trusted-network/…`** asset ids. |
 | `STATIC_MAP_PREVIEW_ENABLED` | Optional. `false` / `0` / `no` / `off` disables Google Static Map **preview images** for web clients via **`GET /api/public-config`**. Unset defaults to enabled. Redeploy API after change. |
 
 ### Public config for the web app
@@ -47,10 +47,9 @@ Point uptime checks at `https://your-api-domain/health` (or `/health/ready` for 
 
 ### Listing images still appear under `trusted-network/` in Cloudinary
 
-Uploads use the `folder` string returned by **`POST /api/listings/upload-signature`** (built from `CLOUDINARY_LISTINGS_FOLDER_ROOT`, default **`cirvo`**). If new files still land under **`trusted-network/listings/...`**:
+Uploads use the `folder` string from **`POST /api/listings/upload-signature`**: always **`cirvo/listings/{userId}/{listingId}`** when a listing id is present, otherwise **`cirvo/listings/{userId}`** for legacy flows. **`CLOUDINARY_LISTINGS_FOLDER_ROOT` is not read** (root is fixed). Cleanup still accepts old **`trusted-network/...`** public_ids.
 
-1. **Redeploy the API** — pull latest code, run `npm run build` in [`backend/`](backend/), restart the Node process (stale `dist/` is the most common cause).
-2. **Check server `.env`** — remove any `CLOUDINARY_LISTINGS_FOLDER_ROOT=trusted-network`, or set `CLOUDINARY_LISTINGS_FOLDER_ROOT=cirvo` explicitly (see [`backend/env.example`](backend/env.example)).
+If new files still land under **`trusted-network/listings/...`**, the running API is **old** — redeploy: pull latest, `npm run build` in [`backend/`](backend/), restart the Node process.
 3. **Smoke check** (use a real `listingId` you own and a valid session JWT):
 
 ```bash
