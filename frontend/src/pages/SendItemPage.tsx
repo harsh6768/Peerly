@@ -13,17 +13,19 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { useAppAuth } from '../context/AppAuthContext'
 import { apiRequest } from '../lib/api'
-import { asListingsPage } from '../lib/listingsResponse'
 import { cleanupUploadedListingImages, type ListingImageUploadPayload, uploadListingImageToCloudinary } from '../lib/cloudinary'
+import { getListingImageUrl } from '../lib/listingImageUrl'
+import { asListingsPage } from '../lib/listingsResponse'
 import { majorCities, otherCityOptionValue } from '../lib/majorCities'
 
 type ListingImage = {
   id: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
+  providerAssetId: string
   isCover: boolean
   sortOrder: number
+  width?: number
+  height?: number
+  bytes?: number
 }
 
 type SendRequestListing = {
@@ -442,7 +444,7 @@ export function SendItemPage() {
         const draftId = nextDrafts[index].id
 
         try {
-          const upload = await uploadListingImageToCloudinary(file, sessionToken)
+          const upload = await uploadListingImageToCloudinary(file, sessionToken, undefined)
           setListingImages((current) =>
             current.map((image) =>
               image.id === draftId
@@ -455,7 +457,7 @@ export function SendItemPage() {
                       ...image,
                       status: 'uploaded',
                       upload,
-                      previewUrl: upload.thumbnailUrl,
+                      previewUrl: getListingImageUrl(upload.providerAssetId, 'thumb'),
                     }
                   })()
                 : image,
@@ -733,7 +735,7 @@ export function SendItemPage() {
                       <div className="feed-media">
                         <img
                           alt={request.title}
-                          src={request.images[0].thumbnailUrl || request.images[0].imageUrl}
+                          src={getListingImageUrl(request.images[0].providerAssetId, 'card')}
                         />
                       </div>
                     )}
@@ -786,7 +788,11 @@ export function SendItemPage() {
                           {request.images[0] && (
                             <Button
                               onClick={() =>
-                                window.open(request.images[0].detailUrl || request.images[0].imageUrl, '_blank', 'noopener,noreferrer')
+                                window.open(
+                                  getListingImageUrl(request.images[0].providerAssetId, 'detail'),
+                                  '_blank',
+                                  'noopener,noreferrer',
+                                )
                               }
                               variant="secondary"
                             >
@@ -800,7 +806,13 @@ export function SendItemPage() {
                       <div className="detail-actions">
                         {request.images[0] && (
                           <Button
-                            onClick={() => window.open(request.images[0].detailUrl || request.images[0].imageUrl, '_blank', 'noopener,noreferrer')}
+                            onClick={() =>
+                              window.open(
+                                getListingImageUrl(request.images[0].providerAssetId, 'detail'),
+                                '_blank',
+                                'noopener,noreferrer',
+                              )
+                            }
                             variant="secondary"
                           >
                             View image

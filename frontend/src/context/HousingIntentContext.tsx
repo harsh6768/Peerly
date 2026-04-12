@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react'
 
-const housingIntentStorageKey = 'trusted-network.housing-intent'
+const housingIntentStorageKey = 'cirvo.housing-intent'
 
 export const housingIntentValues = {
   findRoom: 'FIND_ROOM',

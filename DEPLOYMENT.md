@@ -2,6 +2,10 @@
 
 This document implements the production rollout checklist: EC2 API, Netlify web, Supabase Auth URLs, and iOS-first native builds.
 
+**Vendor link hub (Supabase, Cloudinary, Google Maps, Resend, Expo, etc.):** [docs/platforms-and-services.md](./docs/platforms-and-services.md).
+
+**Prisma schema changes on the API host (generate, build, PM2, recovery):** [docs/prisma-postgresql-migrations.md](./docs/prisma-postgresql-migrations.md).
+
 ## 1. Backend (EC2)
 
 ### Process
@@ -17,6 +21,19 @@ This document implements the production rollout checklist: EC2 API, Netlify web,
 | `DATABASE_URL` | PostgreSQL URL for Prisma. |
 | `CORS_ORIGINS` | Comma-separated **https** origins allowed to call the API (e.g. `https://sirva.in,https://www.sirva.in`). Omit for local dev (permissive CORS). |
 | `TRUST_PROXY` | Set to `1` when behind a reverse proxy so client IP / secure cookies behave correctly. |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name (uploads + returned on public config for web image URLs). |
+| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary credentials for signed uploads and asset deletion. |
+| `CLOUDINARY_LISTINGS_FOLDER_ROOT` | **Ignored.** New listing uploads always use **`cirvo/listings/{userId}/{listingId}/…`**. Remove any old value from `.env` to avoid confusion. Cleanup still allows legacy **`trusted-network/…`** asset ids. |
+| `STATIC_MAP_PREVIEW_ENABLED` | Optional. `false` / `0` / `no` / `off` disables Google Static Map **preview images** for web clients via **`GET /api/public-config`**. Unset defaults to enabled. Redeploy API after change. |
+
+### Public config for the web app
+
+**`GET /api/public-config`** (no auth) returns JSON the browser uses on startup:
+
+- **`cloudinaryCloudName`** — from `CLOUDINARY_CLOUD_NAME` (so listing images resolve if `VITE_CLOUDINARY_CLOUD_NAME` was not set at build time).
+- **`staticMapPreviewEnabled`** — from `STATIC_MAP_PREVIEW_ENABLED` (billing kill switch for Static Map requests).
+
+Details, precedence with `VITE_*` flags, and Google Console setup: [docs/maps-and-client-config.md](./docs/maps-and-client-config.md).
 
 ### Health checks (load balancer)
 
@@ -27,6 +44,22 @@ This document implements the production rollout checklist: EC2 API, Netlify web,
 | `GET /api/...` | All application routes under `/api`. |
 
 Point uptime checks at `https://your-api-domain/health` (or `/health/ready` for stricter checks).
+
+### Listing images still appear under `trusted-network/` in Cloudinary
+
+**`POST /api/listings/upload-signature`** returns a signed **`public_id`** (e.g. **`cirvo/listings/{userId}/{listingId}/{uuid}`** with listing id, or **`cirvo/listings/{userId}/{uuid}`** without). The client POSTs that **`public_id`** to Cloudinary (not `folder`), so the asset path is fixed to **`cirvo/...`**. **`CLOUDINARY_LISTINGS_FOLDER_ROOT` is not read.** Cleanup still accepts old **`trusted-network/...`** public_ids.
+
+If new files still land under **`trusted-network/listings/...`**, the running API is **old** — redeploy: pull latest, `npm run build` in [`backend/`](backend/), restart the Node process.
+3. **Smoke check** (use a real `listingId` you own and a valid session JWT):
+
+```bash
+curl -sS -X POST "https://api.your-domain.com/api/listings/upload-signature" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <session_jwt>" \
+  -d '{"listingId":"<YOUR_LISTING_ID>"}'
+```
+
+The response JSON should include `"publicId": "cirvo/listings/<userId>/<listingId>/<uuid>"` (and no longer a top-level `folder` field).
 
 ### Housing needs API (`/api/housing-needs`) — 404 on save or list
 
@@ -66,13 +99,18 @@ After the backend is current, the **Find room → Your room need** flow can crea
 
 Set for **Production** (and **Preview** if previews should hit a real API):
 
-| Variable | Example |
-|----------|---------|
+| Variable | Example / notes |
+|----------|-----------------|
 | `VITE_API_BASE_URL` | `https://api.your-domain.com/api` |
 | `VITE_SUPABASE_URL` | Your Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon (public) key |
+| `VITE_CLOUDINARY_CLOUD_NAME` | Same as backend `CLOUDINARY_CLOUD_NAME` (optional; public-config can supply it if omitted). |
+| `VITE_GOOGLE_MAPS_API_KEY` | Browser-restricted key; enable **Places** + **Maps Static API** on the same GCP project. |
+| `VITE_GOOGLE_MAPS_STATIC_MAP_ENABLED` | Optional. `false` / `0` / `no` / `off` disables Static Map **images** for this build (Places autocomplete still uses the key). |
 
 Template: [`frontend/.env.production.example`](frontend/.env.production.example).
+
+Maps, toggles, and troubleshooting (403 on static maps): [docs/maps-and-client-config.md](./docs/maps-and-client-config.md).
 
 ### Why production still calls `localhost:4000` (or the wrong API)
 
@@ -200,6 +238,7 @@ Point an external monitor (UptimeRobot, Better Stack, Pingdom, etc.) at:
 | `https://<api>/api/listings?status=PUBLISHED&limit=1` | 200 + JSON body |
 | `https://<api>/api/housing-needs` | 200 (may be `[]`) — **not** 404 after backend deploy |
 | `https://<api>/health` | 200 when exposed at server root (see [`backend/src/main.ts`](backend/src/main.ts); if you get 404, use `/api/...` checks only or align Nginx so `/health` reaches the app) |
+| `https://<api>/api/public-config` | 200 + JSON with `cloudinaryCloudName` and `staticMapPreviewEnabled` (optional monitor) |
 
 Optional GitHub Actions cron (replace URLs):
 

@@ -29,10 +29,7 @@ Why this is the right choice:
 - A listing can have multiple images, so one row per image maps naturally to the data.
 - Each image needs its own metadata:
   - assetProvider
-  - provider asset id
-  - original URL
-  - thumbnail URL
-  - detail URL
+  - provider asset id (Cloudinary **public_id** — canonical key)
   - width / height / bytes
   - sort order
   - cover flag
@@ -50,22 +47,27 @@ That approach would look simpler initially, but it breaks down fast:
 
 For a multi-image gallery, a related table is the correct design.
 
-## Current Schema Shape
+## Schema shape
 
-`ListingImage` now stores:
+### Target (implemented)
 
-- `assetProvider`
-- `providerAssetId`
-- `imageUrl`
-- `thumbnailUrl`
-- `detailUrl`
-- `width`
-- `height`
-- `bytes`
-- `isCover`
-- `sortOrder`
+`ListingImage` stores:
 
-This gives us a provider-aware asset model that works for Cloudinary now and S3 later.
+- `assetProvider`, `providerAssetId`, `width`, `height`, `bytes`, `isCover`, `sortOrder`
+
+Delivery URLs are **not** persisted. The web app uses `getListingImageUrl(publicId, variant)`; mobile uses the same transform pattern with `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME`. Both map a legacy `trusted-network/…` prefix to `cirvo/…` when building the URL (after assets live under `cirvo/` in Cloudinary, e.g. rename, or for consistency with new uploads).
+
+### Changelog (image track)
+
+| Change | Description |
+|--------|-------------|
+| DB | Dropped `imageUrl`, `thumbnailUrl`, `detailUrl` (migration `20260410_listing_image_drop_delivery_urls.sql`). |
+| API | Listing create/update images: `providerAssetId` + `assetProvider` (+ optional dimensions). |
+| Upload path | Backend returns a signed **`public_id`** `cirvo/listings/{userId}/{listingId}/{uuid}` (not `folder`), so assets cannot land under legacy `trusted-network` from presets. |
+| Composer | Save draft or publish creates the row first; pending photos upload after `listingId` exists (web + mobile). |
+| Orphans | Cleanup on failed save where possible; scheduled draft purge **deferred** — see [SPRINT_SCALING_HOUSING.md](./SPRINT_SCALING_HOUSING.md). |
+
+Full sprint plan: [SPRINT_SCALING_HOUSING.md](./SPRINT_SCALING_HOUSING.md).
 
 ## Upload Strategy Comparison
 
@@ -138,7 +140,8 @@ Rules:
 
 - requires app session bearer token
 - signs Cloudinary parameters
-- places uploads under `trusted-network/listings/{userId}`
+- request body includes **`listingId`**; listing must belong to the signed-in user
+- uploads go under **`cirvo/listings/{userId}/{listingId}`**
 
 ### Frontend
 
@@ -192,11 +195,12 @@ Because provider metadata already lives on each `ListingImage`, that migration p
 ### Frontend
 
 No Cloudinary secret or preset is needed for the signed flow.
-Frontend only needs the backend API base URL and auth/session flow already used in the app.
+
+- **Web:** `VITE_CLOUDINARY_CLOUD_NAME` for delivery URLs (read-time transforms).
+- **Mobile:** `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` for the same.
 
 ## Operational Notes
 
-- If a user uploads images but never submits the listing, those Cloudinary assets remain orphaned for now.
-- A cleanup job can be added later if needed.
+- Closing the app before saving can still leave orphans; the client calls **`cleanup-uploads`** on removal and on some save failures. A **scheduled** draft/asset purge is deferred (see [SPRINT_SCALING_HOUSING.md](./SPRINT_SCALING_HOUSING.md)).
 - We currently use the first uploaded image as cover image after reordering.
 - The suggested order is a UX hint only; users can still reorder manually.

@@ -153,14 +153,14 @@ curl "http://localhost:4000/api/listings?ownerUserId=USER_ID"
   "images": [
     {
       "assetProvider": "CLOUDINARY",
-      "providerAssetId": "trusted-network/listings/user_123/living-room",
+      "providerAssetId": "cirvo/listings/user_123/living-room",
       "imageUrl": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
       "thumbnailUrl": "https://res.cloudinary.com/demo/image/upload/w_400/sample.jpg",
       "detailUrl": "https://res.cloudinary.com/demo/image/upload/w_1200/sample.jpg"
     },
     {
       "assetProvider": "CLOUDINARY",
-      "providerAssetId": "trusted-network/listings/user_123/bedroom",
+      "providerAssetId": "cirvo/listings/user_123/bedroom",
       "imageUrl": "https://res.cloudinary.com/demo/image/upload/sample-2.jpg",
       "thumbnailUrl": "https://res.cloudinary.com/demo/image/upload/w_400/sample-2.jpg",
       "detailUrl": "https://res.cloudinary.com/demo/image/upload/w_1200/sample-2.jpg"

@@ -442,9 +442,6 @@ model ListingImage {
   listingId       String
   assetProvider   AssetProvider @default(CLOUDINARY)
   providerAssetId String
-  imageUrl        String
-  thumbnailUrl    String
-  detailUrl       String
   width           Int?
   height          Int?
   bytes           Int?

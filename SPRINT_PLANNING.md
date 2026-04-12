@@ -2,6 +2,10 @@
 
 This document tracks **near-term delivery** aligned with [PRODUCT_OVERVIEW.md](PRODUCT_OVERVIEW.md) and [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md). Update it as sprints complete.
 
+### Parallel track: Housing scale-up (listings & images)
+
+Implementation and acceptance criteria for **canonical listing images** (public id only), **per-listing Cloudinary folders**, **explicit draft vs publish** composer flow, **pagination / TanStack Query**, and **deferred** draft TTL scheduler live in **[docs/SPRINT_SCALING_HOUSING.md](docs/SPRINT_SCALING_HOUSING.md)** and **[docs/listing-image-upload-architecture.md](docs/listing-image-upload-architecture.md)**.
+
 ---
 
 ## Current focus: Unified in-app notifications (web + mobile + backend)

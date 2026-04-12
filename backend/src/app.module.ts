@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { HealthController } from './common/health.controller';
+import { PublicConfigController } from './common/public-config.controller';
 import { AppBootstrapService } from './common/app-bootstrap.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { HousingNeedsModule } from './modules/housing-needs/housing-needs.module';
@@ -22,7 +23,7 @@ import { PrismaModule } from './prisma/prisma.module';
     NotificationsModule,
     ReportsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, PublicConfigController],
   providers: [AppBootstrapService],
 })
 export class AppModule {}

@@ -6,7 +6,7 @@ export class DeleteListingImageUploadsDto {
     type: [String],
     minItems: 1,
     maxItems: 8,
-    example: ['trusted-network/listings/user_123/sample-image'],
+    example: ['cirvo/listings/user_123/sample-image'],
   })
   @IsArray()
   @ArrayMinSize(1)

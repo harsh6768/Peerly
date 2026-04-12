@@ -3,9 +3,6 @@ import { apiRequest } from './api'
 export type ListingImageUploadPayload = {
   assetProvider: 'CLOUDINARY'
   providerAssetId: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
   width?: number
   height?: number
   bytes?: number
@@ -17,7 +14,8 @@ type SignedUploadSignature = {
   cloudName: string
   apiKey: string
   timestamp: number
-  folder: string
+  /** Full Cloudinary public_id (path); always under `cirvo/listings/…`. */
+  publicId: string
   signature: string
 }
 
@@ -32,6 +30,7 @@ type CloudinaryUploadResponse = {
 export async function uploadListingImageToCloudinary(
   file: File,
   sessionToken: string,
+  listingId?: string,
 ): Promise<ListingImageUploadPayload> {
   let signedUpload: SignedUploadSignature
 
@@ -39,6 +38,7 @@ export async function uploadListingImageToCloudinary(
     signedUpload = await apiRequest<SignedUploadSignature>('/listings/upload-signature', {
       method: 'POST',
       token: sessionToken,
+      body: JSON.stringify(listingId ? { listingId } : {}),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to prepare secure image upload.'
@@ -56,12 +56,19 @@ export async function uploadListingImageToCloudinary(
     throw error
   }
 
+  const publicId = signedUpload.publicId?.trim() ?? ''
+  if (!publicId.startsWith('cirvo/')) {
+    throw new Error(
+      'Upload configuration error: expected a cirvo Cloudinary path from the API. Redeploy the backend and hard-refresh the app.',
+    )
+  }
+
   const formData = new FormData()
   formData.append('file', file)
   formData.append('api_key', signedUpload.apiKey)
   formData.append('timestamp', String(signedUpload.timestamp))
   formData.append('signature', signedUpload.signature)
-  formData.append('folder', signedUpload.folder)
+  formData.append('public_id', publicId)
 
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${signedUpload.cloudName}/image/upload`,
@@ -81,9 +88,6 @@ export async function uploadListingImageToCloudinary(
   return {
     assetProvider: 'CLOUDINARY',
     providerAssetId: payload.public_id,
-    imageUrl: payload.secure_url,
-    thumbnailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 400),
-    detailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 1200),
     width: payload.width,
     height: payload.height,
     bytes: payload.bytes,
@@ -100,15 +104,6 @@ export async function cleanupUploadedListingImages(assetIds: string[], sessionTo
     token: sessionToken,
     body: JSON.stringify({ assetIds }),
   })
-}
-
-function buildTransformedImageUrl(cloudName: string, publicId: string, width: number) {
-  const normalizedPublicId = publicId
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,c_limit,w_${width}/${normalizedPublicId}`
 }
 
 async function tryParseJson(response: Response) {
