@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AssetProvider,
   HousingNeedStatus,
   ListingInquiryStatus,
   ListingStatus,
@@ -107,16 +108,54 @@ export class ListingsService {
         : {}),
     };
 
-    const listings = await this.prisma.listing.findMany({
-      where,
+    const limit = Math.min(query.limit ?? 50, 50);
+
+    let cursorRow: { id: string; createdAt: Date } | null = null;
+    if (query.cursor) {
+      cursorRow = await this.prisma.listing.findFirst({
+        where: {
+          id: query.cursor,
+          ...where,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+        },
+      });
+      if (!cursorRow) {
+        throw new BadRequestException('Invalid listing cursor.');
+      }
+    }
+
+    const pagedWhere: Prisma.ListingWhereInput =
+      cursorRow
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { createdAt: { lt: cursorRow.createdAt } },
+                  {
+                    AND: [{ createdAt: cursorRow.createdAt }, { id: { lt: cursorRow.id } }],
+                  },
+                ],
+              },
+            ],
+          }
+        : where;
+
+    const rows = await this.prisma.listing.findMany({
+      where: pagedWhere,
       include: listingInclude,
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      take: 300,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     });
 
-    return { items: listings, nextCursor: null };
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1]!.id : null;
+
+    return { items: page, nextCursor };
   }
 
   private async findAllPublicPaginated(
@@ -333,9 +372,6 @@ export class ListingsService {
         existingListing.images.map((image) => ({
           assetProvider: image.assetProvider,
           providerAssetId: image.providerAssetId,
-          imageUrl: image.imageUrl,
-          thumbnailUrl: image.thumbnailUrl,
-          detailUrl: image.detailUrl,
           width: image.width ?? undefined,
           height: image.height ?? undefined,
           bytes: image.bytes ?? undefined,
@@ -465,7 +501,7 @@ export class ListingsService {
     });
   }
 
-  createSignedUploadSignature(userId: string) {
+  async createSignedUploadSignature(userId: string, listingId?: string) {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
     const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -476,8 +512,36 @@ export class ListingsService {
       );
     }
 
+    let folder = `trusted-network/listings/${userId}`;
+
+    if (listingId) {
+      const listing = await this.prisma.listing.findFirst({
+        where: {
+          id: listingId,
+          ownerUserId: userId,
+          type: ListingType.tenant_replacement,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!listing) {
+        throw new NotFoundException(`Listing with id "${listingId}" was not found.`);
+      }
+
+      if (
+        listing.status === ListingStatus.ARCHIVED ||
+        listing.status === ListingStatus.FILLED
+      ) {
+        throw new BadRequestException('Images cannot be uploaded for archived or filled listings.');
+      }
+
+      folder = `trusted-network/listings/${userId}/${listingId}`;
+    }
+
     const timestamp = Math.floor(Date.now() / 1000);
-    const folder = `trusted-network/listings/${userId}`;
     const signature = createHash('sha1')
       .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
       .digest('hex');
@@ -857,15 +921,81 @@ export class ListingsService {
       .map((image, index) => ({
         assetProvider: image.assetProvider,
         providerAssetId: image.providerAssetId,
-        imageUrl: image.imageUrl,
-        thumbnailUrl: image.thumbnailUrl,
-        detailUrl: image.detailUrl,
         width: image.width,
         height: image.height,
         bytes: image.bytes,
         sortOrder: index,
         isCover: index === 0,
       }));
+  }
+
+  async deleteListingForOwner(listingId: string, ownerUserId: string) {
+    const listing = await this.prisma.listing.findFirst({
+      where: { id: listingId, ownerUserId, type: ListingType.tenant_replacement },
+      include: { images: true },
+    });
+
+    if (!listing) {
+      throw new NotFoundException(`Listing with id "${listingId}" was not found.`);
+    }
+
+    await this.destroyCloudinaryListingImages(listing.images);
+
+    await this.prisma.listing.delete({
+      where: { id: listingId },
+    });
+
+    return { deleted: true, id: listingId };
+  }
+
+  private async destroyCloudinaryListingImages(
+    images: Array<{ assetProvider: string; providerAssetId: string }>,
+  ) {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret || images.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      images
+        .filter((image) => image.assetProvider === AssetProvider.CLOUDINARY)
+        .map((image) => this.destroyCloudinaryAsset(image.providerAssetId, cloudName, apiKey, apiSecret)),
+    );
+  }
+
+  private async destroyCloudinaryAsset(
+    publicId: string,
+    cloudName: string,
+    apiKey: string,
+    apiSecret: string,
+  ) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = createHash('sha1')
+      .update(`invalidate=true&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
+      .digest('hex');
+
+    const body = new URLSearchParams({
+      public_id: publicId,
+      api_key: apiKey,
+      timestamp: String(timestamp),
+      invalidate: 'true',
+      signature,
+    });
+
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      throw new InternalServerErrorException(`Failed to delete Cloudinary asset "${publicId}".`);
+    }
   }
 
   private normalizeNearbyPlaces(nearbyPlaces: NonNullable<CreateListingDto['nearbyPlaces']>) {

@@ -3,9 +3,6 @@ import { apiRequest } from './api'
 export type ListingImageUploadPayload = {
   assetProvider: 'CLOUDINARY'
   providerAssetId: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
   width?: number
   height?: number
   bytes?: number
@@ -29,26 +26,20 @@ type CloudinaryUploadResponse = {
   bytes: number
 }
 
-function buildTransformedImageUrl(cloudName: string, publicId: string, width: number) {
-  const normalizedPublicId = publicId
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,c_limit,w_${width}/${normalizedPublicId}`
-}
-
 /**
  * Upload a local image (e.g. from expo-image-picker) to Cloudinary using a backend-signed upload.
+ * Pass listingId for tenant-replacement listings (per-listing folder). Omit for legacy flows.
  */
 export async function uploadListingImageToCloudinary(
   uri: string,
   mimeType: string | undefined,
   sessionToken: string,
+  listingId?: string,
 ): Promise<ListingImageUploadPayload> {
   const signedUpload = await apiRequest<SignedUploadSignature>('/listings/upload-signature', {
     method: 'POST',
     token: sessionToken,
+    body: JSON.stringify(listingId ? { listingId } : {}),
   })
 
   const formData = new FormData()
@@ -86,9 +77,6 @@ export async function uploadListingImageToCloudinary(
   return {
     assetProvider: 'CLOUDINARY',
     providerAssetId: payload.public_id,
-    imageUrl: payload.secure_url,
-    thumbnailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 400),
-    detailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 1200),
     width: payload.width,
     height: payload.height,
     bytes: payload.bytes,

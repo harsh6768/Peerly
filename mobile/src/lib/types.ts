@@ -11,11 +11,11 @@ export type PublicListingBudgetFilter =
 export type ListingImage = {
   id: string
   providerAssetId: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
   isCover: boolean
   sortOrder: number
+  width?: number
+  height?: number
+  bytes?: number
 }
 
 export type NearbyPlace = {

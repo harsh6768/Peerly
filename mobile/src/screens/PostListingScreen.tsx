@@ -22,9 +22,18 @@ import { apiRequest } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { cleanupUploadedListingImages, type ListingImageUploadPayload, uploadListingImageToCloudinary } from '../lib/cloudinary'
 import type { SelectedPlaceLocation } from '../lib/googleMaps'
+import { getListingImageUrl } from '../lib/listingImageUrl'
+import type { Listing } from '../lib/types'
 import type { RootStackScreenProps } from '../navigation/types'
 
 type Props = RootStackScreenProps<'PostListing'>
+
+type LocalPhotoRow = {
+  id: string
+  localUri: string
+  mimeType: string
+  upload?: ListingImageUploadPayload
+}
 
 type PropertyType = 'ROOM' | 'STUDIO' | 'APARTMENT' | 'PG' | 'HOUSE'
 type OccupancyType = 'SINGLE' | 'DOUBLE' | 'SHARED'
@@ -117,8 +126,8 @@ export function PostListingScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets()
   const [form, setForm] = useState<FormState>(defaultForm)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [uploadedImages, setUploadedImages] = useState<ListingImageUploadPayload[]>([])
-  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [photoRows, setPhotoRows] = useState<LocalPhotoRow[]>([])
+  const [isPhotoUploadPhase, setIsPhotoUploadPhase] = useState(false)
   const [addressInput, setAddressInput] = useState('')
   const [pinnedLocation, setPinnedLocation] = useState<SelectedPlaceLocation | null>(null)
   const [nearbyPlaces, setNearbyPlaces] = useState<Array<{ name: string; type: NearbyPlaceType }>>([])
@@ -160,7 +169,7 @@ export function PostListingScreen({ navigation }: Props) {
       Alert.alert('Permission needed', 'Please allow photo access to upload listing images.')
       return
     }
-    const remaining = 8 - uploadedImages.length
+    const remaining = 8 - photoRows.length
     if (remaining <= 0) {
       Alert.alert('Limit', 'You can upload up to 8 photos.')
       return
@@ -175,37 +184,21 @@ export function PostListingScreen({ navigation }: Props) {
 
     if (result.canceled) return
 
-    setUploadingPhotos(true)
-    const uploadedIdsThisBatch: string[] = []
-    try {
-      const next = [...uploadedImages]
-      for (const asset of result.assets) {
-        const uploaded = await uploadListingImageToCloudinary(
-          asset.uri,
-          asset.mimeType ?? 'image/jpeg',
-          sessionToken,
-        )
-        uploadedIdsThisBatch.push(uploaded.providerAssetId)
-        next.push(uploaded)
-      }
-      setUploadedImages(next)
-    } catch (err) {
-      if (uploadedIdsThisBatch.length) {
-        await cleanupUploadedListingImages(uploadedIdsThisBatch, sessionToken)
-      }
-      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Could not upload images.')
-    } finally {
-      setUploadingPhotos(false)
-    }
+    const newRows: LocalPhotoRow[] = result.assets.map((asset, i) => ({
+      id: `local-${Date.now()}-${i}`,
+      localUri: asset.uri,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    }))
+    setPhotoRows((prev) => [...prev, ...newRows])
   }
 
   function removeImageAt(index: number) {
-    setUploadedImages((prev) => prev.filter((_, i) => i !== index))
+    setPhotoRows((prev) => prev.filter((_, i) => i !== index))
   }
 
   function setAsCover(index: number) {
     if (index === 0) return
-    setUploadedImages((prev) => {
+    setPhotoRows((prev) => {
       const next = [...prev]
       const [item] = next.splice(index, 1)
       return [item, ...next]
@@ -249,11 +242,52 @@ export function PostListingScreen({ navigation }: Props) {
       Alert.alert('Contact phone', 'Please add a contact phone number.')
       return
     }
-    if (uploadedImages.length < 2) {
+    if (photoRows.length < 2) {
       Alert.alert('Photos required', 'Please add at least 2 photos for a published listing.')
       return
     }
     await submitListing('PUBLISHED')
+  }
+
+  function mapUploadsToPayload(uploads: ListingImageUploadPayload[]) {
+    return uploads.map((img, index) => ({
+      assetProvider: img.assetProvider,
+      providerAssetId: img.providerAssetId,
+      width: img.width,
+      height: img.height,
+      bytes: img.bytes,
+      sortOrder: index,
+      isCover: index === 0,
+    }))
+  }
+
+  function buildListingBody(
+    status: 'DRAFT' | 'PUBLISHED',
+    imagesPayload?: ReturnType<typeof mapUploadsToPayload>,
+  ) {
+    return {
+      ownerUserId: user!.id,
+      type: 'tenant_replacement' as const,
+      title: form.title.trim(),
+      city: form.city || undefined,
+      locality: form.locality.trim() || undefined,
+      locationName: pinnedLocation?.locationName ?? undefined,
+      latitude: pinnedLocation?.latitude,
+      longitude: pinnedLocation?.longitude,
+      rentAmount: form.rentAmount ? Number(form.rentAmount) : undefined,
+      depositAmount: form.depositAmount ? Number(form.depositAmount) : undefined,
+      maintenanceAmount: form.maintenanceAmount ? Number(form.maintenanceAmount) : undefined,
+      propertyType: form.propertyType || undefined,
+      occupancyType: form.occupancyType || undefined,
+      amenities: form.amenities.length > 0 ? form.amenities : undefined,
+      moveInDate: form.moveInDate || undefined,
+      contactPhone: form.contactPhone.trim() || undefined,
+      description: form.description.trim() || undefined,
+      contactMode: form.contactMode,
+      nearbyPlaces: nearbyPlaces.length > 0 ? nearbyPlaces : undefined,
+      status,
+      images: imagesPayload && imagesPayload.length > 0 ? imagesPayload : undefined,
+    }
   }
 
   async function submitListing(status: 'DRAFT' | 'PUBLISHED') {
@@ -264,50 +298,40 @@ export function PostListingScreen({ navigation }: Props) {
     }
 
     setIsSubmitting(true)
+    setIsPhotoUploadPhase(false)
+    const uploadedIdsForCleanup: string[] = []
     try {
-      const imagesPayload =
-        uploadedImages.length > 0
-          ? uploadedImages.map((img, index) => ({
-              assetProvider: img.assetProvider,
-              providerAssetId: img.providerAssetId,
-              imageUrl: img.imageUrl,
-              thumbnailUrl: img.thumbnailUrl,
-              detailUrl: img.detailUrl,
-              width: img.width,
-              height: img.height,
-              bytes: img.bytes,
-              sortOrder: index,
-              isCover: index === 0,
-            }))
-          : undefined
-
-      await apiRequest('/listings', {
+      const created = await apiRequest<Listing>('/listings', {
         method: 'POST',
         token: sessionToken,
-        body: JSON.stringify({
-          ownerUserId: user.id,
-          type: 'tenant_replacement',
-          title: form.title.trim(),
-          city: form.city || undefined,
-          locality: form.locality.trim() || undefined,
-          locationName: pinnedLocation?.locationName ?? undefined,
-          latitude: pinnedLocation?.latitude,
-          longitude: pinnedLocation?.longitude,
-          rentAmount: form.rentAmount ? Number(form.rentAmount) : undefined,
-          depositAmount: form.depositAmount ? Number(form.depositAmount) : undefined,
-          maintenanceAmount: form.maintenanceAmount ? Number(form.maintenanceAmount) : undefined,
-          propertyType: form.propertyType || undefined,
-          occupancyType: form.occupancyType || undefined,
-          amenities: form.amenities.length > 0 ? form.amenities : undefined,
-          moveInDate: form.moveInDate || undefined,
-          contactPhone: form.contactPhone.trim() || undefined,
-          description: form.description.trim() || undefined,
-          contactMode: form.contactMode,
-          nearbyPlaces: nearbyPlaces.length > 0 ? nearbyPlaces : undefined,
-          images: imagesPayload,
-          status,
-        }),
+        body: JSON.stringify(buildListingBody('DRAFT')),
       })
+
+      setIsPhotoUploadPhase(true)
+      const uploads: ListingImageUploadPayload[] = []
+      for (const row of photoRows) {
+        if (row.upload) {
+          uploads.push(row.upload)
+          continue
+        }
+        const uploaded = await uploadListingImageToCloudinary(
+          row.localUri,
+          row.mimeType,
+          sessionToken!,
+          created.id,
+        )
+        uploadedIdsForCleanup.push(uploaded.providerAssetId)
+        uploads.push(uploaded)
+      }
+
+      if (uploads.length > 0 || status === 'PUBLISHED') {
+        await apiRequest(`/listings/${created.id}`, {
+          method: 'PATCH',
+          token: sessionToken,
+          body: JSON.stringify(buildListingBody(status, mapUploadsToPayload(uploads))),
+        })
+      }
+
       Alert.alert(
         status === 'PUBLISHED' ? 'Listing published!' : 'Draft saved',
         status === 'PUBLISHED'
@@ -327,9 +351,13 @@ export function PostListingScreen({ navigation }: Props) {
         ],
       )
     } catch (err) {
+      if (uploadedIdsForCleanup.length > 0 && sessionToken) {
+        await cleanupUploadedListingImages(uploadedIdsForCleanup, sessionToken)
+      }
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save listing.')
     } finally {
       setIsSubmitting(false)
+      setIsPhotoUploadPhase(false)
     }
   }
 
@@ -369,15 +397,19 @@ export function PostListingScreen({ navigation }: Props) {
         <View style={styles.section}>
           <FieldLabel label="Photos" required={false} />
           <Text style={styles.helper}>
-            Published listings need at least 2 photos (max 8). The first photo is the thumbnail — tap Set cover on
-            another photo to make it first.
+            Photos upload after you save: we create your listing draft first, then send images to your listing folder
+            (max 8). The first photo is the cover — tap Set cover to reorder.
           </Text>
           <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.photoRow}>
-            {uploadedImages.map((img, index) => (
-              <View key={img.providerAssetId} style={styles.photoWrap}>
+            {photoRows.map((row, index) => (
+              <View key={row.id} style={styles.photoWrap}>
                 <Image
                   contentFit="cover"
-                  source={{ uri: img.detailUrl ?? img.imageUrl ?? img.thumbnailUrl }}
+                  source={{
+                    uri: row.upload
+                      ? getListingImageUrl(row.upload.providerAssetId, 'card')
+                      : row.localUri,
+                  }}
                   style={styles.photoThumb}
                 />
                 {index === 0 ? (
@@ -398,13 +430,13 @@ export function PostListingScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
             ))}
-            {uploadedImages.length < 8 ? (
+            {photoRows.length < 8 ? (
               <TouchableOpacity
-                disabled={uploadingPhotos}
+                disabled={isSubmitting && isPhotoUploadPhase}
                 onPress={() => void pickPhotos()}
                 style={styles.addPhoto}
               >
-                <Text style={styles.addPhotoText}>{uploadingPhotos ? '…' : '+'}</Text>
+                <Text style={styles.addPhotoText}>{isSubmitting && isPhotoUploadPhase ? '…' : '+'}</Text>
                 <Text style={styles.addPhotoHint}>Add</Text>
               </TouchableOpacity>
             ) : null}
@@ -639,14 +671,14 @@ export function PostListingScreen({ navigation }: Props) {
         ]}
       >
         <Button
-          loading={isSubmitting || uploadingPhotos}
+          loading={isSubmitting}
           onPress={() => void publishListing()}
           style={{ flex: 1 }}
         >
           Publish
         </Button>
         <Button
-          loading={isSubmitting || uploadingPhotos}
+          loading={isSubmitting}
           onPress={() => void saveDraft()}
           style={{ flex: 1 }}
           variant="secondary"

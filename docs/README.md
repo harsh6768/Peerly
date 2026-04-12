@@ -17,6 +17,8 @@ This folder is the current working architecture reference for Trusted Network.
 11. [Backend TypeScript Guide](./backend-typescript-guide.md)
 12. [Platform Deployment Guide](./platform-deployment.md)
 13. [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)
+14. [Housing scale-up sprint (images, APIs, caching)](./SPRINT_SCALING_HOUSING.md)
+15. [Listing image upload architecture](./listing-image-upload-architecture.md)
 
 ## What these docs cover
 
@@ -34,3 +36,5 @@ This folder is the current working architecture reference for Trusted Network.
 - The exact Netlify + Supabase Auth + Google OAuth redirect flow used by the current login system
 
 These docs are written so frontend and backend can evolve independently without losing the shared product model.
+
+The **housing scale-up** sprint doc and **listing image architecture** doc describe the canonical image model (public id in DB, URLs at read time) and related API changes.

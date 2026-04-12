@@ -3,9 +3,6 @@ import { apiRequest } from './api'
 export type ListingImageUploadPayload = {
   assetProvider: 'CLOUDINARY'
   providerAssetId: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
   width?: number
   height?: number
   bytes?: number
@@ -32,6 +29,7 @@ type CloudinaryUploadResponse = {
 export async function uploadListingImageToCloudinary(
   file: File,
   sessionToken: string,
+  listingId?: string,
 ): Promise<ListingImageUploadPayload> {
   let signedUpload: SignedUploadSignature
 
@@ -39,6 +37,7 @@ export async function uploadListingImageToCloudinary(
     signedUpload = await apiRequest<SignedUploadSignature>('/listings/upload-signature', {
       method: 'POST',
       token: sessionToken,
+      body: JSON.stringify(listingId ? { listingId } : {}),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to prepare secure image upload.'
@@ -81,9 +80,6 @@ export async function uploadListingImageToCloudinary(
   return {
     assetProvider: 'CLOUDINARY',
     providerAssetId: payload.public_id,
-    imageUrl: payload.secure_url,
-    thumbnailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 400),
-    detailUrl: buildTransformedImageUrl(signedUpload.cloudName, payload.public_id, 1200),
     width: payload.width,
     height: payload.height,
     bytes: payload.bytes,
@@ -100,15 +96,6 @@ export async function cleanupUploadedListingImages(assetIds: string[], sessionTo
     token: sessionToken,
     body: JSON.stringify({ assetIds }),
   })
-}
-
-function buildTransformedImageUrl(cloudName: string, publicId: string, width: number) {
-  const normalizedPublicId = publicId
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/f_auto,q_auto,c_limit,w_${width}/${normalizedPublicId}`
 }
 
 async function tryParseJson(response: Response) {

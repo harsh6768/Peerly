@@ -15,6 +15,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useEffect,
   useMemo,
@@ -35,6 +36,7 @@ import { LocationSummaryCard, PlaceAutocompleteField } from '../components/Place
 import { useAppAuth } from '../context/AppAuthContext'
 import { housingIntentValues, useHousingIntent, type HousingIntent } from '../context/HousingIntentContext'
 import { apiRequest } from '../lib/api'
+import { getListingImageUrl } from '../lib/listingImageUrl'
 import { asListingsPage } from '../lib/listingsResponse'
 import {
   cleanupUploadedListingImages,
@@ -44,14 +46,14 @@ import {
 import type { SelectedPlaceLocation } from '../lib/googleMaps'
 import { majorCities, otherCityOptionValue } from '../lib/majorCities'
 
-type ListingImage = {
+type ListingImageRecord = {
   id: string
   providerAssetId: string
-  imageUrl: string
-  thumbnailUrl: string
-  detailUrl: string
   isCover: boolean
   sortOrder: number
+  width?: number
+  height?: number
+  bytes?: number
 }
 
 type NearbyPlaceType = 'tech_park' | 'company'
@@ -101,7 +103,7 @@ type Listing = {
   status: ListingStatus
   createdAt: string
   updatedAt: string
-  images: ListingImage[]
+  images: ListingImageRecord[]
   nearbyPlaces: NearbyPlace[]
   owner: {
     id: string
@@ -196,7 +198,8 @@ type DraftListingImage = {
   id: string
   fileName: string
   previewUrl: string
-  status: 'uploading' | 'uploaded' | 'error'
+  status: 'pending' | 'uploading' | 'uploaded' | 'error'
+  file?: File
   upload?: ListingImageUploadPayload
   error?: string
   persisted?: boolean
@@ -939,7 +942,7 @@ function ListingImageCarousel({ listing }: { listing: Listing }) {
           alt={`${listing.title} photo ${activeImageIndex + 1}`}
           className="listing-carousel-image"
           loading="lazy"
-          src={activeImage.detailUrl || activeImage.imageUrl || activeImage.thumbnailUrl}
+          src={getListingImageUrl(activeImage.providerAssetId, 'detail')}
         />
 
         {hasMultipleImages ? (
@@ -980,7 +983,11 @@ function ListingImageCarousel({ listing }: { listing: Listing }) {
               role="listitem"
               type="button"
             >
-              <img alt={`${listing.title} thumbnail ${index + 1}`} loading="lazy" src={image.thumbnailUrl || image.imageUrl} />
+              <img
+                alt={`${listing.title} thumbnail ${index + 1}`}
+                loading="lazy"
+                src={getListingImageUrl(image.providerAssetId, 'thumb')}
+              />
             </button>
           ))}
         </div>
@@ -2594,7 +2601,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   const [isSavingNeedEdit, setIsSavingNeedEdit] = useState(false)
   const [requesterInquiries, setRequesterInquiries] = useState<ListingInquiry[]>([])
   const [ownerInquiries, setOwnerInquiries] = useState<ListingInquiry[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [publicListingFilters, setPublicListingFilters] = useState<PublicListingFilters>(
@@ -2641,6 +2647,117 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     () => readListingIntentAssignments(),
   )
   const listingImagesRef = useRef<DraftListingImage[]>([])
+  const queryClient = useQueryClient()
+
+  const excludeOwnerForPublic =
+    Boolean(sessionToken && user && intent === housingIntentValues.findRoom) ? user!.id : null
+
+  const publicListingsQuery = useQuery({
+    queryKey: ['listings', 'public', excludeOwnerForPublic ?? 'include-self'],
+    queryFn: async () => {
+      const pubParams = new URLSearchParams()
+      pubParams.set('status', 'PUBLISHED')
+      pubParams.set('limit', '50')
+      if (excludeOwnerForPublic) {
+        pubParams.set('excludeOwnerUserId', excludeOwnerForPublic)
+      }
+      const publicRaw = await apiRequest<unknown>(`/listings?${pubParams.toString()}`, {
+        token: sessionToken,
+      })
+      return asListingsPage<Listing>(publicRaw)
+    },
+  })
+
+  const myListingsQuery = useQuery({
+    queryKey: ['listings', 'mine', user?.id],
+    queryFn: async () => {
+      if (!sessionToken || !user) {
+        return { items: [] as Listing[], nextCursor: null as string | null }
+      }
+      const myRaw = await apiRequest<unknown>(
+        `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true&limit=50`,
+        { token: sessionToken },
+      )
+      return asListingsPage<Listing>(myRaw)
+    },
+    enabled: Boolean(sessionToken && user),
+  })
+
+  const housingNeedsMineQuery = useQuery({
+    queryKey: ['housing-needs', 'mine', user?.id],
+    queryFn: () => apiRequest<HousingNeed[]>('/housing-needs/mine', { token: sessionToken! }),
+    enabled: Boolean(sessionToken && user),
+  })
+
+  const requesterInquiriesQuery = useQuery({
+    queryKey: ['listing-inquiries', 'requester', user?.id],
+    queryFn: () =>
+      apiRequest<ListingInquiry[]>('/listing-inquiries?scope=requester', { token: sessionToken! }),
+    enabled: Boolean(sessionToken && user),
+  })
+
+  const ownerInquiriesQuery = useQuery({
+    queryKey: ['listing-inquiries', 'owner', user?.id],
+    queryFn: () =>
+      apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', { token: sessionToken! }),
+    enabled: Boolean(sessionToken && user),
+  })
+
+  const composerListingId = useMemo(
+    () => editingListingId ?? (editListingId && editListingId !== 'new' ? editListingId : null),
+    [editingListingId, editListingId],
+  )
+
+  const isLoading =
+    publicListingsQuery.isPending ||
+    (Boolean(sessionToken && user) &&
+      (myListingsQuery.isPending ||
+        housingNeedsMineQuery.isPending ||
+        requesterInquiriesQuery.isPending ||
+        ownerInquiriesQuery.isPending))
+
+  useEffect(() => {
+    if (publicListingsQuery.data) {
+      setPublicListings(normalizeListings(publicListingsQuery.data.items))
+    }
+  }, [publicListingsQuery.data])
+
+  useEffect(() => {
+    if (!sessionToken || !user) {
+      setMyListings([])
+      setMyHousingNeeds([])
+      setRequesterInquiries([])
+      setOwnerInquiries([])
+      return
+    }
+    if (myListingsQuery.data) {
+      setMyListings(normalizeListings(myListingsQuery.data.items))
+    }
+    if (housingNeedsMineQuery.data) {
+      setMyHousingNeeds(Array.isArray(housingNeedsMineQuery.data) ? housingNeedsMineQuery.data : [])
+    }
+    if (requesterInquiriesQuery.data) {
+      setRequesterInquiries(normalizeListingInquiries(requesterInquiriesQuery.data))
+    }
+    if (ownerInquiriesQuery.data) {
+      setOwnerInquiries(normalizeListingInquiries(ownerInquiriesQuery.data))
+    }
+  }, [
+    sessionToken,
+    user,
+    myListingsQuery.data,
+    housingNeedsMineQuery.data,
+    requesterInquiriesQuery.data,
+    ownerInquiriesQuery.data,
+  ])
+
+  async function refetchHousingData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['listings'] }),
+      queryClient.invalidateQueries({ queryKey: ['housing-needs'] }),
+      queryClient.invalidateQueries({ queryKey: ['listing-inquiries'] }),
+    ])
+  }
 
   const selectedListingLocation = useMemo(
     () =>
@@ -2902,10 +3019,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
   }, [])
 
   useEffect(() => {
-    void loadHousingData()
-  }, [sessionToken, user?.id, intent, mode])
-
-  useEffect(() => {
     const path = location.pathname
     if (path.startsWith('/find-tenant/host')) {
       if (intent !== housingIntentValues.tenantReplacement) {
@@ -2985,67 +3098,6 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     }
   }, [composerRouteState, editListingId, editingListingId, myListings, shouldShowHostComposer])
 
-  async function loadHousingData() {
-    try {
-      setIsLoading(true)
-      setFeedback(null)
-
-      const pubParams = new URLSearchParams()
-      pubParams.set('status', 'PUBLISHED')
-      pubParams.set('limit', '50')
-      if (sessionToken && user && intent === housingIntentValues.findRoom) {
-        pubParams.set('excludeOwnerUserId', user.id)
-      }
-
-      const publicRaw = await apiRequest<unknown>(`/listings?${pubParams.toString()}`, {
-        token: sessionToken,
-      })
-      const publicPage = asListingsPage<Listing>(publicRaw)
-      setPublicListings(normalizeListings(publicPage.items))
-
-      if (sessionToken && user) {
-        const myRaw = await apiRequest<unknown>(
-          `/listings?ownerUserId=${encodeURIComponent(user.id)}&includeArchived=true`,
-          { token: sessionToken },
-        )
-        const myPage = asListingsPage<Listing>(myRaw)
-        setMyListings(normalizeListings(myPage.items))
-
-        if (shouldShowSeekerPostedListings) {
-          const myHousingNeedsPayload = await apiRequest<HousingNeed[]>('/housing-needs/mine', {
-            token: sessionToken,
-          })
-          setMyHousingNeeds(Array.isArray(myHousingNeedsPayload) ? myHousingNeedsPayload : [])
-        } else {
-          setMyHousingNeeds([])
-        }
-
-        const requesterInquiriesPayload = await apiRequest<ListingInquiry[]>(
-          '/listing-inquiries?scope=requester',
-          { token: sessionToken },
-        )
-        setRequesterInquiries(normalizeListingInquiries(requesterInquiriesPayload))
-
-        const ownerInquiriesPayload = await apiRequest<ListingInquiry[]>('/listing-inquiries?scope=owner', {
-          token: sessionToken,
-        })
-        setOwnerInquiries(normalizeListingInquiries(ownerInquiriesPayload))
-      } else {
-        setMyListings([])
-        setMyHousingNeeds([])
-        setRequesterInquiries([])
-        setOwnerInquiries([])
-      }
-    } catch (error) {
-      setFeedback({
-        tone: 'error',
-        message: error instanceof Error ? error.message : 'Unable to load housing listings.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   function rememberListingIntent(listingId: string, sourceIntent: HousingIntent) {
     setListingIntentAssignments((current) => {
       if (current[listingId] === sourceIntent) {
@@ -3104,15 +3156,15 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       listing.images.map((image, index) => ({
         id: image.id,
         fileName: listingImageSuggestions[index] ?? `Image ${index + 1}`,
-        previewUrl: image.thumbnailUrl || image.imageUrl,
+        previewUrl: getListingImageUrl(image.providerAssetId, 'thumb'),
         status: 'uploaded',
         persisted: true,
         upload: {
           assetProvider: 'CLOUDINARY',
           providerAssetId: image.providerAssetId,
-          imageUrl: image.imageUrl,
-          thumbnailUrl: image.thumbnailUrl,
-          detailUrl: image.detailUrl,
+          width: image.width,
+          height: image.height,
+          bytes: image.bytes,
           isCover: image.isCover,
           sortOrder: image.sortOrder,
         },
@@ -3232,7 +3284,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       })
 
       resetHousingNeedForm()
-      await loadHousingData()
+      await refetchHousingData()
       navigate('/find-tenant')
       setFeedback({
         tone: 'success',
@@ -3246,6 +3298,69 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     } finally {
       setIsSavingHousingNeed(false)
     }
+  }
+
+  async function flushPendingListingUploads(listingId: string): Promise<ListingImageUploadPayload[]> {
+    if (!sessionToken) {
+      return []
+    }
+
+    const orderedPayloads: ListingImageUploadPayload[] = []
+
+    const snapshot = [...listingImagesRef.current]
+    for (const row of snapshot) {
+      if (row.status === 'uploaded' && row.upload) {
+        orderedPayloads.push(row.upload)
+        continue
+      }
+      if (row.status !== 'pending' || !row.file) {
+        continue
+      }
+
+      const draftId = row.id
+      setListingImages((current) =>
+        current.map((image) =>
+          image.id === draftId ? { ...image, status: 'uploading' as const } : image,
+        ),
+      )
+      try {
+        const upload = await uploadListingImageToCloudinary(row.file, sessionToken, listingId)
+        orderedPayloads.push(upload)
+        setListingImages((current) =>
+          current.map((image) =>
+            image.id === draftId
+              ? {
+                  ...image,
+                  status: 'uploaded' as const,
+                  upload,
+                  file: undefined,
+                  previewUrl: getListingImageUrl(upload.providerAssetId, 'thumb'),
+                }
+              : image,
+          ),
+        )
+      } catch (uploadError) {
+        setListingImages((current) =>
+          current.map((image) =>
+            image.id === draftId
+              ? {
+                  ...image,
+                  status: 'error' as const,
+                  error:
+                    uploadError instanceof Error ? uploadError.message : 'Unable to upload this image.',
+                }
+              : image,
+          ),
+        )
+        throw uploadError
+      }
+    }
+
+    return orderedPayloads.map((payload, index) => ({
+      ...payload,
+      isCover: index === 0,
+      sortOrder: index,
+    }))
   }
 
   async function handleSaveListing(targetStatus: 'DRAFT' | 'PUBLISHED') {
@@ -3268,76 +3383,112 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
     const city = resolveCityValue(replaceTenantCityOption, replaceTenantCustomCity)
     const sourceIntent =
       composerRouteState?.sourceIntent ??
-      (editingListingId
-        ? getListingIntentForDisplay(editingListingId, listingIntentAssignments)
+      (composerListingId
+        ? getListingIntentForDisplay(composerListingId, listingIntentAssignments)
         : housingIntentValues.tenantReplacement)
-    const uploadedImages = listingImages
-      .filter((image) => image.status === 'uploaded' && image.upload)
-      .map((image) => image.upload!)
-      .map((image, index) => ({
-        ...image,
-        isCover: index === 0,
-        sortOrder: index,
-      }))
+
+    const imageRowsReady =
+      listingImages.filter((image) => image.status === 'pending' || (image.status === 'uploaded' && image.upload))
+        .length
+
+    if (targetStatus === 'PUBLISHED' && imageRowsReady < 2) {
+      setFeedback({
+        tone: 'error',
+        message: 'Add at least two photos before publishing. Save a draft first if you still need to upload.',
+      })
+      return
+    }
+
+    const buildPayload = (
+      status: 'DRAFT' | 'PUBLISHED',
+      images?: ListingImageUploadPayload[],
+    ) => ({
+      ownerUserId: user.id,
+      type: 'tenant_replacement' as const,
+      title: replaceTenantForm.title.trim(),
+      city: city || undefined,
+      locality: replaceTenantForm.locality.trim() || undefined,
+      locationName: selectedListingLocation?.locationName,
+      latitude: selectedListingLocation?.latitude,
+      longitude: selectedListingLocation?.longitude,
+      moveInDate: replaceTenantForm.moveInDate ? toIsoDate(replaceTenantForm.moveInDate) : undefined,
+      rentAmount: replaceTenantForm.rentAmount ? Number(replaceTenantForm.rentAmount) : undefined,
+      depositAmount: replaceTenantForm.depositAmount ? Number(replaceTenantForm.depositAmount) : undefined,
+      maintenanceAmount: replaceTenantForm.maintenanceAmount
+        ? Number(replaceTenantForm.maintenanceAmount)
+        : undefined,
+      amenities: replaceTenantForm.amenities,
+      nearbyPlaces: replaceTenantForm.nearbyPlaces,
+      propertyType: replaceTenantForm.propertyType,
+      occupancyType: replaceTenantForm.occupancyType,
+      contactMode: replaceTenantForm.contactMode,
+      contactPhone: replaceTenantForm.contactPhone.trim() || undefined,
+      description: replaceTenantForm.description.trim() || undefined,
+      miscCharges: replaceTenantForm.miscCharges.trim() || undefined,
+      status,
+      images: images && images.length > 0 ? images : undefined,
+    })
+
+    let workingListingId = composerListingId
+    const wasNewListing = !composerListingId
 
     try {
       setIsSavingListing(true)
       setFeedback(null)
 
-      const payload = {
-        ownerUserId: user.id,
-        type: 'tenant_replacement',
-        title: replaceTenantForm.title.trim(),
-        city: city || undefined,
-        locality: replaceTenantForm.locality.trim() || undefined,
-        locationName: selectedListingLocation?.locationName,
-        latitude: selectedListingLocation?.latitude,
-        longitude: selectedListingLocation?.longitude,
-        moveInDate: replaceTenantForm.moveInDate ? toIsoDate(replaceTenantForm.moveInDate) : undefined,
-        rentAmount: replaceTenantForm.rentAmount ? Number(replaceTenantForm.rentAmount) : undefined,
-        depositAmount: replaceTenantForm.depositAmount ? Number(replaceTenantForm.depositAmount) : undefined,
-        maintenanceAmount: replaceTenantForm.maintenanceAmount ? Number(replaceTenantForm.maintenanceAmount) : undefined,
-        amenities: replaceTenantForm.amenities,
-        nearbyPlaces: replaceTenantForm.nearbyPlaces,
-        propertyType: replaceTenantForm.propertyType,
-        occupancyType: replaceTenantForm.occupancyType,
-        contactMode: replaceTenantForm.contactMode,
-        contactPhone: replaceTenantForm.contactPhone.trim() || undefined,
-        description: replaceTenantForm.description.trim() || undefined,
-        miscCharges: replaceTenantForm.miscCharges.trim() || undefined,
-        status: targetStatus,
-        images: uploadedImages.length > 0 ? uploadedImages : undefined,
-      }
-
-      if (editingListingId) {
-        const updatedListing = await apiRequest<Listing>(`/listings/${editingListingId}`, {
-          method: 'PATCH',
-          token: sessionToken,
-          body: JSON.stringify(payload),
-        })
-        rememberListingIntent(updatedListing.id, sourceIntent)
-      } else {
+      if (!workingListingId) {
         const createdListing = await apiRequest<Listing>('/listings', {
           method: 'POST',
           token: sessionToken,
-          body: JSON.stringify(payload),
+          body: JSON.stringify(buildPayload('DRAFT', undefined)),
         })
+        workingListingId = createdListing.id
+        setEditingListingId(createdListing.id)
         rememberListingIntent(createdListing.id, sourceIntent)
+        navigate(`/find-tenant/host/listings/${createdListing.id}/edit`, {
+          replace: true,
+          state: { listing: createdListing, sourceIntent } as ListingComposerRouteState,
+        })
       }
 
-      resetListingComposer()
-      setHostStep(0)
-      await loadHousingData()
-      setFeedback({
-        tone: 'success',
-        message:
-          targetStatus === 'DRAFT'
-            ? 'Listing saved as draft.'
-            : editingListingId
-              ? 'Listing updated and published.'
-              : 'Listing published successfully.',
+      const orderedImages = await flushPendingListingUploads(workingListingId)
+      const finalPayload = buildPayload(targetStatus, orderedImages)
+
+      const savedListing = await apiRequest<Listing>(`/listings/${workingListingId}`, {
+        method: 'PATCH',
+        token: sessionToken,
+        body: JSON.stringify(finalPayload),
       })
+
+      rememberListingIntent(savedListing.id, sourceIntent)
+      await refetchHousingData()
+
+      if (targetStatus === 'PUBLISHED') {
+        resetListingComposer()
+        setHostStep(0)
+        navigate('/find-tenant/host')
+        setFeedback({
+          tone: 'success',
+          message: wasNewListing ? 'Listing published successfully.' : 'Listing updated and published.',
+        })
+      } else {
+        applyListingForEditing(savedListing)
+        setFeedback({
+          tone: 'success',
+          message: 'Listing saved as draft.',
+        })
+      }
     } catch (error) {
+      const uploadedIds = listingImagesRef.current
+        .filter((image) => !image.persisted && image.upload?.providerAssetId)
+        .map((image) => image.upload!.providerAssetId)
+      if (uploadedIds.length > 0 && sessionToken) {
+        try {
+          await cleanupUploadedListingImages(uploadedIds, sessionToken)
+        } catch {
+          // best-effort cleanup
+        }
+      }
       setFeedback({
         tone: 'error',
         message: error instanceof Error ? error.message : 'Unable to save this listing right now.',
@@ -3361,7 +3512,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         }),
       })
 
-      await loadHousingData()
+      await refetchHousingData()
       setFeedback({
         tone: 'success',
         message:
@@ -3487,7 +3638,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       })
 
       cancelSchedulingInquiry()
-      await loadHousingData()
+      await refetchHousingData()
       setFeedback({
         tone: 'success',
         message:
@@ -3528,6 +3679,30 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
       return
     }
 
+    if (!composerListingId) {
+      if (listingImages.length + files.length > 8) {
+        setFeedback({
+          tone: 'error',
+          message: 'You can upload a maximum of 8 apartment images.',
+        })
+        return
+      }
+      setFeedback({
+        tone: 'info',
+        message: 'Photos are stored locally until you save a draft or publish (we then attach them to your listing).',
+      })
+      const nextDrafts = files.map((file) => ({
+        id: window.crypto.randomUUID(),
+        fileName: file.name,
+        previewUrl: URL.createObjectURL(file),
+        status: 'pending' as const,
+        file,
+      }))
+      setListingImages((current) => [...current, ...nextDrafts])
+      setUploadSummary(`${nextDrafts.length} photo${nextDrafts.length === 1 ? '' : 's'} ready — save draft or publish to upload.`)
+      return
+    }
+
     if (listingImages.length + files.length > 8) {
       setFeedback({
         tone: 'error',
@@ -3554,7 +3729,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
         const draftId = nextDrafts[index].id
 
         try {
-          const upload = await uploadListingImageToCloudinary(file, sessionToken)
+          const upload = await uploadListingImageToCloudinary(file, sessionToken, composerListingId)
           setListingImages((current) =>
             current.map((image) =>
               image.id === draftId
@@ -3562,7 +3737,7 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     ...image,
                     status: 'uploaded',
                     upload,
-                    previewUrl: upload.thumbnailUrl,
+                    previewUrl: getListingImageUrl(upload.providerAssetId, 'thumb'),
                   }
                 : image,
             ),
@@ -4900,6 +5075,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 <span className="muted">Upload multiple apartment images so seekers can review the space before contacting you.</span>
               </div>
 
+              {!composerListingId ? (
+                <p className="muted" style={{ marginBottom: '0.75rem' }}>
+                  Pick photos anytime — they stay on this device until you <strong>save a draft</strong> or{' '}
+                  <strong>publish</strong>, then we upload them to your listing folder.
+                </p>
+              ) : null}
+
               <label
                 className={`listing-upload-dropzone${isDragActive ? ' active' : ''}${isUploadingImages ? ' uploading' : ''}`}
                 htmlFor="listing-images"
@@ -4932,13 +5114,15 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                     <div className="listing-image-copy">
                       <strong>{listingImageSuggestions[index] ?? `Image ${index + 1}`}</strong>
                       <span className="muted">
-                        {image.status === 'uploading'
-                          ? 'Uploading...'
-                          : image.status === 'error'
-                            ? image.error ?? 'Upload failed'
-                            : index === 0
-                              ? 'Cover image'
-                              : 'Apartment photo'}
+                        {image.status === 'pending'
+                          ? 'Will upload when you save draft or publish'
+                          : image.status === 'uploading'
+                            ? 'Uploading...'
+                            : image.status === 'error'
+                              ? image.error ?? 'Upload failed'
+                              : index === 0
+                                ? 'Cover image'
+                                : 'Apartment photo'}
                       </span>
                     </div>
                     <div className="listing-image-actions">
@@ -5021,7 +5205,13 @@ function HousingExperiencePage({ mode }: { mode: HousingPageMode }) {
                 </div>
                 <div className="listing-details-fact">
                   <span className="muted">Images</span>
-                  <strong>{listingImages.length} uploaded</strong>
+                  <strong>
+                    {
+                      listingImages.filter((image) => image.status === 'uploaded' || image.status === 'pending')
+                        .length
+                    }{' '}
+                    photos
+                  </strong>
                 </div>
                 <div className="listing-details-fact">
                   <span className="muted">Nearby workplaces</span>
@@ -6341,7 +6531,11 @@ function renderListingCoverImage(
     <div className={className}>
       {listing.images.length > 1 ? <span className="feed-media-count">{listing.images.length} photos</span> : null}
       <div className="feed-media-slide">
-        <img alt={`${listing.title} cover photo`} loading="lazy" src={coverImage.thumbnailUrl || coverImage.imageUrl} />
+        <img
+          alt={`${listing.title} cover photo`}
+          loading="lazy"
+          src={getListingImageUrl(coverImage.providerAssetId, 'card')}
+        />
       </div>
     </div>
   )
@@ -6363,7 +6557,11 @@ function renderListingImageGallery(
       <div aria-label={`${listing.title} photos`} className="feed-media-track" role="list">
         {listing.images.map((image, index) => (
           <div className="feed-media-slide" key={image.id} role="listitem">
-            <img alt={`${listing.title} photo ${index + 1}`} loading="lazy" src={image.thumbnailUrl || image.imageUrl} />
+            <img
+              alt={`${listing.title} photo ${index + 1}`}
+              loading="lazy"
+              src={getListingImageUrl(image.providerAssetId, 'card')}
+            />
           </div>
         ))}
       </div>
