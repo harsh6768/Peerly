@@ -57,6 +57,7 @@ async function bootstrap() {
     .addTag('listing-inquiries')
     .addTag('housing-needs')
     .addTag('notifications')
+    .addTag('public')
     .build();
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);

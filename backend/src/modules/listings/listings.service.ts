@@ -28,6 +28,20 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { ListListingsQueryDto } from './dto/list-listings-query.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
+/** Default Cloudinary path segment before `/listings/{userId}/…`. Set `CLOUDINARY_LISTINGS_FOLDER_ROOT` on the server if you need a different root (e.g. `cirvo`). */
+const DEFAULT_LISTING_CLOUD_FOLDER_ROOT = 'cirvo';
+
+/** Legacy uploads still use this prefix; cleanup accepts both roots for the same user. */
+const LEGACY_LISTING_CLOUD_FOLDER_ROOT = 'trusted-network';
+
+function listingCloudFolderRoot(): string {
+  const fromEnv = process.env.CLOUDINARY_LISTINGS_FOLDER_ROOT?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/^\/+|\/+$/g, '');
+  }
+  return DEFAULT_LISTING_CLOUD_FOLDER_ROOT;
+}
+
 type ListingMatchLabel = 'BEST_MATCH' | 'GOOD_MATCH' | 'POSSIBLE';
 type ListingMatchSummary = {
   matchScore: number;
@@ -512,7 +526,8 @@ export class ListingsService {
       );
     }
 
-    let folder = `cirvo/listings/${userId}`;
+    const root = listingCloudFolderRoot();
+    let folder = `${root}/listings/${userId}`;
 
     if (listingId) {
       const listing = await this.prisma.listing.findFirst({
@@ -538,7 +553,7 @@ export class ListingsService {
         throw new BadRequestException('Images cannot be uploaded for archived or filled listings.');
       }
 
-      folder = `cirvo/listings/${userId}/${listingId}`;
+      folder = `${root}/listings/${userId}/${listingId}`;
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -566,8 +581,14 @@ export class ListingsService {
       );
     }
 
-    const folderPrefix = `cirvo/listings/${userId}/`;
-    const invalidAssetIds = assetIds.filter((assetId) => !assetId.startsWith(folderPrefix));
+    const currentRoot = listingCloudFolderRoot();
+    const allowedPrefixes = [
+      `${currentRoot}/listings/${userId}/`,
+      `${LEGACY_LISTING_CLOUD_FOLDER_ROOT}/listings/${userId}/`,
+    ];
+    const invalidAssetIds = assetIds.filter(
+      (assetId) => !allowedPrefixes.some((prefix) => assetId.startsWith(prefix)),
+    );
 
     if (invalidAssetIds.length > 0) {
       throw new BadRequestException('One or more uploaded image ids do not belong to the current user.');

@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AppAuthProvider } from './context/AppAuthContext'
 import { HousingIntentProvider } from './context/HousingIntentContext'
+import { PublicConfigProvider } from './context/PublicConfigContext'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -19,13 +20,15 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AppAuthProvider>
-        <BrowserRouter>
-          <HousingIntentProvider>
-            <App />
-          </HousingIntentProvider>
-        </BrowserRouter>
-      </AppAuthProvider>
+      <PublicConfigProvider>
+        <AppAuthProvider>
+          <BrowserRouter>
+            <HousingIntentProvider>
+              <App />
+            </HousingIntentProvider>
+          </BrowserRouter>
+        </AppAuthProvider>
+      </PublicConfigProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

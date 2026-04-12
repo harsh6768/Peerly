@@ -638,10 +638,18 @@ function SearchListingCard({
             </div>
           ) : null}
 
-          <LocationSummaryCard
-            compact
-            location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)}
-          />
+          <div className="listing-details-section">
+            <strong>Location</strong>
+            <LocationSummaryCard
+              compact
+              location={toSelectedPlaceLocation(
+                listing.locationName,
+                listing.latitude,
+                listing.longitude,
+              )}
+              showCoordinates={false}
+            />
+          </div>
 
           <div className="listing-contact-card">
             <div className="listing-contact-head">
@@ -2528,7 +2536,18 @@ export function FindTenantListingDetailsPage() {
                     </div>
                   ) : null}
 
-                  <LocationSummaryCard location={toSelectedPlaceLocation(listing.locationName, listing.latitude, listing.longitude)} />
+                  <div className="listing-details-section">
+                    <strong>Location</strong>
+                    <LocationSummaryCard
+                      compact
+                      location={toSelectedPlaceLocation(
+                        listing.locationName,
+                        listing.latitude,
+                        listing.longitude,
+                      )}
+                      showCoordinates={false}
+                    />
+                  </div>
                 </div>
               </>
             )}

@@ -1,6 +1,7 @@
 import { LoaderCircle, MapPin } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Button } from './Button'
+import { usePublicConfig } from '../context/PublicConfigContext'
 import {
   buildGoogleMapsOpenUrl,
   buildGoogleStaticMapUrl,
@@ -279,13 +280,17 @@ type LocationSummaryCardProps = {
   location: SelectedPlaceLocation | null
   onClear?: () => void
   compact?: boolean
+  /** When false, hide lat/lng line (e.g. listing detail — address is enough). */
+  showCoordinates?: boolean
 }
 
 export function LocationSummaryCard({
   location,
   onClear,
   compact = false,
+  showCoordinates = true,
 }: LocationSummaryCardProps) {
+  const { staticMapPreviewEnabled } = usePublicConfig()
   const [previewFailed, setPreviewFailed] = useState(false)
 
   useEffect(() => {
@@ -296,7 +301,9 @@ export function LocationSummaryCard({
     return null
   }
 
-  const staticMapUrl = buildGoogleStaticMapUrl(location.latitude, location.longitude)
+  const staticMapUrl =
+    staticMapPreviewEnabled &&
+    buildGoogleStaticMapUrl(location.latitude, location.longitude)
 
   return (
     <div className={`location-summary-card${compact ? ' compact' : ''}`}>
@@ -305,9 +312,11 @@ export function LocationSummaryCard({
           <MapPin className="location-summary-pin" size={18} />
           <div>
             <strong>{location.locationName}</strong>
-            <p>
-              {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-            </p>
+            {showCoordinates ? (
+              <p>
+                {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+              </p>
+            ) : null}
           </div>
         </div>
         {onClear && (

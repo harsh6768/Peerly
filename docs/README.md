@@ -19,6 +19,7 @@ This folder is the current working architecture reference for Trusted Network.
 13. [Supabase Google Auth with Netlify and EC2](./supabase-google-auth-netlify.md)
 14. [Housing scale-up sprint (images, APIs, caching)](./SPRINT_SCALING_HOUSING.md)
 15. [Listing image upload architecture](./listing-image-upload-architecture.md)
+16. [Maps and client config](./maps-and-client-config.md) — Places + Static Maps env vars, billing toggles, `GET /api/public-config`
 
 ## What these docs cover
 
@@ -38,3 +39,5 @@ This folder is the current working architecture reference for Trusted Network.
 These docs are written so frontend and backend can evolve independently without losing the shared product model.
 
 The **housing scale-up** sprint doc and **listing image architecture** doc describe the canonical image model (public id in DB, URLs at read time) and related API changes.
+
+**Maps and client config** documents the shared Google Maps browser key, how to enable or disable Static Map previews (`STATIC_MAP_PREVIEW_ENABLED`, `VITE_GOOGLE_MAPS_STATIC_MAP_ENABLED`), and how public config complements optional `VITE_CLOUDINARY_CLOUD_NAME`.

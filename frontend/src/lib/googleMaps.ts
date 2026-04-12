@@ -150,6 +150,9 @@ export function buildGoogleStaticMapUrl(latitude: number, longitude: number) {
     zoom: '15',
     size: '640x280',
     scale: '2',
+    maptype: 'roadmap',
+    language: 'en',
+    region: 'IN',
     markers: `color:0x6c63ff|${latitude},${longitude}`,
     key: googleMapsApiKey,
   })

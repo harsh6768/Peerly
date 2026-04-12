@@ -6,11 +6,21 @@ const WIDTHS: Record<ListingImageVariant, number> = {
   detail: 1200,
 }
 
+/** Set by `PublicConfigProvider` when `VITE_CLOUDINARY_CLOUD_NAME` is not set at build time. */
+let runtimeCloudinaryCloudName = ''
+
+export function setRuntimeCloudinaryCloudName(name: string) {
+  runtimeCloudinaryCloudName = (name || '').trim()
+}
+
 /**
  * Build a Cloudinary delivery URL from a stored public_id (no persisted URLs in DB).
  */
 export function getListingImageUrl(publicId: string, variant: ListingImageVariant): string {
-  const cloud = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME?.trim()
+  const cloud =
+    import.meta.env.VITE_CLOUDINARY_CLOUD_NAME?.trim() ||
+    runtimeCloudinaryCloudName ||
+    ''
   if (!cloud || !publicId?.trim()) {
     return ''
   }
