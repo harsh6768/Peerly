@@ -43,7 +43,7 @@ export class ListingsController {
 
   @ApiOperation({
     summary:
-      'Signed Cloudinary upload. Optional listingId: tenant-replacement uses folder …/userId/listingId; omit body or listingId for legacy …/userId only (e.g. send_request).',
+      'Signed Cloudinary upload. Returns publicId under cirvo/listings/{userId}/{listingId?}/…; client must POST public_id + signature to Cloudinary (not folder). Optional listingId for tenant-replacement; omit for legacy user-only path (e.g. send_request).',
   })
   @ApiBearerAuth()
   @UseGuards(AppSessionGuard)

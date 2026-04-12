@@ -47,7 +47,7 @@ Point uptime checks at `https://your-api-domain/health` (or `/health/ready` for 
 
 ### Listing images still appear under `trusted-network/` in Cloudinary
 
-Uploads use the `folder` string from **`POST /api/listings/upload-signature`**: always **`cirvo/listings/{userId}/{listingId}`** when a listing id is present, otherwise **`cirvo/listings/{userId}`** for legacy flows. **`CLOUDINARY_LISTINGS_FOLDER_ROOT` is not read** (root is fixed). Cleanup still accepts old **`trusted-network/...`** public_ids.
+**`POST /api/listings/upload-signature`** returns a signed **`public_id`** (e.g. **`cirvo/listings/{userId}/{listingId}/{uuid}`** with listing id, or **`cirvo/listings/{userId}/{uuid}`** without). The client POSTs that **`public_id`** to Cloudinary (not `folder`), so the asset path is fixed to **`cirvo/...`**. **`CLOUDINARY_LISTINGS_FOLDER_ROOT` is not read.** Cleanup still accepts old **`trusted-network/...`** public_ids.
 
 If new files still land under **`trusted-network/listings/...`**, the running API is **old** — redeploy: pull latest, `npm run build` in [`backend/`](backend/), restart the Node process.
 3. **Smoke check** (use a real `listingId` you own and a valid session JWT):
@@ -59,7 +59,7 @@ curl -sS -X POST "https://api.your-domain.com/api/listings/upload-signature" \
   -d '{"listingId":"<YOUR_LISTING_ID>"}'
 ```
 
-The response JSON should show `"folder": "cirvo/listings/<userId>/<listingId>"` (or the root you configured).
+The response JSON should include `"publicId": "cirvo/listings/<userId>/<listingId>/<uuid>"` (and no longer a top-level `folder` field).
 
 ### Housing needs API (`/api/housing-needs`) — 404 on save or list
 

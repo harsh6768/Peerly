@@ -14,7 +14,7 @@ type SignedUploadSignature = {
   cloudName: string
   apiKey: string
   timestamp: number
-  folder: string
+  publicId: string
   signature: string
 }
 
@@ -42,6 +42,13 @@ export async function uploadListingImageToCloudinary(
     body: JSON.stringify(listingId ? { listingId } : {}),
   })
 
+  const publicId = signedUpload.publicId?.trim() ?? ''
+  if (!publicId.startsWith('cirvo/')) {
+    throw new Error(
+      'Upload configuration error: expected a cirvo Cloudinary path from the API. Redeploy the backend.',
+    )
+  }
+
   const formData = new FormData()
   // React Native file descriptor (not a web Blob)
   formData.append(
@@ -51,7 +58,7 @@ export async function uploadListingImageToCloudinary(
   formData.append('api_key', signedUpload.apiKey)
   formData.append('timestamp', String(signedUpload.timestamp))
   formData.append('signature', signedUpload.signature)
-  formData.append('folder', signedUpload.folder)
+  formData.append('public_id', publicId)
 
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${signedUpload.cloudName}/image/upload`,

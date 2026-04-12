@@ -63,7 +63,7 @@ Delivery URLs are **not** persisted. The web app uses `getListingImageUrl(public
 |--------|-------------|
 | DB | Dropped `imageUrl`, `thumbnailUrl`, `detailUrl` (migration `20260410_listing_image_drop_delivery_urls.sql`). |
 | API | Listing create/update images: `providerAssetId` + `assetProvider` (+ optional dimensions). |
-| Upload folder | `cirvo/listings/{userId}/{listingId}` (requires an existing listing row). |
+| Upload path | Backend returns a signed **`public_id`** `cirvo/listings/{userId}/{listingId}/{uuid}` (not `folder`), so assets cannot land under legacy `trusted-network` from presets. |
 | Composer | Save draft or publish creates the row first; pending photos upload after `listingId` exists (web + mobile). |
 | Orphans | Cleanup on failed save where possible; scheduled draft purge **deferred** — see [SPRINT_SCALING_HOUSING.md](./SPRINT_SCALING_HOUSING.md). |
 

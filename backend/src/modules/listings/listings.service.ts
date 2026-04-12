@@ -14,7 +14,7 @@ import {
   MessageType,
   Prisma,
 } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   buildWhere,
@@ -28,7 +28,7 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { ListListingsQueryDto } from './dto/list-listings-query.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
-/** Fixed Cloudinary path segment before `/listings/{userId}/{listingId?}/…`. `CLOUDINARY_LISTINGS_FOLDER_ROOT` is ignored. */
+/** All new listing uploads use this Cloudinary public_id prefix (never `trusted-network`). */
 const LISTING_CLOUD_FOLDER_ROOT = 'cirvo';
 
 /** Legacy uploads still use this prefix; cleanup accepts both roots for the same user. */
@@ -522,8 +522,8 @@ export class ListingsService {
       );
     }
 
-    const root = listingCloudFolderRoot();
-    let folder = `${root}/listings/${userId}`;
+    const assetSlug = randomUUID();
+    let publicId = `${LISTING_CLOUD_FOLDER_ROOT}/listings/${userId}/${assetSlug}`;
 
     if (listingId) {
       const listing = await this.prisma.listing.findFirst({
@@ -549,19 +549,20 @@ export class ListingsService {
         throw new BadRequestException('Images cannot be uploaded for archived or filled listings.');
       }
 
-      folder = `${root}/listings/${userId}/${listingId}`;
+      publicId = `${LISTING_CLOUD_FOLDER_ROOT}/listings/${userId}/${listingId}/${assetSlug}`;
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
+    // Sign `public_id` + `timestamp` (alphabetical order per Cloudinary) so the asset path is fixed to cirvo/…
     const signature = createHash('sha1')
-      .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
+      .update(`public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
       .digest('hex');
 
     return {
       cloudName,
       apiKey,
       timestamp,
-      folder,
+      publicId,
       signature,
     };
   }
